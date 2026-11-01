@@ -24,4 +24,4 @@ jobs:
         run: |
           (cd apps/api && npx wrangler dev --port 8787 > /tmp/wrangler.log 2>&1 &)
           for i in $(seq 1 60); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
-          node scripts/smoke.mjs || (cat /tmp/wrangler.log; exit 1)
+          npm run smoke || (cat /tmp/wrangler.log; exit 1)

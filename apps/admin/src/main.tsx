@@ -12,6 +12,12 @@ import { HomePage } from "./pages/Home";
 import { SettingsPage } from "./pages/Settings";
 import { UsersPage } from "./pages/Users";
 import { ActivityPage } from "./pages/Activity";
+import { ProductsPage } from "./pages/Products";
+import { ProductFormPage } from "./pages/ProductForm";
+import { InventoryPage } from "./pages/Inventory";
+import { MovementsPage } from "./pages/Movements";
+import { CatalogNamesPage } from "./pages/CatalogNames";
+import { BusinessProvider } from "./lib/business";
 import type { ReactNode } from "react";
 
 function Protected({ children }: { children: ReactNode }) {
@@ -39,8 +45,14 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/registro" element={<PublicOnly><RegisterPage /></PublicOnly>} />
             <Route path="/recuperar" element={<ForgotPasswordPage />} />
             <Route path="/restablecer" element={<ResetPasswordPage />} />
-            <Route element={<Protected><AppLayout /></Protected>}>
+            <Route element={<Protected><BusinessProvider><AppLayout /></BusinessProvider></Protected>}>
               <Route index element={<HomePage />} />
+              <Route path="productos" element={<ProductsPage />} />
+              <Route path="productos/nuevo" element={<ProductFormPage />} />
+              <Route path="productos/:id" element={<ProductFormPage />} />
+              <Route path="inventario" element={<InventoryPage />} />
+              <Route path="inventario/movimientos" element={<MovementsPage />} />
+              <Route path="catalogo" element={<CatalogNamesPage />} />
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />

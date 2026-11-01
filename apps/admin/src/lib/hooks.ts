@@ -49,5 +49,15 @@ export function useSubmit<A extends unknown[], R>(fn: (...args: A) => Promise<R>
     },
     [fn],
   );
-  return { submit, pending, fields, message, setMessage };
+  /** Removes field errors as the user edits them (exact path or any path under it). */
+  const clearFields = useCallback((...paths: string[]) => {
+    setFields((all) => {
+      const keys = Object.keys(all).filter((k) => paths.some((p) => k === p || k.startsWith(`${p}.`)));
+      if (!keys.length) return all;
+      const next = { ...all };
+      keys.forEach((k) => delete next[k]);
+      return next;
+    });
+  }, []);
+  return { submit, pending, fields, message, setMessage, clearFields };
 }

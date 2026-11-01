@@ -23,6 +23,12 @@ export const PERMISSIONS = {
   "taxes:write": ["owner", "admin"],
   "audit:read": ["owner", "admin"],
   "uploads:write": ["owner", "admin"],
+  "catalog:read": ["owner", "admin", "cashier"],
+  "catalog:write": ["owner", "admin"],
+  "inventory:read": ["owner", "admin", "cashier"],
+  "inventory:write": ["owner", "admin"],
+  /** Purchase cost, margins and inventory value. Hidden from cashiers. */
+  "costs:read": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

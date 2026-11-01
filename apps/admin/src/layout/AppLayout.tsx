@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, Home, LogOut, Menu, Settings, Users } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Home, LogOut, Menu, Package, Settings, Tags, Users } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { useAuth } from "../lib/auth";
@@ -8,6 +8,15 @@ import { useAuth } from "../lib/auth";
 type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean };
 const NAV: Array<{ group?: string; items: NavItem[] }> = [
   { items: [{ to: "/", label: "Inicio", icon: Home, end: true }] },
+  {
+    group: "Catálogo",
+    items: [
+      { to: "/productos", label: "Productos", icon: Package, permission: "catalog:read" },
+      { to: "/inventario", label: "Inventario", icon: Boxes, permission: "inventory:read", end: true },
+      { to: "/inventario/movimientos", label: "Movimientos", icon: ArrowLeftRight, permission: "inventory:read" },
+      { to: "/catalogo", label: "Categorías y marcas", icon: Tags, permission: "catalog:read" },
+    ],
+  },
   {
     group: "Negocio",
     items: [
@@ -18,7 +27,19 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
   },
 ];
 
-const TITLES: Record<string, string> = { "/": "Inicio", "/usuarios": "Usuarios", "/actividad": "Actividad", "/configuracion": "Configuración" };
+const TITLES: Array<[RegExp, string]> = [
+  [/^\/$/, "Inicio"],
+  [/^\/productos\/nuevo$/, "Nuevo producto"],
+  [/^\/productos\/.+/, "Producto"],
+  [/^\/productos$/, "Productos"],
+  [/^\/inventario\/movimientos$/, "Movimientos"],
+  [/^\/inventario$/, "Inventario"],
+  [/^\/catalogo$/, "Categorías y marcas"],
+  [/^\/usuarios$/, "Usuarios"],
+  [/^\/actividad$/, "Actividad"],
+  [/^\/configuracion$/, "Configuración"],
+];
+const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? "";
 
 export function AppLayout() {
   const { me, logout, can } = useAuth();
@@ -75,7 +96,7 @@ export function AppLayout() {
             <nav className="nx-breadcrumb" aria-label="Ruta">
               <span>{me.tenant.name}</span>
               <span aria-hidden="true">/</span>
-              <span aria-current="page">{TITLES[location.pathname] ?? ""}</span>
+              <span aria-current="page">{titleFor(location.pathname)}</span>
             </nav>
           </div>
           <div className="nx-row" style={{ gap: 12 }}>

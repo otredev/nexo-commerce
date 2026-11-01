@@ -292,3 +292,64 @@ export function Avatar({ name }: { name: string }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
   return <span className="nx-avatar" aria-hidden="true">{initials || "?"}</span>;
 }
+
+/* ---------- Search input ---------- */
+export function SearchInput({ value, onChange, placeholder, label, width = 280, autoFocus }: { value: string; onChange: (v: string) => void; placeholder: string; label: string; width?: number; autoFocus?: boolean }) {
+  return (
+    <div className="nx-input-group" style={{ width, maxWidth: "100%" }}>
+      <svg className="nx-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input className="nx-input" style={{ height: "var(--control-sm)", fontSize: 13 }} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} autoFocus={autoFocus} type="search" />
+    </div>
+  );
+}
+
+/* ---------- Segmented control ---------- */
+export function Segmented<T extends string>({ options, value, onChange, label }: { options: Array<{ id: T; label: string }>; value: T; onChange: (id: T) => void; label: string }) {
+  return (
+    <div className="nx-segmented" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.id} type="button" aria-pressed={o.id === value} onClick={() => onChange(o.id)}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Pagination footer ---------- */
+export function Pagination({ page, pageSize, total, onPage, noun = "registros" }: { page: number; pageSize: number; total: number; onPage: (p: number) => void; noun?: string }) {
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div className="nx-table-footer">
+      <span className="nx-num">{from}–{to} de {total} {noun}</span>
+      <div className="nx-pagination">
+        <Button variant="secondary" size="sm" icon aria-label="Página anterior" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+          <svg className="nx-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </Button>
+        <Button variant="secondary" size="sm" icon aria-label="Página siguiente" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+          <svg className="nx-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Progress ---------- */
+export function Progress({ value, label }: { value: number; label: string }) {
+  const pct = Math.max(0, Math.min(100, Math.round(value * 100)));
+  return (
+    <div className="nx-progress" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+      <div className="nx-progress__bar" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/* ---------- Debounce hook ---------- */
+export function useDebounced<T>(value: T, ms = 250): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return v;
+}

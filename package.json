@@ -3,8 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "npm run db:migrate:local && concurrently -n api,admin -c green,gray \"npm run dev -w @nexo/api\" \"npm run dev -w @nexo/admin\"",
     "build": "npm run build -w @nexo/ui && npm run build -w @nexo/admin",
@@ -13,7 +18,8 @@
     "db:generate": "npm run generate -w @nexo/db",
     "db:migrate:local": "npm run migrate:local -w @nexo/api",
     "deploy:staging": "npm run build && npm run deploy:staging -w @nexo/api",
-    "deploy:production": "npm run build && npm run deploy:production -w @nexo/api"
+    "deploy:production": "npm run build && npm run deploy:production -w @nexo/api",
+    "smoke": "node scripts/smoke.mjs && node scripts/smoke-catalog.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

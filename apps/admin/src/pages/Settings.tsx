@@ -7,6 +7,7 @@ import { get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useLoad, useSubmit } from "../lib/hooks";
 import { CURRENCIES, TIMEZONES } from "../lib/options";
+import { useBusiness } from "../lib/business";
 
 type Tab = "negocio" | "impuestos" | "ubicaciones" | "seguridad";
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -34,6 +35,7 @@ export function SettingsPage() {
 /* ---------------- Negocio ---------------- */
 function BusinessTab() {
   const { can, refresh } = useAuth();
+  const business = useBusiness();
   const editable = can("settings:write");
   const toast = useToast();
   const { data, error, setData } = useLoad(() => get<BusinessSettings>("/settings"));
@@ -47,6 +49,7 @@ function BusinessTab() {
     const saved = await put<BusinessSettings>("/settings", body);
     setData(saved);
     await refresh();
+    void business.reload();
     toast("Cambios guardados");
   });
   const upload = useSubmit(async (file: File) => {
@@ -136,6 +139,7 @@ function BusinessTab() {
 /* ---------------- Impuestos ---------------- */
 function TaxesTab() {
   const { can } = useAuth();
+  const business = useBusiness();
   const editable = can("taxes:write");
   const toast = useToast();
   const { data, error, reload } = useLoad(() => get<TaxRate[]>("/taxes"));
@@ -155,6 +159,7 @@ function TaxesTab() {
     setEditing(null);
     toast("Impuesto guardado");
     await reload();
+    void business.reload();
   });
 
   if (error) return <Alert tone="danger">{error.message}</Alert>;
@@ -206,6 +211,7 @@ function TaxesTab() {
 /* ---------------- Ubicaciones ---------------- */
 function LocationsTab() {
   const { can } = useAuth();
+  const business = useBusiness();
   const editable = can("locations:write");
   const toast = useToast();
   const { data, error, reload } = useLoad(() => get<Location[]>("/locations"));
@@ -224,6 +230,7 @@ function LocationsTab() {
     setEditing(null);
     toast("Ubicación guardada");
     await reload();
+    void business.reload();
   });
 
   if (error) return <Alert tone="danger">{error.message}</Alert>;
