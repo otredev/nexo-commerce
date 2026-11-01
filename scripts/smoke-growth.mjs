@@ -29,6 +29,7 @@ const shift = (date, days) => { const d = new Date(`${date}T12:00:00Z`); d.setUT
 
 const owner = client();
 await owner("POST", "/api/auth/register", { businessName: `Crece ${stamp}`, ownerName: "Rosa Dueña", email: `rosa-${stamp}@example.com`, password: "contrasena-segura-1" });
+await owner("POST", "/api/dev/plan", { plan: "business" }); // the free plan allows 1 location, 2 users and 100 products
 const slug = (await owner("GET", "/api/me")).data.tenant.slug;
 const main = (await owner("GET", "/api/locations")).data[0].id;
 await owner("POST", "/api/taxes", { name: "IVA 16%", rateBps: 1600, isDefault: true, active: true });

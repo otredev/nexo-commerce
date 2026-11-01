@@ -15,12 +15,24 @@ export const tenants = sqliteTable(
     name: text("name").notNull(),
     /** Name of the Worker binding of the D1 that stores this business. Lets us move tenants to their own D1 later. */
     dbBinding: text("db_binding").notNull().default("DB_TENANT_DEFAULT"),
-    /** provisioning → active. A tenant stays in provisioning until its business DB is seeded. */
-    status: text("status", { enum: ["provisioning", "active", "suspended"] }).notNull().default("provisioning"),
+    /**
+     * provisioning → active. suspended: blocked by the platform (no dashboard, no store).
+     * migrating: being moved to another D1 (requests answer 503 for a moment).
+     */
+    status: text("status", { enum: ["provisioning", "active", "suspended", "migrating"] }).notNull().default("provisioning"),
     plan: text("plan").notNull().default("free"),
+    /** Subscription state as Stripe reports it (Phase 6). */
+    planStatus: text("plan_status", { enum: ["active", "trialing", "past_due", "canceled"] }).notNull().default("active"),
+    planPeriodEnd: text("plan_period_end"),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    /** Stripe Connect account of the business, for card payments in its online store. */
+    stripeAccountId: text("stripe_account_id"),
+    stripeChargesEnabled: integer("stripe_charges_enabled", { mode: "boolean" }).notNull().default(false),
+    suspendedReason: text("suspended_reason"),
     createdAt: text("created_at").notNull().default(now),
   },
-  (t) => [uniqueIndex("tenants_slug_uq").on(t.slug)],
+  (t) => [uniqueIndex("tenants_slug_uq").on(t.slug), index("tenants_stripe_customer_idx").on(t.stripeCustomerId), index("tenants_stripe_account_idx").on(t.stripeAccountId)],
 );
 
 export const users = sqliteTable(
@@ -86,9 +98,29 @@ export const loginAttempts = sqliteTable(
   (t) => [index("login_attempts_email_idx").on(t.email, t.createdAt)],
 );
 
-/** Hostnames that point to a tenant's online store (Phase 4). */
-export const tenantDomains = sqliteTable("tenant_domains", {
-  hostname: text("hostname").primaryKey(),
-  tenantId: text("tenant_id").notNull().references(() => tenants.id),
+/** Hostnames that point to a tenant's online store (Cloudflare for SaaS custom hostnames, Phase 6). */
+export const tenantDomains = sqliteTable(
+  "tenant_domains",
+  {
+    hostname: text("hostname").primaryKey(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    /** Id of the custom hostname in Cloudflare. */
+    cfId: text("cf_id"),
+    /** pending → active (DNS points to us and the certificate is issued) or failed. */
+    status: text("status", { enum: ["pending", "active", "failed"] }).notNull().default("pending"),
+    sslStatus: text("ssl_status"),
+    /** DNS records the customer must add, as Cloudflare reports them. */
+    verification: text("verification", { mode: "json" }).$type<Array<{ type: string; name: string; value: string }>>(),
+    lastError: text("last_error"),
+    checkedAt: text("checked_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("tenant_domains_tenant_idx").on(t.tenantId)],
+);
+
+/** Stripe webhook events already processed (Stripe retries; each event is applied once). */
+export const stripeEvents = sqliteTable("stripe_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
   createdAt: text("created_at").notNull().default(now),
 });

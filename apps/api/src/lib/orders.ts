@@ -79,6 +79,7 @@ export async function toPublicOrder(db: TenantDb, tenantId: string, order: Order
     cancelledAt: order.cancelledAt,
     cancelReason: order.cancelReason,
     canCancel: order.status === "pending" && order.paymentStatus === "pending",
+    awaitingCardPayment: order.paymentMethod === "card" && order.status === "pending" && order.paymentStatus === "pending",
     transferInstructions: order.paymentMethod === "transfer" ? (store?.transferInstructions ?? null) : null,
     pickupInstructions: order.fulfillment === "pickup" ? (store?.pickupInstructions ?? null) : null,
     pickupAddress: order.fulfillment === "pickup" ? (location?.address ?? location?.name ?? null) : null,

@@ -8,6 +8,8 @@ import { z } from "zod";
 import { control, controlDb, tenant } from "@nexo/db";
 import {
   businessDate,
+  effectivePlan,
+  planOf,
   couponProblem,
   displayPrice,
   normalizeCode,
@@ -36,9 +38,29 @@ import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatemen
 import { cancelStatements, loadOrderRows, sendOrderEmail, toPublicOrder } from "../lib/orders";
 import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
+import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
+import { stripe, stripeConfigured } from "../lib/stripe";
 import { json } from "../lib/validate";
 
 const { storeSettings, businessSettings, products, variants, taxRates, categories, brands, orders, orderItems, stockLevels, auditLog } = tenant;
+
+/**
+ * Public base URL of the store for links that leave it (Stripe return pages): the customer's own domain
+ * when the request came from an active one, otherwise STORE_URL/slug.
+ */
+async function storeBase(c: Context<AppEnv>, t: TenantRef) {
+  const fallback = `${c.env.STORE_URL.replace(/\/$/, "")}/${t.slug}`;
+  const origin = c.req.header("origin") ?? c.req.header("x-nexo-store-origin");
+  if (!origin) return fallback;
+  let host: string;
+  try { host = new URL(origin).hostname.toLowerCase(); } catch { return fallback; }
+  const domain = await controlDb(c.env.DB_CONTROL)
+    .select({ tenantId: control.tenantDomains.tenantId, status: control.tenantDomains.status })
+    .from(control.tenantDomains)
+    .where(eq(control.tenantDomains.hostname, host))
+    .get();
+  return domain?.tenantId === t.id && domain.status === "active" ? `https://${host}` : fallback;
+}
 
 const notFound = () => new AppError(404, "store_not_found", "Esta tienda no existe o no está disponible.");
 
@@ -47,7 +69,10 @@ async function resolveStore(c: Context<AppEnv>) {
   const slug = c.req.param("slug")?.toLowerCase() ?? "";
   if (!/^[a-z0-9-]{1,60}$/.test(slug)) throw notFound();
   const t = await controlDb(c.env.DB_CONTROL)
-    .select({ id: control.tenants.id, slug: control.tenants.slug, name: control.tenants.name, dbBinding: control.tenants.dbBinding, status: control.tenants.status })
+    .select({
+      id: control.tenants.id, slug: control.tenants.slug, name: control.tenants.name, dbBinding: control.tenants.dbBinding, status: control.tenants.status,
+      plan: control.tenants.plan, planStatus: control.tenants.planStatus, stripeAccountId: control.tenants.stripeAccountId, chargesEnabled: control.tenants.stripeChargesEnabled,
+    })
     .from(control.tenants)
     .where(eq(control.tenants.slug, slug))
     .get();
@@ -60,7 +85,10 @@ async function resolveStore(c: Context<AppEnv>) {
   ]);
   if (!store?.enabled || !store.locationId || !biz) throw notFound();
   const today = businessDate(biz.timezone);
-  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz, today };
+  // Card payments: enabled by the business, allowed by its plan, and its Stripe account can charge.
+  const cardAccount =
+    store.cardEnabled && t.stripeAccountId && t.chargesEnabled && planOf(effectivePlan(t.plan, t.planStatus)).limits.cardPayments && stripeConfigured(c.env) ? t.stripeAccountId : null;
+  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz, today, cardAccount };
 }
 
 /** Tax rate of each product: its own or the business default. */
@@ -85,7 +113,7 @@ const short = { "Cache-Control": "public, max-age=30" };
 export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Store front: name, logo, rules, categories ---------- */
   .get("/:slug", async (c) => {
-    const { tenant: t, d1, db, store, biz, today } = await resolveStore(c);
+    const { tenant: t, d1, db, store, biz, today, cardAccount } = await resolveStore(c);
     const { results: cats } = await d1
       .prepare(
         `SELECT c.id, c.name, COUNT(p.id) AS count FROM categories c JOIN products p ON p.category_id = c.id AND ${PUBLISHED.replaceAll("p.tenant_id = ?1", "p.tenant_id = c.tenant_id")}
@@ -122,6 +150,7 @@ export const storeRoutes = new Hono<AppEnv>()
       minOrderCents: store.minOrderCents,
       payOnDelivery: store.payOnDelivery,
       transferEnabled: store.transferEnabled,
+      cardEnabled: Boolean(cardAccount),
       categories: cats,
       promotions,
       couponsEnabled: Boolean(coupon),
@@ -238,7 +267,7 @@ export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Checkout: one atomic batch that reserves the stock ---------- */
   .post("/:slug/orders", json(storeOrderSchema), async (c) => {
     const input = c.req.valid("json");
-    const { tenant: t, db, d1, store, biz, today } = await resolveStore(c);
+    const { tenant: t, db, d1, store, biz, today, cardAccount } = await resolveStore(c);
     const ip = c.req.header("cf-connecting-ip") ?? null;
 
     const existing = await db.select({ token: orders.token, number: orders.number }).from(orders).where(and(eq(orders.tenantId, t.id), eq(orders.clientId, input.clientId))).get();
@@ -254,6 +283,7 @@ export const storeRoutes = new Hono<AppEnv>()
     if (input.fulfillment === "delivery" && !store.deliveryEnabled) throw new AppError(422, "validation_error", "Revisa los campos marcados", { fulfillment: "Esta tienda no hace envíos" });
     if (input.paymentMethod === "on_delivery" && !store.payOnDelivery) throw new AppError(422, "validation_error", "Revisa los campos marcados", { paymentMethod: "Elige otra forma de pago" });
     if (input.paymentMethod === "transfer" && !store.transferEnabled) throw new AppError(422, "validation_error", "Revisa los campos marcados", { paymentMethod: "Elige otra forma de pago" });
+    if (input.paymentMethod === "card" && !cardAccount) throw new AppError(422, "validation_error", "El pago con tarjeta no está disponible ahora. Elige otra forma de pago.", { paymentMethod: "Elige otra forma de pago" });
 
     // Current prices, taxes and costs: the store only says what and how much.
     const ids = [...new Set(input.items.map((i) => i.variantId))];
@@ -371,6 +401,20 @@ export const storeRoutes = new Hono<AppEnv>()
     }
 
     const created = await loadOrderRows(db, t.id, { id: orderId });
+    let paymentUrl: string | null = null;
+    if (created && input.paymentMethod === "card") {
+      // Stripe Checkout on the business's account. If Stripe fails, the order is cancelled and the stock returns.
+      try {
+        const session = await createOrderCheckout(c.env, { tenantId: t.id, account: cardAccount!, order: created.order, storeName: biz.tradeName, currency: biz.currency, base: await storeBase(c, t) });
+        await d1.prepare("UPDATE orders SET stripe_session_id = ?1 WHERE id = ?2 AND tenant_id = ?3").bind(session.id, orderId, t.id).run();
+        paymentUrl = session.url;
+      } catch (err) {
+        await d1.batch(cancelStatements(d1, db, { tenantId: t.id, userId: null, userName: "Sistema" }, created.order, created.items, { reason: "No se pudo iniciar el pago con tarjeta", by: "system", from: ["pending"] })).catch(() => {});
+        throw err;
+      }
+      // The emails go out once the payment is confirmed (or not at all if it expires).
+      return c.json({ token, number: created.order.number, paymentUrl }, 201);
+    }
     if (created) {
       c.executionCtx.waitUntil(
         Promise.all([
@@ -379,7 +423,7 @@ export const storeRoutes = new Hono<AppEnv>()
         ]).catch((e) => console.error("[orders] email", e)),
       );
     }
-    return c.json({ token, number: created?.order.number ?? 0 }, 201);
+    return c.json({ token, number: created?.order.number ?? 0, paymentUrl }, 201);
   })
 
   /** Checks a coupon code; the store then prices the cart with it (same function as the server). */
@@ -401,9 +445,40 @@ export const storeRoutes = new Hono<AppEnv>()
     return c.json(await toPublicOrder(db, t.id, rows.order, rows.items));
   })
 
+  /** Link to Stripe Checkout of a card order that is still unpaid (the session lasts 30 minutes). */
+  .post("/:slug/orders/:token/pay", async (c) => {
+    const { tenant: t, db, cardAccount } = await resolveStore(c);
+    const rows = await loadOrderRows(db, t.id, { token: c.req.param("token") });
+    if (!rows) throw new AppError(404, "not_found", "No encontramos este pedido.");
+    const o = rows.order;
+    if (o.paymentMethod !== "card" || o.paymentStatus !== "pending" || o.status !== "pending" || !o.stripeSessionId || !cardAccount) {
+      throw new AppError(409, "not_payable", "Este pedido ya no se puede pagar en línea.");
+    }
+    const session = await stripe<CheckoutSession>(c.env, "GET", `/checkout/sessions/${o.stripeSessionId}`, undefined, { account: cardAccount });
+    if (session.status !== "open" || !session.url) throw new AppError(409, "not_payable", "El tiempo para pagar este pedido terminó. Haz un pedido nuevo.");
+    return c.json({ url: session.url });
+  })
+
+  /** Back from Stripe: asks Stripe directly so the page shows "paid" without waiting for the webhook. */
+  .post("/:slug/orders/:token/payment-status", async (c) => {
+    const { tenant: t, db, d1, cardAccount } = await resolveStore(c);
+    let rows = await loadOrderRows(db, t.id, { token: c.req.param("token") });
+    if (!rows) throw new AppError(404, "not_found", "No encontramos este pedido.");
+    const o = rows.order;
+    if (o.paymentMethod === "card" && o.paymentStatus === "pending" && o.stripeSessionId && cardAccount) {
+      const session = await stripe<CheckoutSession>(c.env, "GET", `/checkout/sessions/${o.stripeSessionId}`, undefined, { account: cardAccount });
+      if (session.payment_status === "paid" && (await markOrderPaid(db, d1, t.id, o.id, session))) {
+        rows = (await loadOrderRows(db, t.id, { id: o.id }))!;
+        c.executionCtx.waitUntil(notifyPaid(c.env, db, t, o.id));
+      }
+    }
+    c.header("Cache-Control", "no-store");
+    return c.json(await toPublicOrder(db, t.id, rows.order, rows.items));
+  })
+
   /** The customer can cancel while the order is new and unpaid. */
   .post("/:slug/orders/:token/cancel", async (c) => {
-    const { tenant: t, db, d1 } = await resolveStore(c);
+    const { tenant: t, db, d1, cardAccount } = await resolveStore(c);
     const rows = await loadOrderRows(db, t.id, { token: c.req.param("token") });
     if (!rows) throw new AppError(404, "not_found", "No encontramos este pedido.");
     if (rows.order.status !== "pending" || rows.order.paymentStatus !== "pending") {
@@ -414,6 +489,10 @@ export const storeRoutes = new Hono<AppEnv>()
     } catch (err) {
       if (String((err as Error).message).includes("NOT NULL constraint failed")) throw new AppError(409, "not_cancellable", "La tienda ya está preparando tu pedido. Contáctala para cancelarlo.");
       throw err;
+    }
+    // Close the Stripe page so it cannot be paid after cancelling.
+    if (rows.order.stripeSessionId && cardAccount) {
+      await stripe(c.env, "POST", `/checkout/sessions/${rows.order.stripeSessionId}/expire`, undefined, { account: cardAccount }).catch(() => {});
     }
     const after = (await loadOrderRows(db, t.id, { id: rows.order.id }))!;
     c.executionCtx.waitUntil(sendOrderEmail(c.env, db, t.id, t.slug, "cancelled", after.order, after.items).catch(() => {}));

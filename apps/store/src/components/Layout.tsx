@@ -8,7 +8,7 @@ import { useStore } from "../lib/store";
 import { CartDrawer } from "./CartDrawer";
 
 export function StoreLayout() {
-  const { store, error, slug, count, setCartOpen } = useStore();
+  const { store, error, slug, link, count, setCartOpen } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -34,12 +34,12 @@ export function StoreLayout() {
       <a className="nx-sr-only" href="#contenido">Ir al contenido</a>
       <header className="st-header">
         <div className="st-wrap st-header__row">
-          <Link to={`/${slug}`} className="st-brand" aria-label={`${store.name}, inicio`}>
+          <Link to={link()} className="st-brand" aria-label={`${store.name}, inicio`}>
             {store.logo && <img src={imageUrl(store.logo)!} alt="" />}
             <span className="st-brand__name">{store.name}</span>
           </Link>
           {!checkout && (
-            <form className="st-search" role="search" onSubmit={(e) => { e.preventDefault(); navigate(`/${slug}${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`); }}>
+            <form className="st-search" role="search" onSubmit={(e) => { e.preventDefault(); navigate(link(q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "")); }}>
               <div className="nx-input-group">
                 <svg className="nx-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                 <input className="nx-input" type="search" placeholder="Buscar productos" aria-label="Buscar productos" value={q} onChange={(e) => setQ(e.target.value)} />

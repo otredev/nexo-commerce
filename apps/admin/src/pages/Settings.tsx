@@ -8,12 +8,14 @@ import { useAuth } from "../lib/auth";
 import { useLoad, useSubmit } from "../lib/hooks";
 import { CURRENCIES, TIMEZONES } from "../lib/options";
 import { useBusiness } from "../lib/business";
+import { PlanTab } from "./Plan";
 
-type Tab = "negocio" | "impuestos" | "ubicaciones" | "seguridad";
+type Tab = "negocio" | "impuestos" | "ubicaciones" | "plan" | "seguridad";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "negocio", label: "Negocio" },
   { id: "impuestos", label: "Impuestos" },
   { id: "ubicaciones", label: "Ubicaciones" },
+  { id: "plan", label: "Plan" },
   { id: "seguridad", label: "Seguridad" },
 ];
 
@@ -22,11 +24,12 @@ export function SettingsPage() {
   const tab = (TABS.find((t) => t.id === params.get("tab"))?.id ?? "negocio") as Tab;
   return (
     <>
-      <PageHeader title="Configuración" description="Datos del negocio, impuestos, ubicaciones y seguridad de tu cuenta." />
+      <PageHeader title="Configuración" description="Datos del negocio, impuestos, ubicaciones, tu plan y la seguridad de tu cuenta." />
       <Tabs label="Secciones de configuración" tabs={TABS} value={tab} onChange={(id) => setParams(id === "negocio" ? {} : { tab: id })} />
       {tab === "negocio" && <BusinessTab />}
       {tab === "impuestos" && <TaxesTab />}
       {tab === "ubicaciones" && <LocationsTab />}
+      {tab === "plan" && <PlanTab />}
       {tab === "seguridad" && <SecurityTab />}
     </>
   );

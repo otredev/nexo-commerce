@@ -14,6 +14,30 @@ export interface Env {
   /** Optional: API key of the transactional email provider (Resend). Without it, emails are logged. */
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+
+  /* ---------- Phase 6: SaaS (all optional: without them the feature reports "not configured") ---------- */
+  /** Comma-separated emails of the platform operators (super-admin panel). */
+  PLATFORM_ADMINS?: string;
+  /** Stripe secret key (sk_live_… / sk_test_…). */
+  STRIPE_SECRET_KEY?: string;
+  /** Signing secret of the webhook endpoint for platform events (subscriptions). */
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Signing secret of the Connect webhook endpoint (events from the businesses' accounts). */
+  STRIPE_CONNECT_WEBHOOK_SECRET?: string;
+  /** Price ids of the monthly plans. */
+  STRIPE_PRICE_PRO?: string;
+  STRIPE_PRICE_BUSINESS?: string;
+  /** Optional platform fee on each store card payment, in basis points (100 = 1%). */
+  STRIPE_APPLICATION_FEE_BPS?: string;
+  /** Override of https://api.stripe.com (tests point it to a mock server). */
+  STRIPE_API_BASE?: string;
+  /** Cloudflare for SaaS: token with "SSL and Certificates: Edit" on the zone of the stores. */
+  CF_API_TOKEN?: string;
+  CF_ZONE_ID?: string;
+  /** Override of https://api.cloudflare.com/client/v4 (tests). */
+  CF_API_BASE?: string;
+  /** Hostname customers point their CNAME to (the fallback origin of the zone). */
+  STORE_CNAME_TARGET?: string;
 }
 
 export interface TenantRef {
@@ -23,10 +47,17 @@ export interface TenantRef {
   dbBinding: string;
 }
 
+export interface TenantAuth extends TenantRef {
+  status: "provisioning" | "active" | "suspended" | "migrating";
+  /** Effective plan (a canceled subscription falls back to free). */
+  plan: import("@nexo/shared").PlanId;
+  suspendedReason: string | null;
+}
+
 export interface AuthContext {
   sessionId: string;
   user: { id: string; name: string; email: string };
-  tenant: TenantRef;
+  tenant: TenantAuth;
   role: Role;
   /** Drizzle client bound to the D1 that stores this tenant. */
   db: TenantDb;

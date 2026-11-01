@@ -7,3 +7,4 @@ export * from "./sales";
 export * from "./purchasing";
 export * from "./store";
 export * from "./promotions";
+export * from "./plans";

@@ -2,8 +2,8 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { and, eq, gt } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
-import type { Role } from "@nexo/shared";
-import type { AppEnv, Env, TenantRef } from "../env";
+import { effectivePlan, type Role } from "@nexo/shared";
+import type { AppEnv, Env, TenantAuth } from "../env";
 import { randomToken, sha256Hex } from "./crypto";
 
 export const SESSION_COOKIE = "nx_session";
@@ -46,7 +46,7 @@ export interface LoadedSession {
   sessionId: string;
   expiresAt: string;
   user: { id: string; name: string; email: string };
-  tenant: TenantRef;
+  tenant: TenantAuth;
   role: Role;
 }
 
@@ -69,6 +69,9 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
       tenantSlug: control.tenants.slug,
       tenantName: control.tenants.name,
       tenantStatus: control.tenants.status,
+      plan: control.tenants.plan,
+      planStatus: control.tenants.planStatus,
+      suspendedReason: control.tenants.suspendedReason,
       dbBinding: control.tenants.dbBinding,
       role: control.memberships.role,
       active: control.memberships.active,
@@ -83,7 +86,7 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
     .where(and(eq(control.sessions.id, id), gt(control.sessions.expiresAt, nowIso)))
     .limit(1);
 
-  if (!row || row.userDeleted || !row.active || row.tenantStatus !== "active") return null;
+  if (!row || row.userDeleted || !row.active || row.tenantStatus === "provisioning") return null;
 
   // Sliding expiration.
   if (new Date(row.expiresAt).getTime() - Date.now() < days(RENEW_WHEN_DAYS_LEFT)) {
@@ -96,7 +99,10 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
     sessionId: row.sessionId,
     expiresAt: row.expiresAt,
     user: { id: row.userId, name: row.userName, email: row.userEmail },
-    tenant: { id: row.tenantId, slug: row.tenantSlug, name: row.tenantName, dbBinding: row.dbBinding },
+    tenant: {
+      id: row.tenantId, slug: row.tenantSlug, name: row.tenantName, dbBinding: row.dbBinding,
+      status: row.tenantStatus, plan: effectivePlan(row.plan, row.planStatus), suspendedReason: row.suspendedReason,
+    },
     role: row.role,
   };
 }

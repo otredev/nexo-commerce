@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { CheckCircle2, MessageCircle } from "lucide-react";
+import { CheckCircle2, CreditCard, MessageCircle } from "lucide-react";
 import { whatsappLink, customerStatusLabel, FULFILLMENT_LABELS, formatQty, ONLINE_PAYMENT_LABELS, type PublicOrder } from "@nexo/shared";
 import { Alert, Button, Modal, useToast } from "@nexo/ui";
 import { api, imageUrl, RequestError } from "../lib/api";
@@ -12,7 +12,10 @@ const label = (n: number) => `#${String(n).padStart(6, "0")}`;
 export function OrderPage() {
   const { token } = useParams();
   const [params] = useSearchParams();
-  const { slug, store, money } = useStore();
+  const back = params.get("pago");
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const { slug, link, store, money } = useStore();
   const toast = useToast();
   const [order, setOrder] = useState<PublicOrder | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
@@ -24,10 +27,14 @@ export function OrderPage() {
   useEffect(() => {
     let alive = true;
     const load = () => api<PublicOrder>("GET", `/${slug}/orders/${token}`).then((o) => alive && setOrder(o), (e: RequestError) => alive && setError(e));
-    void load();
+    // Back from Stripe: confirm the payment with Stripe right away (the webhook may still be on its way).
+    if (back === "ok") {
+      api<PublicOrder>("POST", `/${slug}/orders/${token}/payment-status`).then((o) => alive && setOrder(o), () => void load());
+    } else void load();
     // Keep it fresh while the customer waits.
-    const id = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 30_000);
+    const id = setInterval(() => { if (document.visibilityState === "visible") void load(); }, back === "ok" ? 4_000 : 30_000);
     return () => { alive = false; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token]);
 
   if (error) {
@@ -35,7 +42,7 @@ export function OrderPage() {
       <div className="st-wrap st-empty">
         <h1 className="st-empty__title">Pedido no encontrado</h1>
         <p className="st-empty__text">{error.message}</p>
-        <Link className="nx-btn nx-btn--secondary" to={`/${slug}`}>Ir a la tienda</Link>
+        <Link className="nx-btn nx-btn--secondary" to={link()}>Ir a la tienda</Link>
       </div>
     );
   }
@@ -50,6 +57,18 @@ export function OrderPage() {
   ];
   const current = { pending: 0, confirmed: 1, ready: 2, completed: 4, cancelled: -1 }[order.status];
   const whatsapp = store.whatsapp ? whatsappLink(store.whatsapp, `Hola, sobre mi pedido ${label(order.number)}`) : null;
+
+  const pay = async () => {
+    setPaying(true);
+    setPayError(null);
+    try {
+      const { url } = await api<{ url: string }>("POST", `/${slug}/orders/${token}/pay`);
+      window.location.assign(url);
+    } catch (e) {
+      setPayError((e as RequestError).message);
+      setPaying(false);
+    }
+  };
 
   const cancel = async () => {
     setPending(true);
@@ -68,6 +87,17 @@ export function OrderPage() {
   return (
     <div className="st-wrap">
       <div className="st-track">
+        {back && (
+          <div style={{ marginBottom: 24 }}>
+            {back === "ok" && order.paymentStatus === "paid" && !cancelled ? (
+              <Alert tone="success" title={`¡Gracias, ${order.customerName.split(" ")[0]}! Tu pago se recibió.`}>Te enviamos la confirmación por correo. Guarda esta página para seguir tu pedido.</Alert>
+            ) : back === "ok" && order.awaitingCardPayment ? (
+              <Alert tone="info" title="Estamos confirmando tu pago">Tarda unos segundos. Esta página se actualiza sola.</Alert>
+            ) : back === "cancelado" && order.awaitingCardPayment ? (
+              <Alert tone="warning" title="No se completó el pago">Tu pedido está apartado por 30 minutos. Puedes intentar de nuevo con el botón de abajo.</Alert>
+            ) : null}
+          </div>
+        )}
         {fresh && !cancelled && (
           <div style={{ marginBottom: 24 }}>
             <Alert tone="success" title={`¡Gracias, ${order.customerName.split(" ")[0]}! Recibimos tu pedido.`}>
@@ -92,6 +122,14 @@ export function OrderPage() {
           </ol>
         )}
 
+        {order.awaitingCardPayment && back !== "ok" && (
+          <div className="st-panel" style={{ borderColor: "var(--accent-soft)", background: "color-mix(in srgb, var(--accent-soft) 35%, var(--surface))" }}>
+            <h2>Falta el pago</h2>
+            <p style={{ margin: "0 0 12px" }}>Paga {money(order.totalCents)} con tarjeta para que la tienda prepare tu pedido. Si no se paga en 30 minutos, se cancela.</p>
+            {payError && <div style={{ marginBottom: 12 }}><Alert tone="danger">{payError}</Alert></div>}
+            <Button variant="primary" loading={paying} onClick={() => void pay()}><CreditCard className="nx-icon" aria-hidden="true" />Pagar con tarjeta</Button>
+          </div>
+        )}
         {!cancelled && order.paymentMethod === "transfer" && order.paymentStatus === "pending" && order.transferInstructions && (
           <div className="st-panel" style={{ borderColor: "var(--accent-soft)", background: "color-mix(in srgb, var(--accent-soft) 35%, var(--surface))" }}>
             <h2>Para pagar por transferencia</h2>
@@ -138,7 +176,7 @@ export function OrderPage() {
         </div>
 
         <div className="nx-row" style={{ marginTop: 24, gap: 12, flexWrap: "wrap" }}>
-          <Link className="nx-btn nx-btn--secondary" to={`/${slug}`}>Seguir comprando</Link>
+          <Link className="nx-btn nx-btn--secondary" to={link()}>Seguir comprando</Link>
           {whatsapp && <a className="nx-btn nx-btn--ghost" href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="nx-icon" aria-hidden="true" />Escribir a la tienda</a>}
           {order.canCancel && <Button variant="danger-ghost" onClick={() => setCancelling(true)}>Cancelar pedido</Button>}
         </div>

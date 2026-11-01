@@ -31,6 +31,14 @@ import { expireOrders } from "./lib/orders";
 import { customerRoutes } from "./routes/customers";
 import { promotionRoutes } from "./routes/promotions";
 import { payableRoutes } from "./routes/payables";
+import { billingRoutes } from "./routes/billing";
+import { platformRoutes } from "./routes/platform";
+import { processStripeEvent, type StripeEvent } from "./lib/webhooks";
+import { verifyStripeSignature } from "./lib/stripe";
+import { refreshPendingDomains } from "./lib/domains";
+import { AppError } from "./lib/errors";
+import { control, controlDb } from "@nexo/db";
+import { and, eq } from "drizzle-orm";
 
 /** Routes that need a session. Each module receives c.var.auth with the tenant's database. */
 const protectedApi = new Hono<AppEnv>()
@@ -58,7 +66,9 @@ const protectedApi = new Hono<AppEnv>()
   .route("/store-settings", storeAdminRoutes)
   .route("/customers", customerRoutes)
   .route("/promotions", promotionRoutes)
-  .route("/payables", payableRoutes);
+  .route("/payables", payableRoutes)
+  .route("/billing", billingRoutes)
+  .route("/platform", platformRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)
@@ -66,6 +76,27 @@ const app = new Hono<AppEnv>()
   .route("/api/auth", authRoutes)
   // Public online store (no session). Must be mounted before the protected API.
   .route("/api/store", storeRoutes)
+  // Stripe webhooks (platform and Connect endpoints). The signature is the authentication.
+  .post("/api/webhooks/stripe", async (c) => {
+    const body = await c.req.text();
+    const ok = await verifyStripeSignature(body, c.req.header("stripe-signature"), [c.env.STRIPE_WEBHOOK_SECRET, c.env.STRIPE_CONNECT_WEBHOOK_SECRET]);
+    if (!ok) throw new AppError(400, "bad_signature", "Firma no válida");
+    const event = JSON.parse(body) as StripeEvent;
+    const applied = await processStripeEvent(c.env, event);
+    return c.json({ received: true, duplicate: !applied });
+  })
+  // The store on a customer's own domain asks which store the hostname belongs to (active domains only).
+  .get("/api/store-host/:hostname", async (c) => {
+    const hostname = c.req.param("hostname").toLowerCase();
+    const row = await controlDb(c.env.DB_CONTROL)
+      .select({ slug: control.tenants.slug })
+      .from(control.tenantDomains)
+      .innerJoin(control.tenants, eq(control.tenants.id, control.tenantDomains.tenantId))
+      .where(and(eq(control.tenantDomains.hostname, hostname), eq(control.tenantDomains.status, "active"), eq(control.tenants.status, "active")))
+      .get();
+    if (!row) throw new AppError(404, "not_found", "Dominio no registrado");
+    return c.json(row, 200, { "Cache-Control": "public, max-age=300" });
+  })
   // Development only: run the daily backup on demand.
   .post("/api/dev/backup", async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
@@ -75,7 +106,15 @@ const app = new Hono<AppEnv>()
   // Development only: run the hourly order-expiry job on demand.
   .post("/api/dev/expire-orders", async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
-    return c.json({ expired: await expireOrders(c.env) });
+    return c.json({ expired: await expireOrders(c.env), domains: await refreshPendingDomains(c.env) });
+  })
+  // Development only: set the plan of the signed-in business (the smoke tests need more than the free plan).
+  .post("/api/dev/plan", requireAuth, async (c) => {
+    if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
+    const { plan } = (await c.req.json()) as { plan: string };
+    if (!["free", "pro", "business"].includes(plan)) throw new AppError(422, "validation_error", "Plan no válido");
+    await controlDb(c.env.DB_CONTROL).update(control.tenants).set({ plan, planStatus: "active" }).where(eq(control.tenants.id, c.var.auth.tenant.id));
+    return c.json({ plan });
   })
   .route("/api", protectedApi)
   .route("/files", fileRoutes)
@@ -91,6 +130,7 @@ export default {
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     if (event.cron === "15 * * * *") {
       ctx.waitUntil(expireOrders(env).then((n) => { if (n) console.log(`[orders] released ${n} expired orders`); }));
+      ctx.waitUntil(refreshPendingDomains(env).catch((e) => console.error("[domains] cron", e)));
       return;
     }
     ctx.waitUntil(

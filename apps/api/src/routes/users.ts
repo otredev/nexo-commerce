@@ -5,6 +5,7 @@ import { createUserSchema, updateMemberSchema, type Member } from "@nexo/shared"
 import type { AppEnv } from "../env";
 import { auditEntry, diff } from "../lib/audit";
 import { hashPassword, newId } from "../lib/crypto";
+import { assertWithinLimit } from "../lib/plan";
 import { AppError, notFound } from "../lib/errors";
 import { destroyUserSessions } from "../lib/session";
 import { json } from "../lib/validate";
@@ -36,6 +37,7 @@ export const userRoutes = new Hono<AppEnv>()
     const cdb = controlDb(c.env.DB_CONTROL);
     const exists = await cdb.select({ id: control.users.id }).from(control.users).where(eq(control.users.email, input.email)).get();
     if (exists) throw new AppError(409, "email_taken", "Este correo ya tiene una cuenta", { email: "Este correo ya tiene una cuenta" });
+    await assertWithinLimit(c, "users");
 
     const userId = newId();
     await cdb.batch([
@@ -60,6 +62,7 @@ export const userRoutes = new Hono<AppEnv>()
     if (userId === me.id) throw new AppError(409, "self_change", "No puedes cambiar tu propio rol ni desactivarte");
 
     const next = { role: input.role ?? current.role, active: input.active ?? current.active };
+    if (!current.active && next.active) await assertWithinLimit(c, "users");
     await cdb.update(control.memberships).set(next).where(where);
     if (current.active && !next.active) await destroyUserSessions(c.env, userId, t.id);
     const changes = diff({ role: current.role, active: current.active }, next);

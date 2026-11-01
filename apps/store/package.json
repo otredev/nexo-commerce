@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p . && tsc -p functions && vite build",
-    "typecheck": "tsc -p . && tsc -p functions",
+    "build": "tsc -p . && tsc -p functions && tsc -p router && vite build",
+    "typecheck": "tsc -p . && tsc -p functions && tsc -p router",
     "preview": "wrangler pages dev dist --port 8788",
     "deploy:staging": "wrangler pages deploy dist --project-name nexo-store --branch staging",
-    "deploy:production": "wrangler pages deploy dist --project-name nexo-store --branch main"
+    "deploy:production": "wrangler pages deploy dist --project-name nexo-store --branch main",
+    "deploy:router:staging": "wrangler deploy -c router/wrangler.jsonc --env staging",
+    "deploy:router:production": "wrangler deploy -c router/wrangler.jsonc --env production"
   },
   "dependencies": {
     "@nexo/shared": "*",

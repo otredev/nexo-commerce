@@ -10,6 +10,7 @@ Estado actual:
 - **Fase 3 — Abastecimiento:** proveedores, órdenes de compra con recepciones parciales y costo real de factura, sugerencias de reorden, traspasos entre ubicaciones y conteos físicos con captura ciega y escáner.
 - **Fase 4 — Tienda en línea:** catálogo público en Cloudflare Pages con existencias reales, variantes, carrito, pedidos con recogida o envío, pago al recibir o por transferencia, seguimiento para el cliente con correos, y atención de pedidos desde el panel.
 - **Fase 5 — Crecimiento:** clientes con historial en caja y en línea, promociones automáticas y cupones (iguales en caja y tienda), cuentas por pagar a proveedores y reportes por periodo e inventario.
+- **Fase 6 — SaaS:** planes con límites y suscripción en Stripe, cobro con tarjeta en la tienda con Stripe Connect, dominios propios por negocio (Cloudflare for SaaS), panel de plataforma con suspensión y mover un negocio a otra D1.
 
 ---
 
@@ -32,7 +33,8 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4 y 63 de la Fase 5) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5 y 94 de la Fase 6) |
+| `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
 | `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega la API y la tienda |
@@ -57,6 +59,8 @@ scripts/
   smoke-purchasing.mjs Prueba de punta a punta de la Fase 3 (compras, traspasos, conteos, concurrencia).
   smoke-store.mjs     Prueba de punta a punta de la Fase 4 (catálogo público, pedidos, carrera por las últimas piezas).
   smoke-growth.mjs    Prueba de punta a punta de la Fase 5 (clientes, promociones, cupones, cuentas por pagar, reportes).
+  smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
+apps/store/router/    Worker que recibe los dominios propios de los negocios (Cloudflare for SaaS) y los pasa a la tienda.
 ```
 
 Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie de sesión no necesita CORS.
@@ -65,14 +69,14 @@ Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie d
 
 ## Arquitectura
 
-### Dos bases D1
+### Bases D1
 
 | Binding | Contenido |
 |---|---|
-| `DB_CONTROL` | Plataforma: `tenants`, `users`, `memberships`, `sessions`, `password_resets`, `login_attempts`, `tenant_domains` |
-| `DB_TENANT_DEFAULT` | Datos de cada negocio: `business_settings`, `tax_rates`, `locations`, `audit_log`, `categories`, `brands`, `products`, `variants`, `stock_levels`, `stock_movements`. **Todas las tablas llevan `tenant_id`.** |
+| `DB_CONTROL` | Plataforma: `tenants` (plan, Stripe, estado), `users`, `memberships`, `sessions`, `password_resets`, `login_attempts`, `tenant_domains`, `stripe_events` |
+| `DB_TENANT_DEFAULT` (y `DB_TENANT_*`) | Datos de cada negocio: configuración, catálogo, inventario, ventas, compras, pedidos, clientes… **Todas las tablas llevan `tenant_id`.** |
 
-Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` guarda en `db_binding` qué base usa. Cuando un negocio pase a su propia D1 (Fase 6), solo cambia ese valor: ninguna ruta se toca.
+Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es la única forma de llegar a ella. Mover un negocio a otra D1 solo cambia ese valor (ver *Plataforma*).
 
 ### Reglas que no se rompen
 
@@ -118,7 +122,7 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 - **Recibo** en `/recibo/:id`, ajustado a impresora térmica de 58 u 80 mm, o enviado por correo.
 - Atajos del POS: escanear o escribir y `Enter` agrega; `F2` cobrar; `F4` descuento general; `Esc` vuelve a la búsqueda; `+`/`−` cambian la cantidad de la línea seleccionada; en el cobro, `Enter` confirma y abre la siguiente venta.
 
-> Facturación electrónica: no incluida. El recibo indica que no es comprobante fiscal. Se integra por país en la Fase 6 (o antes, si el mercado lo exige).
+> Facturación electrónica: no incluida. El recibo indica que no es comprobante fiscal. Se integrará por país cuando el mercado lo exija (CFDI quedó fuera de la Fase 6).
 
 > Escala: la lista de productos calcula existencias y valor al vuelo. Es suficiente para miles de productos; cuando un negocio crezca mucho, la Fase 5 agrega tablas de resumen.
 
@@ -135,17 +139,15 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 ### Tienda en línea
 
 - **Dónde vive**: `apps/store` es una app React publicada en **Cloudflare Pages**. Sus Pages Functions reenvían `/api/store/*` y `/files/*` al Worker de la API por **service binding** (sin salir a internet y en el mismo origen). La API del panel no es accesible desde el dominio de la tienda.
-- **Dirección**: `https://<dominio-de-la-tienda>/<slug-del-negocio>`. El slug se resuelve contra la D1 de control.
+- **Dirección**: `https://<dominio-de-la-tienda>/<slug-del-negocio>`, o el dominio propio del negocio (ver *Dominios propios*). El slug se resuelve contra la D1 de control.
 - **Compartir y buscadores**: una Function de middleware pone título, descripción e imagen reales en el HTML de la portada y de cada producto (WhatsApp, redes, Google).
 - **Qué se publica**: productos activos marcados “Mostrar en la tienda en línea” (uno por uno o todos desde Ajustes de la tienda). Los precios se muestran con impuestos, sea cual sea la configuración del negocio.
 - **Existencias reales**: la tienda vende lo que hay en la ubicación que surte los pedidos. **Un pedido aparta existencias al confirmarse** (Kardex tipo `order`) con el mismo `CHECK` que las ventas: la caja y la web nunca venden la misma última pieza. Cancelar las regresa (`order_cancel`).
 - **Pedido = un `d1.batch()`**: folio, pedido, líneas con instantánea de precio, impuesto y costo, y salidas de inventario. Idempotente con `clientId`. El servidor recalcula el total; si los precios cambiaron responde `price_changed` y la tienda actualiza el carrito.
 - **Ciclo**: nuevo → aceptado → listo para recoger / en camino → entregado (o cancelado). El cliente recibe un correo en cada paso y sigue su pedido con un enlace secreto; puede cancelarlo mientras sea nuevo y no esté pagado.
-- **Cobro**: pago al recibir/recoger o transferencia (con tus datos bancarios). El pago se registra en el panel; **el efectivo entra a la caja abierta** como ingreso, así el corte cuadra. Al entregarse, el pedido suma a las ventas del día (`daily_sales.online_*`) y a lo más vendido.
+- **Cobro**: pago al recibir/recoger, transferencia (con tus datos bancarios) o tarjeta con Stripe (ver *SaaS*). El pago se registra en el panel; **el efectivo entra a la caja abierta** como ingreso, así el corte cuadra. Al entregarse, el pedido suma a las ventas del día (`daily_sales.online_*`) y a lo más vendido.
 - **Pedidos olvidados**: cada hora, los pedidos nuevos y sin pagar con más de N horas (48 por defecto, configurable) se cancelan solos y liberan sus existencias.
 - **Protección**: máximo 10 pedidos por hora por IP y por tienda; los pedidos se validan contra productos publicados y activos.
-
-> Pago con tarjeta en línea (pasarela) y dominios propios por negocio (`tenant_domains`) quedan para la Fase 6.
 
 ### Clientes, promociones y cuentas por pagar
 
@@ -156,6 +158,20 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 - **El límite de descuento del cajero** solo cuenta los descuentos a mano, no las promociones ni los cupones (que autorizó el negocio).
 - **Cuentas por pagar**: cada recepción de compra es una factura (neto + IVA) con vencimiento según los días de crédito del proveedor. Pagos parciales o totales, opcionalmente en efectivo desde la caja (queda como retiro en el corte). El saldo nunca baja de cero, ni con dos pagos al mismo tiempo.
 - **Reportes**: ventas por periodo con comparación contra el periodo anterior, utilidad sin impuestos, por día, categoría, producto (exportable), forma de pago, cajero, hora y cupón; inventario valorizado por categoría y productos sin movimiento. La utilidad del inicio también se calcula ya sin impuestos.
+
+### SaaS: planes, Stripe, dominios y plataforma
+
+**Planes** (`packages/shared/src/plans.ts`): Gratis (1 ubicación, 2 usuarios, 100 productos), Pro (3 ubicaciones, 10 usuarios, 5 000 productos, tarjeta y dominio propio) y Negocio (20 ubicaciones, usuarios y productos ilimitados). Los límites se revisan al crear o reactivar usuarios y ubicaciones, al crear productos y al importar (las filas que no caben se reportan una por una). Responden `402 plan_limit` con un mensaje listo para mostrar. Bajar de plan no borra nada: solo impide agregar más. Una suscripción cancelada vuelve a Gratis; con pago atrasado (`past_due`) se conserva el plan mientras Stripe reintenta.
+
+**Suscripción (Stripe Billing)**: el propietario elige plan en *Configuración › Plan* → Stripe Checkout. Con suscripción activa, cambiar de plan, la tarjeta, las facturas y la cancelación van por el portal de Stripe. Stripe es la fuente de verdad: el webhook (`customer.subscription.*`, `checkout.session.completed`) actualiza `tenants.plan` y `plan_status`.
+
+**Tarjeta en la tienda (Stripe Connect)**: cada negocio conecta su propia cuenta Standard de Stripe desde *Ajustes de la tienda*; el dinero le llega directo y la plataforma puede cobrar una comisión (`STRIPE_APPLICATION_FEE_BPS`). Al confirmar, el pedido aparta existencias igual que siempre y el cliente pasa a Stripe Checkout (en la cuenta del negocio, por el total ya calculado por `priceCart`). Se marca pagado por el webhook o, antes, al volver a la página del pedido (se le pregunta a Stripe). Si la sesión vence (30 min) sin pago, el pedido se cancela y las existencias regresan; si el cliente cancela, la página de Stripe se cierra. Si Stripe falla al crear la sesión, el pedido se cancela en el acto.
+
+**Webhooks**: `POST /api/webhooks/stripe`, autenticado por la firma (`Stripe-Signature`, 5 min de tolerancia; acepta el secreto de la cuenta y el de Connect). Cada evento se aplica una vez (`stripe_events`) y todos los manejadores son idempotentes. Los eventos de pedidos solo se aceptan si vienen de la cuenta de Stripe de ese mismo negocio.
+
+**Dominios propios (Cloudflare for SaaS)**: el negocio escribe `tienda.sunegocio.com` en *Ajustes de la tienda*; la API crea el *custom hostname* en la zona de la plataforma y muestra los registros DNS (CNAME a `STORE_CNAME_TARGET` y los TXT de verificación). Un cron cada hora (y el botón «Comprobar ahora») revisa los pendientes. El Worker `apps/store/router` recibe esos dominios (ruta `*/*` de la zona) y los pasa a Pages con `x-nexo-host`; el middleware de la tienda resuelve el negocio (`GET /api/store-host/:hostname`, solo dominios activos) y la tienda vive en la raíz del dominio (`/p/:id`, `/pagar`…). Stripe regresa al mismo dominio desde el que se compró.
+
+**Plataforma** (`/plataforma`, solo correos en `PLATFORM_ADMINS`; para el resto la ruta no existe): lista de negocios con propietario, plan, estado y base de datos; uso y ventas de 30 días; plan de cortesía a mano; **suspender** (el panel muestra una pantalla con el motivo y solo deja abrir el portal de pago; la tienda se oculta; no se borra nada) y **mover a otra D1**: estado `migrating` (el panel responde 503 y muestra «Estamos moviendo tus datos»), copia tabla por tabla, verifica conteos, cambia `db_binding` y borra lo viejo; si algo falla, deshace la copia y el negocio sigue donde estaba. Cualquier binding `DB_TENANT_*` del entorno aparece como destino. Para negocios muy grandes conviene `wrangler d1 export`.
 
 ### Seguridad
 
@@ -169,7 +185,7 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 
 ### Respaldos
 
-Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `backups/AAAA-MM-DD/` como NDJSON, conserva 30 días y limpia sesiones y tokens vencidos. D1 Time Travel cubre además 30 días de recuperación a cualquier punto. En desarrollo: `curl -X POST localhost:8787/api/dev/backup`.
+Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de todas las bases de negocios (`DB_TENANT_*`) a R2 en `backups/AAAA-MM-DD/` como NDJSON, conserva 30 días y limpia sesiones y tokens vencidos. D1 Time Travel cubre además 30 días de recuperación a cualquier punto. En desarrollo: `curl -X POST localhost:8787/api/dev/backup`.
 
 ### API
 
@@ -228,6 +244,13 @@ Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `back
 | `GET /api/promotions`, `POST/PUT/DELETE /api/promotions[/:id]`, `POST/PUT /api/promotions/coupons[/:id]` | `promotions:read` / `promotions:write` |
 | `GET /api/promotions/live`, `GET /api/promotions/coupons/check/:code` | `pos:sell` |
 | `POST /api/store/:slug/coupons/check` | público (tienda) |
+| `POST /api/store/:slug/orders/:token/pay` · `payment-status` | público (tienda) |
+| `GET /api/store-host/:hostname` | público (middleware de la tienda) |
+| `POST /api/webhooks/stripe` | firma de Stripe |
+| `GET /api/billing`, `GET /api/billing/connect` | `settings:read` |
+| `POST /api/billing/checkout` · `portal` · `connect` | `billing:write` (propietario) |
+| `GET/PUT/DELETE /api/store-settings/domain` | `settings:read` / `store:write` |
+| `GET /api/platform/tenants`, `GET/PATCH /api/platform/tenants/:id`, `POST …/:id/move` | `PLATFORM_ADMINS` |
 | `GET /api/payables?status=&supplierId=`, `POST /api/payables/:receiptId/payments` | `payables:read` / `payables:write` |
 | `GET /api/reports/sales?from=&to=`, `GET /api/reports/inventory?days=` | `reports:read` |
 | `GET /files/<key>` | público |
@@ -256,6 +279,23 @@ npx wrangler r2 bucket create nexo-files-staging
 4. Ajusta `STORE_URL` con el dominio de la tienda (se usa en los enlaces de los correos).
 5. Crea el proyecto de Pages de la tienda (una sola vez): `cd apps/store && npx wrangler pages project create nexo-store --production-branch main`. El service binding hacia la API ya está en `apps/store/wrangler.toml` (rama `staging` → `nexo-api-staging`, `main` → `nexo-api-production`).
 6. Despliega desde la raíz: `npm run deploy:staging`. Esto compila, aplica las migraciones remotas, publica el Worker y sube la tienda a Pages.
+7. Plataforma: `npx wrangler secret put PLATFORM_ADMINS --env staging` con tu correo.
+
+**Stripe** (opcional; sin estas claves el panel dice que el cobro en línea aún no está disponible):
+
+1. Crea dos productos con precio mensual (Pro y Negocio) y guarda sus `price_…` en `STRIPE_PRICE_PRO` y `STRIPE_PRICE_BUSINESS`.
+2. Activa Connect (cuentas Standard) y el portal del cliente en el dashboard de Stripe.
+3. Crea dos webhooks hacia `https://<app>/api/webhooks/stripe`: uno de la cuenta (`customer.subscription.created/updated/deleted`, `checkout.session.completed`) y otro de **Connect** (`checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired`, `account.updated`, `account.application.deauthorized`).
+4. Secretos: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` y, si cobras comisión, `STRIPE_APPLICATION_FEE_BPS`. En local: copia `apps/api/.dev.vars.example` a `.dev.vars` y usa `stripe listen --forward-to localhost:8787/api/webhooks/stripe`.
+
+**Dominios propios** (opcional):
+
+1. En la zona de la plataforma activa **Cloudflare for SaaS**, crea el registro de respaldo (p. ej. `tiendas.example.com AAAA 100::`, con proxy) y márcalo como *fallback origin*. Ese nombre va en `STORE_CNAME_TARGET`.
+2. Despliega el router: `npm run deploy:router:staging -w @nexo/store` (ajusta `STORE_ORIGIN` en `apps/store/router/wrangler.jsonc`) y en la zona agrega la ruta `*/*` → `nexo-store-router-<entorno>`, más rutas con Worker *None* para tus propios dominios (app, tienda).
+3. En Pages define `STORE_HOSTS` con el dominio compartido de la tienda.
+4. Secretos de la API: `CF_API_TOKEN` (permiso *SSL and Certificates: Edit* en la zona) y `CF_ZONE_ID`.
+
+**Otra D1 para negocios grandes**: `wrangler d1 create nexo-tenant-2-production`, agrégala en `wrangler.jsonc` como `DB_TENANT_2` (con `migrations_dir` de tenant), aplica las migraciones y despliega. Desde *Plataforma* mueve el negocio.
 
 Con GitHub: añade los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`. Cada push a `main` despliega a staging; producción se lanza a mano desde **Actions → Deploy**. El workflow `CI` revisa tipos, ejecuta pruebas, compila y corre la prueba de punta a punta en cada PR.
 
@@ -271,6 +311,7 @@ Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Int
 
 ---
 
-## Siguiente: Fase 6 — SaaS
+## Pendiente
 
-Planes y cobro de la suscripción, pasarela de pago con tarjeta para la tienda, dominios propios por negocio, facturación electrónica (CFDI) y una D1 por negocio para los que crezcan.
+- **Facturación electrónica (CFDI)**: se dejó fuera de la Fase 6 por decisión de alcance. El recibo sigue indicando que no es comprobante fiscal.
+- Antes de producción: probar los flujos de Stripe con claves de prueba reales (`stripe listen`) y un dominio de prueba en Cloudflare for SaaS; las pruebas automáticas usan servidores falsos.

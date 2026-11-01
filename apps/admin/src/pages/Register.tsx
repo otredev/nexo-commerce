@@ -9,7 +9,7 @@ import { CURRENCIES } from "../lib/options";
 import { AuthLayout } from "./AuthLayout";
 
 export function RegisterPage() {
-  const { setMe } = useAuth();
+  const { setMe, refresh } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ businessName: "", ownerName: "", email: "", password: "", currency: "MXN" });
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -17,6 +17,8 @@ export function RegisterPage() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const me = await post<MeResponse>("/auth/register", { ...form, timezone });
     setMe(me);
+    // The full profile (plan, account status, platform access) comes from /me.
+    await refresh();
     navigate("/", { replace: true });
   });
 

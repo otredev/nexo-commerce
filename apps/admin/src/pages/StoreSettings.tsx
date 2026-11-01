@@ -6,6 +6,7 @@ import { get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { centsToInput, useBusiness } from "../lib/business";
 import { useLoad, useSubmit } from "../lib/hooks";
+import { CardPayments, DomainCard } from "./StoreExtras";
 
 interface Form {
   enabled: boolean;
@@ -21,6 +22,7 @@ interface Form {
   payOnDelivery: boolean;
   transferEnabled: boolean;
   transferInstructions: string;
+  cardEnabled: boolean;
   whatsapp: string;
   notifyEmail: string;
   holdHours: string;
@@ -40,6 +42,7 @@ const toForm = (s: StoreSettings): Form => ({
   payOnDelivery: s.payOnDelivery,
   transferEnabled: s.transferEnabled,
   transferInstructions: s.transferInstructions ?? "",
+  cardEnabled: s.cardEnabled,
   whatsapp: s.whatsapp ?? "",
   notifyEmail: s.notifyEmail ?? "",
   holdHours: String(s.holdHours),
@@ -80,6 +83,7 @@ export function StoreSettingsPage() {
       payOnDelivery: form.payOnDelivery,
       transferEnabled: form.transferEnabled,
       transferInstructions: form.transferInstructions || null,
+      cardEnabled: form.cardEnabled,
       whatsapp: form.whatsapp || null,
       notifyEmail: form.notifyEmail || null,
       holdHours: Number(form.holdHours) || 0,
@@ -150,7 +154,7 @@ export function StoreSettingsPage() {
               {form.transferEnabled && (
                 <TextAreaField label="Datos para transferir" rows={3} value={form.transferInstructions} onChange={(e) => set("transferInstructions", e.target.value)} error={f.transferInstructions} disabled={!writable} placeholder={"Banco: …\nCLABE: …\nA nombre de: …"} />
               )}
-              <p className="nx-help" style={{ margin: 0 }}>Pago con tarjeta en línea: llegará con una pasarela de pagos en una fase posterior.</p>
+              <CardPayments checked={form.cardEnabled} onChange={(v) => set("cardEnabled", v)} writable={writable} error={f.cardEnabled} />
             </div>
           </Card>
         </div>
@@ -171,6 +175,7 @@ export function StoreSettingsPage() {
               )}
             </div>
           </Card>
+          <DomainCard writable={writable} />
           <Card title="Contacto y avisos">
             <div className="nx-stack">
               <TextField label="WhatsApp" optional inputMode="tel" value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} error={f.whatsapp} disabled={!writable} help="A 10 dígitos o con código de país. Agrega un botón de WhatsApp a tu tienda." />

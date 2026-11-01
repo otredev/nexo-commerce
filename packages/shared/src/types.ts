@@ -6,8 +6,15 @@ import type { CouponRule, PromotionRule } from "./promotions";
 /** Shapes returned by the API. Shared by the dashboard so both sides stay in sync. */
 
 export interface MeResponse {
+  /** Operator of the platform (can open the platform panel). */
+  platformAdmin?: boolean;
   user: { id: string; name: string; email: string };
-  tenant: { id: string; slug: string; name: string };
+  tenant: {
+    id: string; slug: string; name: string;
+    status?: "provisioning" | "active" | "suspended" | "migrating";
+    plan?: import("./plans").PlanId;
+    suspendedReason?: string | null;
+  };
   role: Role;
 }
 
@@ -554,6 +561,7 @@ export interface StockCountDetail extends StockCountListItem {
 
 export interface StoreSettings {
   enabled: boolean;
+  cardEnabled: boolean;
   locationId: string | null;
   tagline: string | null;
   about: string | null;
@@ -601,6 +609,8 @@ export interface StoreInfo {
   minOrderCents: number;
   payOnDelivery: boolean;
   transferEnabled: boolean;
+  /** Card payments through Stripe are available right now. */
+  cardEnabled: boolean;
   categories: Array<{ id: string; name: string; count: number }>;
   /** Live online promotions, so the cart prices exactly like the server. */
   promotions: PromotionRule[];
@@ -690,6 +700,8 @@ export interface PublicOrder {
   cancelledAt: string | null;
   cancelReason: string | null;
   canCancel: boolean;
+  /** Card order still waiting for the customer to pay in Stripe Checkout. */
+  awaitingCardPayment: boolean;
   transferInstructions: string | null;
   pickupInstructions: string | null;
   pickupAddress: string | null;
@@ -839,4 +851,57 @@ export interface InventoryReport {
   /** Products with stock and no sales in `days` days. */
   stale: Array<{ productId: string; variantId: string; name: string; options: string[]; unit: UnitCode; stock: number; costCents: number; lastSaleAt: string | null }>;
   days: number;
+}
+
+/* ---------- Phase 6: SaaS ---------- */
+
+export interface BillingInfo {
+  plan: import("./plans").PlanId;
+  planStatus: "active" | "trialing" | "past_due" | "canceled";
+  periodEnd: string | null;
+  hasSubscription: boolean;
+  /** Stripe keys configured on the platform (otherwise upgrading is not possible yet). */
+  billingAvailable: boolean;
+  usage: { users: number; locations: number; products: number };
+}
+
+export interface StripeConnectStatus {
+  available: boolean;
+  accountId: string | null;
+  chargesEnabled: boolean;
+  /** The plan allows card payments. */
+  planAllows: boolean;
+}
+
+export interface StoreDomain {
+  hostname: string;
+  status: "pending" | "active" | "failed";
+  sslStatus: string | null;
+  verification: Array<{ type: string; name: string; value: string }>;
+  /** Where the customer must point the domain (CNAME). */
+  target: string;
+  lastError: string | null;
+  checkedAt: string | null;
+}
+
+export interface PlatformTenant {
+  id: string;
+  slug: string;
+  name: string;
+  status: "provisioning" | "active" | "suspended" | "migrating";
+  plan: import("./plans").PlanId;
+  planStatus: string;
+  dbBinding: string;
+  createdAt: string;
+  owner: { name: string; email: string } | null;
+  members: number;
+  domains: string[];
+  suspendedReason: string | null;
+}
+
+export interface PlatformTenantDetail extends PlatformTenant {
+  usage: { users: number; locations: number; products: number; sales30d: number; sales30dCents: number; orders30d: number };
+  stripeCustomerId: string | null;
+  stripeAccountId: string | null;
+  availableBindings: string[];
 }

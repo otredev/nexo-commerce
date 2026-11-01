@@ -17,6 +17,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const PERMISSIONS = {
   "settings:read": ["owner", "admin", "cashier"],
   "settings:write": ["owner", "admin"],
+  /** Plan, subscription and the Stripe account that receives store payments. Owner only. */
+  "billing:write": ["owner"],
   "users:read": ["owner", "admin"],
   "users:write": ["owner", "admin"],
   "locations:write": ["owner", "admin"],

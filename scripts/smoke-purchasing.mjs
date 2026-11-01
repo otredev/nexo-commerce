@@ -28,6 +28,7 @@ function check(name, cond, detail) {
 
 const owner = client();
 await owner("POST", "/api/auth/register", { businessName: `Compras ${stamp}`, ownerName: "Ana Dueña", email: `ana-${stamp}@example.com`, password: "contrasena-segura-1" });
+await owner("POST", "/api/dev/plan", { plan: "business" }); // the free plan allows 1 location, 2 users and 100 products
 const main = (await owner("GET", "/api/locations")).data[0].id;
 await owner("POST", "/api/taxes", { name: "IVA 16%", rateBps: 1600, isDefault: true, active: true });
 const bodega = (await owner("POST", "/api/locations", { name: "Bodega", type: "warehouse", address: null, isDefault: false, active: true })).data.id;

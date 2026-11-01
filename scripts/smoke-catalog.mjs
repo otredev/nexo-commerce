@@ -26,6 +26,7 @@ function check(name, cond, detail) {
 
 const owner = client();
 let r = await owner("POST", "/api/auth/register", { businessName: `Tienda ${stamp}`, ownerName: "Ana Dueña", email: `ana-${stamp}@example.com`, password: "contrasena-segura-1" });
+await owner("POST", "/api/dev/plan", { plan: "business" }); // the free plan allows 1 location, 2 users and 100 products
 if (r.status !== 201) { console.log("No se pudo registrar", r); process.exit(1); }
 const locations = (await owner("GET", "/api/locations")).data;
 const main = locations[0].id;

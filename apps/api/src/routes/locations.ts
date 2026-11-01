@@ -5,6 +5,7 @@ import { tenant } from "@nexo/db";
 import type { AppEnv } from "../env";
 import { auditEntry, diff } from "../lib/audit";
 import { newId } from "../lib/crypto";
+import { assertWithinLimit } from "../lib/plan";
 import { AppError, notFound } from "../lib/errors";
 import { json } from "../lib/validate";
 import { requirePermission } from "../middleware/auth";
@@ -24,6 +25,7 @@ export const locationRoutes = new Hono<AppEnv>()
     const input = c.req.valid("json");
     const { db, tenant: t } = c.var.auth;
     const id = newId();
+    if (input.active) await assertWithinLimit(c, "locations");
     const isDefault = input.isDefault && input.active;
     try {
       await db.batch([
@@ -47,6 +49,7 @@ export const locationRoutes = new Hono<AppEnv>()
     if (current.isDefault && (!input.isDefault || !input.active)) {
       throw new AppError(409, "default_required", "Marca otra ubicación como principal antes de cambiar esta.");
     }
+    if (!current.active && input.active) await assertWithinLimit(c, "locations");
     const changes = diff(current, input);
     try {
       await db.batch([

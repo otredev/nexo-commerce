@@ -9,7 +9,7 @@ const newClientId = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random
 const SAVED = "nx-customer";
 
 export function CheckoutPage() {
-  const { slug, store, cart, money, totals, replace, clear, coupon, setCoupon, linePrice, reload } = useStore();
+  const { slug, link, store, cart, money, totals, replace, clear, coupon, setCoupon, linePrice, reload } = useStore();
   const [code, setCode] = useState(coupon?.code ?? "");
   const [codeError, setCodeError] = useState<string | null>(null);
   const [checkingCode, setCheckingCode] = useState(false);
@@ -33,7 +33,7 @@ export function CheckoutPage() {
   useEffect(() => {
     if (!store) return;
     if (!store.pickupEnabled) setFulfillment("delivery");
-    if (!store.payOnDelivery) setPayment("transfer");
+    if (!store.payOnDelivery) setPayment(store.transferEnabled ? "transfer" : "card");
   }, [store]);
 
   /** Refreshes prices and stock of the cart from the store before paying. */
@@ -72,7 +72,7 @@ export function CheckoutPage() {
       <div className="st-wrap st-empty">
         <h1 className="st-empty__title">Tu carrito está vacío</h1>
         {notice && <p className="st-empty__text">{notice}</p>}
-        <Link className="nx-btn nx-btn--primary" to={`/${slug}`}>Ver productos</Link>
+        <Link className="nx-btn nx-btn--primary" to={link()}>Ver productos</Link>
       </div>
     );
   }
@@ -96,7 +96,7 @@ export function CheckoutPage() {
     setFields({});
     setMessage(null);
     try {
-      const res = await api<{ token: string; number: number }>("POST", `/${slug}/orders`, {
+      const res = await api<{ token: string; number: number; paymentUrl: string | null }>("POST", `/${slug}/orders`, {
         clientId: clientId.current,
         items: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
         fulfillment,
@@ -112,7 +112,12 @@ export function CheckoutPage() {
       try { localStorage.setItem(SAVED, JSON.stringify({ name, email, phone, address })); } catch { /* ignore */ }
       clear();
       setCoupon(null);
-      navigate(`/${slug}/pedido/${res.token}?nuevo=1`, { replace: true });
+      // Card: straight to Stripe's secure page; it comes back to the order page.
+      if (res.paymentUrl) {
+        window.location.assign(res.paymentUrl);
+        return;
+      }
+      navigate(link(`/pedido/${res.token}?nuevo=1`), { replace: true });
     } catch (e) {
       const err = e as RequestError;
       if (err.code === "coupon_invalid" || err.code === "coupon_exhausted") {
@@ -204,6 +209,15 @@ export function CheckoutPage() {
                   </span>
                 </label>
               )}
+              {store.cardEnabled && (
+                <label className="st-choice">
+                  <input type="radio" name="payment" checked={payment === "card"} onChange={() => setPayment("card")} />
+                  <span className="st-choice__main">
+                    <span className="st-choice__title">Tarjeta de crédito o débito</span>
+                    <span className="st-choice__text" style={{ display: "block" }}>Pagas en la página segura de Stripe al confirmar.</span>
+                  </span>
+                </label>
+              )}
             </div>
           </section>
           <section className="st-section">
@@ -253,7 +267,7 @@ export function CheckoutPage() {
           </dl>
           {below && <p className="nx-help" style={{ color: "var(--warning)", marginTop: 12 }}>El pedido mínimo es de {money(store.minOrderCents)}.</p>}
           <div style={{ marginTop: 20 }}>
-            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError)}>Confirmar pedido</Button>
+            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError)}>{payment === "card" ? "Continuar al pago" : "Confirmar pedido"}</Button>
           </div>
           <p className="nx-help" style={{ marginTop: 12, textAlign: "center" }}>Apartamos tus productos al confirmar.</p>
         </aside>

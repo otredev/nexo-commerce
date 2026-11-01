@@ -22,6 +22,8 @@ export interface CartLine {
 
 interface StoreState {
   slug: string;
+  /** Path inside the store: "/mi-negocio/p/1" on the shared domain, "/p/1" on the store's own domain. */
+  link: (path?: string) => string;
   store: StoreInfo | null;
   error: RequestError | null;
   money: (cents: number) => string;
@@ -56,7 +58,7 @@ function readCart(slug: string): CartLine[] {
   }
 }
 
-export function StoreProvider({ slug, children }: { slug: string; children: ReactNode }) {
+export function StoreProvider({ slug, base, children }: { slug: string; base: string; children: ReactNode }) {
   const [store, setStore] = useState<StoreInfo | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
   const [cart, setCart] = useState<CartLine[]>(() => readCart(slug));
@@ -82,6 +84,7 @@ export function StoreProvider({ slug, children }: { slug: string; children: Reac
 
   const value = useMemo<StoreState>(() => ({
     slug,
+    link: (path = "") => `${base}${path}` || "/",
     store,
     error,
     money,
@@ -114,7 +117,7 @@ export function StoreProvider({ slug, children }: { slug: string; children: Reac
       return { itemsCents: t.totalCents, subtotalCents: gross, discountCents: t.discountCents, couponDiscountCents: p.couponDiscountCents, couponError: p.couponError, taxCents: t.taxCents, shippingCents, totalCents: t.totalCents + shippingCents };
     },
     linePrice: (line) => promoUnitPrice(line.displayPriceCents, promotionFor(store?.promotions ?? [], line.productId, line.categoryId ?? null)),
-  }), [slug, store, error, money, cart, cartOpen, coupon, reload]);
+  }), [slug, base, store, error, money, cart, cartOpen, coupon, reload]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

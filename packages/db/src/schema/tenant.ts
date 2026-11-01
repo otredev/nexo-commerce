@@ -693,6 +693,8 @@ export const storeSettings = sqliteTable("store_settings", {
   /** Pay on pickup / on delivery (cash or card at the door). */
   payOnDelivery: integer("pay_on_delivery", { mode: "boolean" }).notNull().default(true),
   transferEnabled: integer("transfer_enabled", { mode: "boolean" }).notNull().default(false),
+  /** Card payments online through the business's Stripe account (needs the plan and a connected account). */
+  cardEnabled: integer("card_enabled", { mode: "boolean" }).notNull().default(false),
   transferInstructions: text("transfer_instructions"),
   whatsapp: text("whatsapp"),
   /** Who gets the "new order" email. null → the business email. */
@@ -725,8 +727,11 @@ export const orders = sqliteTable(
     discountCents: integer("discount_cents").notNull().default(0),
     address: text("address"),
     notes: text("notes"),
-    /** What the customer chose: pay on pickup/delivery or bank transfer. */
-    paymentMethod: text("payment_method", { enum: ["on_delivery", "transfer"] }).notNull(),
+    /** What the customer chose: pay on pickup/delivery, bank transfer or card online (Stripe). */
+    paymentMethod: text("payment_method", { enum: ["on_delivery", "transfer", "card"] }).notNull(),
+    /** Stripe Checkout session of a card order. */
+    stripeSessionId: text("stripe_session_id"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
     paymentStatus: text("payment_status", { enum: ["pending", "paid"] }).notNull().default("pending"),
     /** How it was actually paid (cash, card, transfer…), set when the payment is recorded. */
     paidMethod: text("paid_method"),

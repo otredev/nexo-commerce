@@ -30,6 +30,8 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   if (!res.ok) {
     const err = (data as ApiError | null)?.error;
     if (res.status === 401 && path !== "/me" && !path.startsWith("/auth/")) window.dispatchEvent(new Event("nx:unauthorized"));
+    // The business was suspended or is being moved: reload the profile so the app shows the right screen.
+    if (err?.code === "tenant_suspended" || err?.code === "tenant_migrating") window.dispatchEvent(new Event("nx:tenant-status"));
     throw new RequestError(res.status, err?.code ?? "unknown", err?.message ?? "Ocurrió un error inesperado", err?.fields ?? {});
   }
   return data as T;

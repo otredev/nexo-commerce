@@ -44,6 +44,7 @@ async function loadDetail(c: Context<AppEnv>, id: string): Promise<OrderDetail> 
     fulfillment: o.fulfillment,
     paymentMethod: o.paymentMethod,
     paymentStatus: o.paymentStatus,
+    awaitingCardPayment: o.paymentMethod === "card" && o.status === "pending" && o.paymentStatus === "pending",
     customerName: o.customerName,
     customerEmail: o.customerEmail,
     customerPhone: o.customerPhone,

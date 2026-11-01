@@ -30,8 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
     const onUnauthorized = () => setMe(null);
+    const onTenantStatus = () => void refresh();
     window.addEventListener("nx:unauthorized", onUnauthorized);
-    return () => window.removeEventListener("nx:unauthorized", onUnauthorized);
+    window.addEventListener("nx:tenant-status", onTenantStatus);
+    return () => {
+      window.removeEventListener("nx:unauthorized", onUnauthorized);
+      window.removeEventListener("nx:tenant-status", onTenantStatus);
+    };
   }, [refresh]);
 
   const logout = useCallback(async () => {

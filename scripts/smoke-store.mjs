@@ -28,6 +28,7 @@ function check(name, cond, detail) {
 
 const owner = client();
 await owner("POST", "/api/auth/register", { businessName: `Tienda ${stamp}`, ownerName: "Olga Dueña", email: `olga-${stamp}@example.com`, password: "contrasena-segura-1" });
+await owner("POST", "/api/dev/plan", { plan: "business" }); // the free plan allows 1 location, 2 users and 100 products
 const slug = (await owner("GET", "/api/me")).data.tenant.slug;
 const settings = (await owner("GET", "/api/settings")).data;
 await owner("PUT", "/api/settings", { ...settings, updatedAt: undefined, pricesIncludeTax: true, email: `avisos-${stamp}@example.com` });

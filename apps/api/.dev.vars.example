@@ -1,4 +1,24 @@
 # Copia este archivo como .dev.vars para desarrollo local (no se sube al repositorio).
+# En staging/producción se definen con: npx wrangler secret put <NOMBRE> --env <staging|production>
+
 # Sin RESEND_API_KEY los correos se imprimen en la consola de wrangler.
 RESEND_API_KEY=
 EMAIL_FROM=Nexo <no-reply@tudominio.com>
+
+# Operadores de la plataforma (correos separados por coma): abre /plataforma en el panel.
+PLATFORM_ADMINS=tu@correo.com
+
+# Stripe (usa claves de prueba sk_test_…). Webhook local: stripe listen --forward-to localhost:8787/api/webhooks/stripe
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+# Endpoint de Connect (eventos de las cuentas de los negocios). Con `stripe listen` basta el secreto de arriba.
+STRIPE_CONNECT_WEBHOOK_SECRET=
+STRIPE_PRICE_PRO=
+STRIPE_PRICE_BUSINESS=
+# Comisión opcional de la plataforma en cada pago con tarjeta de la tienda, en puntos base (150 = 1.5 %).
+STRIPE_APPLICATION_FEE_BPS=
+
+# Cloudflare for SaaS (dominios propios de las tiendas): token con "SSL and Certificates: Edit" en la zona.
+CF_API_TOKEN=
+CF_ZONE_ID=
+STORE_CNAME_TARGET=tiendas.example.com

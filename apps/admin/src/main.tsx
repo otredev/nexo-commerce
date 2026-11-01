@@ -41,12 +41,15 @@ const TransferFormPage = lazy(() => import("./pages/transfers/TransferForm").the
 const TransferDetailPage = lazy(() => import("./pages/transfers/TransferDetail").then((m) => ({ default: m.TransferDetailPage })));
 const CountDetailPage = lazy(() => import("./pages/counts/CountDetail").then((m) => ({ default: m.CountDetailPage })));
 import type { ReactNode } from "react";
+import { BlockedScreen } from "./pages/Blocked";
+const PlatformPage = lazy(() => import("./pages/Platform").then((m) => ({ default: m.PlatformPage })));
 
 function Protected({ children }: { children: ReactNode }) {
   const { me, ready } = useAuth();
   const location = useLocation();
   if (!ready) return <div className="nx-page-loading"><span className="nx-spinner" aria-label="Cargando" /></div>;
   if (!me) return <Navigate to="/ingresar" replace state={{ from: location.pathname }} />;
+  if (me.tenant.status === "suspended" || me.tenant.status === "migrating") return <BlockedScreen />;
   return <>{children}</>;
 }
 
@@ -104,6 +107,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />
+              <Route path="plataforma" element={<PlatformPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

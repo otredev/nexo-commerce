@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { control, controlDb, tenant } from "@nexo/db";
 import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from "@nexo/shared";
@@ -98,7 +98,7 @@ export const authRoutes = new Hono<AppEnv>()
       .select({ tenantId: control.memberships.tenantId, role: control.memberships.role, tenantName: control.tenants.name, slug: control.tenants.slug })
       .from(control.memberships)
       .innerJoin(control.tenants, eq(control.tenants.id, control.memberships.tenantId))
-      .where(and(eq(control.memberships.userId, user.id), eq(control.memberships.active, true), eq(control.tenants.status, "active")))
+      .where(and(eq(control.memberships.userId, user.id), eq(control.memberships.active, true), inArray(control.tenants.status, ["active", "suspended", "migrating"])))
       .orderBy(desc(control.memberships.createdAt))
       .get();
     if (!membership) throw new AppError(403, "no_active_business", "Tu acceso a este negocio está desactivado. Habla con el administrador.");

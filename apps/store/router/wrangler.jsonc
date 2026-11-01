@@ -1,0 +1,15 @@
+{
+  // Worker in front of the businesses' own domains (Cloudflare for SaaS). Deploy once per environment:
+  //   npx wrangler deploy -c apps/store/router/wrangler.jsonc --env production
+  // Then, in the zone of STORE_CNAME_TARGET: Workers Routes → "*/*" → nexo-store-router-production,
+  // and a route "app.example.com/*" (and the shared store host) with Worker "None" so they skip it.
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "nexo-store-router",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": { "STORE_ORIGIN": "http://localhost:8788" },
+  "env": {
+    "staging": { "name": "nexo-store-router-staging", "vars": { "STORE_ORIGIN": "https://staging.nexo-store.pages.dev" } },
+    "production": { "name": "nexo-store-router-production", "vars": { "STORE_ORIGIN": "https://nexo-store.pages.dev" } }
+  }
+}

@@ -11,14 +11,28 @@ import { ProductPage } from "./pages/Product";
 import { CheckoutPage } from "./pages/Checkout";
 import { OrderPage } from "./pages/Order";
 
+/** On a business's own domain the server injects its slug and the store lives at the root. */
+const ownDomainSlug = (window as { __NX_STORE__?: { slug: string } }).__NX_STORE__?.slug ?? null;
+
 function Store() {
   const { slug } = useParams();
+  const s = (ownDomainSlug ?? slug!).toLowerCase();
   return (
-    <StoreProvider slug={slug!.toLowerCase()}>
+    <StoreProvider slug={s} base={ownDomainSlug ? "" : `/${s}`}>
       <StoreLayout />
     </StoreProvider>
   );
 }
+
+const storePages = (
+  <>
+    <Route index element={<CatalogPage />} />
+    <Route path="p/:id" element={<ProductPage />} />
+    <Route path="pagar" element={<CheckoutPage />} />
+    <Route path="pedido/:token" element={<OrderPage />} />
+    <Route path="*" element={<NotFound />} />
+  </>
+);
 
 function Landing() {
   return (
@@ -43,14 +57,14 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <ToastProvider>
         <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/:slug" element={<Store />}>
-            <Route index element={<CatalogPage />} />
-            <Route path="p/:id" element={<ProductPage />} />
-            <Route path="pagar" element={<CheckoutPage />} />
-            <Route path="pedido/:token" element={<OrderPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Route>
+          {ownDomainSlug ? (
+            <Route path="/" element={<Store />}>{storePages}</Route>
+          ) : (
+            <>
+              <Route path="/" element={<Landing />} />
+              <Route path="/:slug" element={<Store />}>{storePages}</Route>
+            </>
+          )}
         </Routes>
       </ToastProvider>
     </BrowserRouter>

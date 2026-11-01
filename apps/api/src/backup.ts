@@ -1,10 +1,11 @@
 import type { Env } from "./env";
+import { tenantBindings } from "./lib/moveTenant";
 
 const PAGE = 1000;
 const RETENTION_DAYS = 30;
 
 /**
- * Daily logical backup of every table of both databases to R2, as NDJSON.
+ * Daily logical backup of every table of every database to R2, as NDJSON.
  * D1 Time Travel already covers 30 days of point-in-time recovery; this is our own off-database copy.
  * Fine for the MVP's small databases. For large ones, switch to `wrangler d1 export` in CI.
  */
@@ -14,7 +15,12 @@ export async function runBackup(env: Env): Promise<{ prefix: string; tables: num
   let tables = 0;
   let rows = 0;
 
-  for (const [name, d1] of [["control", env.DB_CONTROL], ["tenant-default", env.DB_TENANT_DEFAULT]] as const) {
+  // Control plus every tenant database (businesses may live in several D1s).
+  const dbs: Array<[string, D1Database]> = [
+    ["control", env.DB_CONTROL],
+    ...tenantBindings(env).map((b): [string, D1Database] => [b.replace(/^DB_/, "").toLowerCase().replaceAll("_", "-"), (env as unknown as Record<string, D1Database>)[b]!]),
+  ];
+  for (const [name, d1] of dbs) {
     const { results } = await d1
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'")
       .all<{ name: string }>();

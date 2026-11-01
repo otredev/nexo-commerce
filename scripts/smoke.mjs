@@ -34,6 +34,7 @@ console.log("Auth");
 let r = await owner("GET", "/api/me");
 check("me sin sesión → 401", r.status === 401, r);
 r = await owner("POST", "/api/auth/register", { businessName: "Casa Olivo", ownerName: "María Olivo", email, password, currency: "MXN", timezone: "America/Mexico_City" });
+await owner("POST", "/api/dev/plan", { plan: "business" }); // the free plan allows 1 location, 2 users and 100 products
 check("registro → 201", r.status === 201, r.data);
 const tenantId = r.data?.tenant?.id;
 r = await owner("POST", "/api/auth/register", { businessName: "Otra", ownerName: "X", email, password });

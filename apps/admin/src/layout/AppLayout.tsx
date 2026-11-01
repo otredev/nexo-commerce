@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, BarChart3, Boxes, Contact, Landmark, Percent, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
+import { Activity, ArrowLeftRight, Building2, BarChart3, Boxes, Contact, Landmark, Percent, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
-type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean; badge?: "orders" };
+type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean; badge?: "orders"; platform?: boolean };
 const NAV: Array<{ group?: string; items: NavItem[] }> = [
   {
     items: [
@@ -58,6 +58,10 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
       { to: "/configuracion", label: "Configuración", icon: Settings },
     ],
   },
+  {
+    group: "Plataforma",
+    items: [{ to: "/plataforma", label: "Negocios", icon: Building2, platform: true }],
+  },
 ];
 
 const TITLES: Array<[RegExp, string]> = [
@@ -92,6 +96,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],
+  [/^\/plataforma$/, "Plataforma"],
 ];
 const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? "";
 
@@ -123,7 +128,7 @@ export function AppLayout() {
           Nexo
         </a>
         {NAV.map((section, i) => {
-          const items = section.items.filter((item) => !item.permission || can(item.permission));
+          const items = section.items.filter((item) => (!item.permission || can(item.permission)) && (!item.platform || me.platformAdmin));
           if (!items.length) return null;
           return (
             <nav className="nx-nav" key={i}>
@@ -155,7 +160,7 @@ export function AppLayout() {
       </aside>
       <div className="nx-main">
         <header className="nx-topbar">
-          <div className="nx-row" style={{ gap: 8 }}>
+          <div className="nx-topbar__left">
             <Button variant="ghost" size="sm" icon className="nx-mobile-only" aria-label="Abrir menú" onClick={() => setOpen((v) => !v)}>
               <Menu className="nx-icon" aria-hidden="true" />
             </Button>
@@ -165,8 +170,8 @@ export function AppLayout() {
               <span aria-current="page">{titleFor(location.pathname)}</span>
             </nav>
           </div>
-          <div className="nx-row" style={{ gap: 12 }}>
-            <div style={{ textAlign: "right", lineHeight: "16px" }}>
+          <div className="nx-topbar__right">
+            <div className="nx-topbar__who">
               <div style={{ fontSize: 13, fontWeight: 500 }}>{me.user.name}</div>
               <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{ROLE_LABELS[me.role]}</div>
             </div>

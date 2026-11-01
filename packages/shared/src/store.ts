@@ -24,8 +24,8 @@ export function customerStatusLabel(status: OrderStatus, fulfillment: Fulfillmen
 export type Fulfillment = "pickup" | "delivery";
 export const FULFILLMENT_LABELS: Record<Fulfillment, string> = { pickup: "Recoger en tienda", delivery: "Envío a domicilio" };
 
-export type OnlinePaymentMethod = "on_delivery" | "transfer";
-export const ONLINE_PAYMENT_LABELS: Record<OnlinePaymentMethod, string> = { on_delivery: "Pago al recibir", transfer: "Transferencia bancaria" };
+export type OnlinePaymentMethod = "on_delivery" | "transfer" | "card";
+export const ONLINE_PAYMENT_LABELS: Record<OnlinePaymentMethod, string> = { on_delivery: "Pago al recibir", transfer: "Transferencia bancaria", card: "Tarjeta en línea" };
 
 /** Price the customer sees: with tax, whatever the business's pricing setting. */
 export function displayPrice(priceCents: Cents, taxRateBps: BasisPoints, pricesIncludeTax: boolean): Cents {

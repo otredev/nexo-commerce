@@ -9,7 +9,7 @@ import { Qty } from "../components/Qty";
 
 export function ProductPage() {
   const { id } = useParams();
-  const { slug, store, money, add, setCartOpen, cart } = useStore();
+  const { slug, link, store, money, add, setCartOpen, cart } = useStore();
   const toast = useToast();
   const [p, setP] = useState<StoreProduct | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
@@ -40,7 +40,7 @@ export function ProductPage() {
       <div className="st-wrap st-empty">
         <h1 className="st-empty__title">Producto no disponible</h1>
         <p className="st-empty__text">{error.message}</p>
-        <Link className="nx-btn nx-btn--secondary" to={`/${slug}`}>Ver la tienda</Link>
+        <Link className="nx-btn nx-btn--secondary" to={link()}>Ver la tienda</Link>
       </div>
     );
   }
@@ -85,8 +85,8 @@ export function ProductPage() {
         </div>
         <div>
           <nav className="st-crumbs" aria-label="Ruta">
-            <Link to={`/${slug}`}>Inicio</Link>
-            {p.categoryName && <><span aria-hidden="true">/</span><Link to={`/${slug}?categoria=${p.categoryId}`}>{p.categoryName}</Link></>}
+            <Link to={link()}>Inicio</Link>
+            {p.categoryName && <><span aria-hidden="true">/</span><Link to={link(`?categoria=${p.categoryId}`)}>{p.categoryName}</Link></>}
           </nav>
           <h1 className="st-product__title">{p.name}</h1>
           {p.brandName && <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 8 }}>{p.brandName}</div>}

@@ -7,7 +7,7 @@ import { useStore } from "../lib/store";
 import { Qty } from "./Qty";
 
 export function CartDrawer() {
-  const { cart, cartOpen, setCartOpen, setQuantity, remove, money, totals, slug, store, linePrice } = useStore();
+  const { cart, cartOpen, setCartOpen, setQuantity, remove, money, totals, slug, link, store, linePrice } = useStore();
   const navigate = useNavigate();
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -35,7 +35,7 @@ export function CartDrawer() {
           <div className="st-drawer__body" style={{ display: "grid", placeItems: "center", textAlign: "center" }}>
             <div>
               <p style={{ margin: "0 0 16px", color: "var(--ink-muted)" }}>Tu carrito está vacío.</p>
-              <Button onClick={() => { setCartOpen(false); navigate(`/${slug}`); }}>Ver productos</Button>
+              <Button onClick={() => { setCartOpen(false); navigate(link()); }}>Ver productos</Button>
             </div>
           </div>
         ) : (
@@ -43,7 +43,7 @@ export function CartDrawer() {
             <div className="st-drawer__body">
               {cart.map((l) => (
                 <div className="st-line" key={l.variantId}>
-                  <Link to={`/${slug}/p/${l.productId}`} className="st-line__img" onClick={() => setCartOpen(false)} tabIndex={-1} aria-hidden="true">
+                  <Link to={link(`/p/${l.productId}`)} className="st-line__img" onClick={() => setCartOpen(false)} tabIndex={-1} aria-hidden="true">
                     {l.image && <img src={imageUrl(l.image)!} alt="" />}
                   </Link>
                   <div>
@@ -67,7 +67,7 @@ export function CartDrawer() {
               </dl>
               <span className="nx-help">Impuestos incluidos. El envío se calcula al pagar.</span>
               {below && <span className="nx-help" style={{ color: "var(--warning)" }}>El pedido mínimo es de {money(store.minOrderCents)}.</span>}
-              <Button variant="primary" size="lg" block disabled={Boolean(below)} onClick={() => { setCartOpen(false); navigate(`/${slug}/pagar`); }}>Continuar con el pedido</Button>
+              <Button variant="primary" size="lg" block disabled={Boolean(below)} onClick={() => { setCartOpen(false); navigate(link(`/pagar`)); }}>Continuar con el pedido</Button>
             </div>
           </>
         )}

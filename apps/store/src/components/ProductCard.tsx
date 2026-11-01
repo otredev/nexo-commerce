@@ -5,9 +5,9 @@ import { imageUrl } from "../lib/api";
 import { useStore } from "../lib/store";
 
 export function ProductCard({ p }: { p: StoreProductCard }) {
-  const { slug, money } = useStore();
+  const { slug, link, money } = useStore();
   return (
-    <Link to={`/${slug}/p/${p.id}`} className="st-card" data-soldout={p.soldOut}>
+    <Link to={link(`/p/${p.id}`)} className="st-card" data-soldout={p.soldOut}>
       <div className="st-card__media">
         {p.image ? <img src={imageUrl(p.image)!} alt="" loading="lazy" /> : <div className="st-card__placeholder" aria-hidden="true">{p.name.slice(0, 1)}</div>}
         {p.soldOut ? <span className="st-card__badge"><Badge>Agotado</Badge></span> : p.compareAtCents !== null ? <span className="st-card__badge"><Badge tone="accent">−{Math.round((1 - p.fromPriceCents / p.compareAtCents) * 100)} %</Badge></span> : p.lowStock ? <span className="st-card__badge"><Badge tone="warning">Últimas piezas</Badge></span> : null}

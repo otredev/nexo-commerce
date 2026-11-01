@@ -21,6 +21,7 @@ import {
 import type { AppEnv } from "../env";
 import { auditEntry, diff } from "../lib/audit";
 import { newId } from "../lib/crypto";
+import { assertWithinLimit, remaining } from "../lib/plan";
 import { AppError, notFound } from "../lib/errors";
 import { isUniqueError, movementStatements, toStatement } from "../lib/inventory";
 import {
@@ -206,6 +207,7 @@ export const productRoutes = new Hono<AppEnv>()
     const input = c.req.valid("json") as ProductInputParsed;
     const { d1 } = c.var.auth;
     validateQuantities(input);
+    await assertWithinLimit(c, "products");
     await validateReferences(c, input);
     const conflicts = await findCodeConflicts(c, input.variants);
     if (Object.keys(conflicts).length) throw new AppError(422, "validation_error", "Revisa los campos marcados", conflicts);
@@ -462,9 +464,14 @@ export const productRoutes = new Hono<AppEnv>()
 
     const statements: D1PreparedStatement[] = [];
     const createdSkus: string[] = [];
+    const room = await remaining(c, "products");
     for (const r of ready) {
       if (badOwners.has(r.index)) {
         result.errors.push({ index: r.index, rows: r.rows, name: r.input.name, message: badOwners.get(r.index)! });
+        continue;
+      }
+      if (result.created >= room) {
+        result.errors.push({ index: r.index, rows: r.rows, name: r.input.name, message: "Llegaste al límite de productos de tu plan. Mejóralo para importar más." });
         continue;
       }
       if (!locationId && r.input.trackInventory && r.input.variants.some((v) => (v.initialStock ?? 0) > 0)) locationId = await defaultLocationId(c);

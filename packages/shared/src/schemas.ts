@@ -367,6 +367,7 @@ export const storeSettingsSchema = z
     payOnDelivery: z.boolean(),
     transferEnabled: z.boolean(),
     transferInstructions: optText(1000),
+    cardEnabled: z.boolean().default(false),
     whatsapp: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, "Solo números").nullable().default(null).transform((v) => (v ? v.replace(/[^\d+]/g, "") : null)),
     notifyEmail: z.union([email, z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
     holdHours: z.number().int().min(0).max(720).default(48),
@@ -374,7 +375,7 @@ export const storeSettingsSchema = z
   .superRefine((s, ctx) => {
     if (s.enabled && !s.locationId) ctx.addIssue({ code: "custom", path: ["locationId"], message: "Elige qué ubicación surte los pedidos" });
     if (!s.pickupEnabled && !s.deliveryEnabled) ctx.addIssue({ code: "custom", path: ["pickupEnabled"], message: "Activa recoger en tienda, envío a domicilio o ambos" });
-    if (!s.payOnDelivery && !s.transferEnabled) ctx.addIssue({ code: "custom", path: ["payOnDelivery"], message: "Activa al menos una forma de pago" });
+    if (!s.payOnDelivery && !s.transferEnabled && !s.cardEnabled) ctx.addIssue({ code: "custom", path: ["payOnDelivery"], message: "Activa al menos una forma de pago" });
     if (s.transferEnabled && !s.transferInstructions) ctx.addIssue({ code: "custom", path: ["transferInstructions"], message: "Escribe los datos para transferir" });
   });
 export type StoreSettingsInput = z.input<typeof storeSettingsSchema>;
@@ -392,7 +393,7 @@ export const storeOrderSchema = z
     customerPhone: z.string().trim().min(7, "Escribe un teléfono de contacto").max(32).regex(/^[+\d\s()-]+$/, "Teléfono no válido"),
     address: optText(500),
     notes: optText(500),
-    paymentMethod: z.enum(["on_delivery", "transfer"]),
+    paymentMethod: z.enum(["on_delivery", "transfer", "card"]),
     couponCode: optText(40),
     /** What the customer saw; the order is rejected if the server total differs (prices changed). */
     expectedTotalCents: cents,
@@ -484,3 +485,24 @@ export const supplierPaymentSchema = z.object({
   fromCashDrawer: z.boolean().default(false),
 });
 export type SupplierPaymentInput = z.input<typeof supplierPaymentSchema>;
+
+/* ---------- Phase 6: SaaS ---------- */
+
+export const checkoutPlanSchema = z.object({ plan: z.enum(["pro", "business"]) });
+
+export const domainSchema = z.object({
+  hostname: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(253)
+    .regex(/^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "Escribe un dominio como tienda.minegocio.com"),
+});
+
+export const platformTenantUpdateSchema = z.object({
+  status: z.enum(["active", "suspended"]).optional(),
+  suspendedReason: optText(300),
+  plan: z.enum(["free", "pro", "business"]).optional(),
+});
+
+export const moveTenantSchema = z.object({ binding: z.string().regex(/^DB_TENANT_[A-Z0-9_]+$/, "Binding no válido") });

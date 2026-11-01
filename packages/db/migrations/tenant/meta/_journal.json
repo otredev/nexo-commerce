@@ -43,6 +43,13 @@
       "when": 1793563676229,
       "tag": "0005_customers_promotions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793565539443,
+      "tag": "0006_card_payments",
+      "breakpoints": true
     }
   ]
 }
