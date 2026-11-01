@@ -36,6 +36,7 @@ export function HomePage() {
         { done: data.summary.products > 0, text: "Agrega tus productos o impórtalos desde un CSV", to: "/productos/nuevo" },
         { done: (data.users?.filter((u) => u.active).length ?? 0) > 1, text: "Invita a tu equipo", to: "/usuarios", hidden: !canUsers },
         { done: data.dashboard.days.some((d) => d.count > 0), text: "Haz tu primera venta en el punto de venta", to: "/pos" },
+        { done: data.dashboard.orders !== null, text: "Abre tu tienda en línea", to: "/tienda", hidden: !can("store:write") },
       ].filter((s) => !s.hidden)
     : [];
   const pending = steps.filter((s) => !s.done).length;
@@ -77,6 +78,9 @@ export function HomePage() {
             </Card>
           </div>
           <div className="nx-stat-grid">
+            {data.dashboard.orders && can("orders:read") && (
+              <Stat label="Pedidos en línea" value={data.dashboard.orders.pending ? `${data.dashboard.orders.pending} nuevos` : data.dashboard.orders.open} meta={<Link className="nx-link" to="/pedidos">{data.dashboard.orders.open ? `${data.dashboard.orders.open} por atender` : "Ver pedidos"}</Link>} />
+            )}
             <Stat label="Caja" value={data.dashboard.openSessions.length ? "Abierta" : "Cerrada"} meta={data.dashboard.openSessions.length ? data.dashboard.openSessions.map((s) => `${s.locationName} · ${s.openedBy ?? ""} desde ${timeFmt.format(new Date(s.openedAt))}`).join(" · ") : <Link className="nx-link" to="/pos">Abrir caja</Link>} />
             <Stat label="Stock bajo" value={data.summary.lowStock} meta={<Link className="nx-link" to="/inventario?stock=low">Revisar</Link>} />
             <Stat label="Agotados" value={data.summary.outOfStock} meta={<Link className="nx-link" to="/inventario?stock=out">Revisar</Link>} />
@@ -124,7 +128,7 @@ function SalesStats({ data, money }: { data: DashboardData; money: (c: number | 
           <><span className={`nx-delta ${delta >= 0 ? "nx-delta--up" : "nx-delta--down"}`}>{delta >= 0 ? "↑" : "↓"} {Math.abs(delta).toLocaleString("es-MX", { maximumFractionDigits: 1 })} %</span>vs. ayer</>
         )}
       />
-      <Stat label="Tickets" value={sales.count} meta={`Promedio ${money(sales.avgTicketCents)}`} />
+      <Stat label="Tickets" value={sales.count} meta={sales.onlineCount ? `${sales.onlineCount} en línea · ${money(sales.onlineTotalCents)}` : `Promedio ${money(sales.avgTicketCents)}`} />
       {sales.grossProfitCents !== null && (
         <Stat label="Utilidad bruta" value={money(sales.grossProfitCents)} meta={sales.totalCents ? `Margen ${((sales.grossProfitCents / sales.totalCents) * 100).toLocaleString("es-MX", { maximumFractionDigits: 1 })} %` : "Ventas menos costo"} />
       )}

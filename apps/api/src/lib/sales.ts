@@ -139,19 +139,20 @@ export async function openSessionFor(c: Context<AppEnv>, locationId: string) {
 /** UPSERT statements that keep the per-day summaries in sync. Values may be negative (voids, returns). */
 export function dailySalesUpsert(
   d1: D1Database,
-  v: { tenantId: string; date: string; locationId: string; count: number; total: number; discount: number; tax: number; cost: number; returns: number; voided: number },
+  v: { tenantId: string; date: string; locationId: string; count: number; total: number; discount: number; tax: number; cost: number; returns: number; voided: number; onlineCount?: number; onlineTotal?: number },
 ) {
   return d1
     .prepare(
-      `INSERT INTO daily_sales (tenant_id, date, location_id, sales_count, total_cents, discount_cents, tax_cents, cost_cents, returns_cents, voided_count)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+      `INSERT INTO daily_sales (tenant_id, date, location_id, sales_count, total_cents, discount_cents, tax_cents, cost_cents, returns_cents, voided_count, online_count, online_total_cents)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
        ON CONFLICT(tenant_id, date, location_id) DO UPDATE SET
          sales_count = sales_count + excluded.sales_count, total_cents = total_cents + excluded.total_cents,
          discount_cents = discount_cents + excluded.discount_cents, tax_cents = tax_cents + excluded.tax_cents,
          cost_cents = cost_cents + excluded.cost_cents, returns_cents = returns_cents + excluded.returns_cents,
-         voided_count = voided_count + excluded.voided_count`,
+         voided_count = voided_count + excluded.voided_count,
+         online_count = online_count + excluded.online_count, online_total_cents = online_total_cents + excluded.online_total_cents`,
     )
-    .bind(v.tenantId, v.date, v.locationId, v.count, v.total, v.discount, v.tax, v.cost, v.returns, v.voided);
+    .bind(v.tenantId, v.date, v.locationId, v.count, v.total, v.discount, v.tax, v.cost, v.returns, v.voided, v.onlineCount ?? 0, v.onlineTotal ?? 0);
 }
 
 export function dailyProductUpsert(d1: D1Database, v: { tenantId: string; date: string; variantId: string; productId: string; quantity: number; total: number; cost: number }) {

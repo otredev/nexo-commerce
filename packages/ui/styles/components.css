@@ -388,3 +388,4 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 /* Document page: lines on the left, summary cards on the right; stacked on narrow screens. */
 .nx-grid-doc { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--space-6); align-items: start; }
 @media (max-width: 1024px) { .nx-grid-doc { grid-template-columns: minmax(0, 1fr); } }
+.nx-nav__badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-full); background: var(--primary); color: var(--primary-ink); font-size: 11px; font-weight: 600; line-height: 20px; text-align: center; box-sizing: border-box; font-variant-numeric: tabular-nums; }

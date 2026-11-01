@@ -52,6 +52,11 @@ export const PERMISSIONS = {
   "counts:count": ["owner", "admin", "cashier"],
   /** Start, complete and cancel counts; see expected stock and differences. */
   "counts:write": ["owner", "admin"],
+  /** Online orders: everyone sees and prepares them; cancelling (stock and money back) is for admins. */
+  "orders:read": ["owner", "admin", "cashier"],
+  "orders:fulfill": ["owner", "admin", "cashier"],
+  "orders:cancel": ["owner", "admin"],
+  "store:write": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

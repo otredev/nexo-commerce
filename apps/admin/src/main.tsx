@@ -27,6 +27,9 @@ import { SuppliersPage } from "./pages/Suppliers";
 import { PurchasesPage } from "./pages/purchases/Purchases";
 import { TransfersPage } from "./pages/transfers/Transfers";
 import { CountsPage } from "./pages/counts/Counts";
+import { OrdersPage } from "./pages/orders/Orders";
+const OrderDetailPage = lazy(() => import("./pages/orders/OrderDetail").then((m) => ({ default: m.OrderDetailPage })));
+const StoreSettingsPage = lazy(() => import("./pages/StoreSettings").then((m) => ({ default: m.StoreSettingsPage })));
 const PurchaseFormPage = lazy(() => import("./pages/purchases/PurchaseForm").then((m) => ({ default: m.PurchaseFormPage })));
 const PurchaseDetailPage = lazy(() => import("./pages/purchases/PurchaseDetail").then((m) => ({ default: m.PurchaseDetailPage })));
 const TransferFormPage = lazy(() => import("./pages/transfers/TransferForm").then((m) => ({ default: m.TransferFormPage })));
@@ -85,6 +88,9 @@ createRoot(document.getElementById("root")!).render(
               <Route path="traspasos/:id/editar" element={<TransferFormPage />} />
               <Route path="conteos" element={<CountsPage />} />
               <Route path="conteos/:id" element={<CountDetailPage />} />
+              <Route path="pedidos" element={<OrdersPage />} />
+              <Route path="pedidos/:id" element={<OrderDetailPage />} />
+              <Route path="tienda" element={<StoreSettingsPage />} />
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />

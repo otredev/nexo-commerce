@@ -16,10 +16,10 @@ export const reportRoutes = new Hono<AppEnv>().get("/dashboard", requirePermissi
   const settings = await getSettings(c);
   const today = businessDate(settings.timezone);
   const from = shiftDate(today, -6);
-  const [daysRes, topRes, sessionsRes] = await d1.batch([
+  const [daysRes, topRes, sessionsRes, ordersRes] = await d1.batch([
     d1
       .prepare(
-        `SELECT date, SUM(sales_count) AS count, SUM(total_cents) AS total, SUM(returns_cents) AS returns, SUM(cost_cents) AS cost
+        `SELECT date, SUM(sales_count) AS count, SUM(total_cents) AS total, SUM(returns_cents) AS returns, SUM(cost_cents) AS cost, SUM(online_count) AS online_count, SUM(online_total_cents) AS online_total
          FROM daily_sales WHERE tenant_id = ?1 AND date >= ?2 AND date <= ?3 GROUP BY date`,
       )
       .bind(t.id, shiftDate(today, -7), today),
@@ -37,10 +37,18 @@ export const reportRoutes = new Hono<AppEnv>().get("/dashboard", requirePermissi
          WHERE s.tenant_id = ?1 AND s.status = 'open' ORDER BY s.opened_at`,
       )
       .bind(t.id),
+    d1
+      .prepare(
+        `SELECT (SELECT enabled FROM store_settings WHERE tenant_id = ?1) AS enabled,
+           (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND status = 'pending') AS pending,
+           (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND status IN ('pending', 'confirmed', 'ready')) AS open`,
+      )
+      .bind(t.id),
   ]);
-  type Day = { date: string; count: number; total: number; returns: number; cost: number };
+  const ord = ordersRes!.results[0] as { enabled: number | null; pending: number; open: number };
+  type Day = { date: string; count: number; total: number; returns: number; cost: number; online_count: number; online_total: number };
   const byDate = new Map((daysRes!.results as Day[]).map((d) => [d.date, d]));
-  const day = (date: string) => byDate.get(date) ?? { date, count: 0, total: 0, returns: 0, cost: 0 };
+  const day = (date: string) => byDate.get(date) ?? { date, count: 0, total: 0, returns: 0, cost: 0, online_count: 0, online_total: 0 };
   const td = day(today);
   const net = (d: Day) => d.total - d.returns;
   const body: DashboardData = {
@@ -51,7 +59,10 @@ export const reportRoutes = new Hono<AppEnv>().get("/dashboard", requirePermissi
       avgTicketCents: td.count ? Math.round(td.total / td.count) : 0,
       grossProfitCents: can(role, "costs:read") ? net(td) - td.cost : null,
       yesterdayTotalCents: net(day(shiftDate(today, -1))),
+      onlineCount: td.online_count,
+      onlineTotalCents: td.online_total,
     },
+    orders: ord.enabled || ord.open ? { pending: ord.pending, open: ord.open } : null,
     days: Array.from({ length: 7 }, (_, i) => {
       const d = day(shiftDate(today, i - 6));
       return { date: d.date, totalCents: net(d), count: d.count };

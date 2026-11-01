@@ -43,6 +43,7 @@ interface Form {
   taxRateId: string;
   unit: UnitCode;
   trackInventory: boolean;
+  online: boolean;
   images: string[];
   hasVariants: boolean;
   options: OptionRow[];
@@ -58,7 +59,7 @@ const emptyVariant = (options: string[] = [], base?: Partial<VariantRow>): Varia
 });
 
 const EMPTY: Form = {
-  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, images: [],
+  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, online: false, images: [],
   hasVariants: false, options: [{ name: "", values: "" }], variants: [emptyVariant()],
 };
 
@@ -71,6 +72,7 @@ function fromProduct(p: ProductDetail): Form {
     taxRateId: p.taxRateId ?? "",
     unit: p.unit,
     trackInventory: p.trackInventory,
+    online: p.online,
     images: p.images,
     hasVariants: p.optionNames.length > 0,
     options: p.optionNames.length
@@ -137,6 +139,7 @@ function toInput(form: Form): ProductInput {
     taxRateId: form.taxRateId || null,
     unit: form.unit,
     trackInventory: form.trackInventory,
+    online: form.online,
     optionNames,
     images: form.images,
     variants,
@@ -444,6 +447,14 @@ function ProductEditor({ product, onSaved }: { product: ProductDetail | null; on
                 />
                 {err("trackInventory") && <Alert tone="danger">{err("trackInventory")}</Alert>}
               </div>
+            </Card>
+            <Card title="Tienda en línea">
+              <Checkbox
+                label="Mostrar en la tienda en línea"
+                help={form.online ? "Se vende en tu tienda con las existencias de la ubicación que surte los pedidos." : "Solo se vende en el punto de venta."}
+                checked={form.online}
+                onChange={(e) => set("online", e.target.checked)}
+              />
             </Card>
           </div>
         </div>

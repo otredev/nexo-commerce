@@ -8,6 +8,7 @@ Estado actual:
 - **Fase 1 — Catálogo e inventario:** productos con variantes, categorías y marcas, SKU y código de barras, imágenes, unidades de medida, costo promedio y margen, búsqueda y filtros, importación por CSV, existencias por ubicación y Kardex.
 - **Fase 2 — Punto de venta:** caja para teclado y escáner, descuentos con límite por rol, impuestos por línea, pagos mixtos con cambio, apertura y cierre ciego de caja, ingresos y retiros, recibo térmico o por correo, historial, anulaciones, devoluciones y dashboard del día.
 - **Fase 3 — Abastecimiento:** proveedores, órdenes de compra con recepciones parciales y costo real de factura, sugerencias de reorden, traspasos entre ubicaciones y conteos físicos con captura ciega y escáner.
+- **Fase 4 — Tienda en línea:** catálogo público en Cloudflare Pages con existencias reales, variantes, carrito, pedidos con recogida o envío, pago al recibir o por transferencia, seguimiento para el cliente con correos, y atención de pedidos desde el panel.
 
 ---
 
@@ -18,22 +19,22 @@ Requisitos: Node 22 (`.nvmrc`) y npm.
 ```bash
 npm install
 npm run build -w @nexo/ui      # compila los tokens de diseño
-npm run dev                     # migra la D1 local y levanta API (:8787) + dashboard (:5173)
+npm run dev                     # migra la D1 local y levanta API (:8787), dashboard (:5173) y tienda (:5174)
 ```
 
-Abre http://localhost:5173 y crea tu negocio. No necesitas cuenta de Cloudflare para desarrollar: `wrangler dev` simula D1 y R2 en `apps/api/.wrangler/`.
+Abre http://localhost:5173 y crea tu negocio. Activa la tienda en **Tienda en línea → Ajustes de la tienda**, publica productos y ábrela en http://localhost:5174/<tu-negocio>. No necesitas cuenta de Cloudflare para desarrollar: `wrangler dev` simula D1 y R2 en `apps/api/.wrangler/`.
 
 Los correos (recuperar contraseña) se imprimen en la consola de la API. En desarrollo, la respuesta de `/api/auth/password/forgot` incluye además el enlace (`devResetUrl`).
 
 | Comando | Qué hace |
 |---|---|
-| `npm run dev` | Migra la D1 local y levanta API + dashboard |
+| `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2 y 84 de la Fase 3) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3 y 60 de la Fase 4) |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
-| `npm run build` | Compila tokens y dashboard |
-| `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega |
+| `npm run build` | Compila tokens, dashboard y tienda |
+| `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega la API y la tienda |
 
 ---
 
@@ -43,7 +44,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 apps/
   api/        Worker (Hono): API en /api/* y además sirve el dashboard compilado. D1 + R2 + cron.
   admin/      Dashboard en React + Vite. Se compila a apps/admin/dist y lo publica el Worker.
-  store/      Tienda online en Cloudflare Pages (marcador de posición hasta la Fase 4).
+  store/      Tienda en línea (React en Cloudflare Pages, con Pages Functions que llegan a la API por service binding).
 packages/
   db/         Esquema Drizzle y migraciones de las dos bases D1.
   shared/     Roles y permisos, esquemas Zod, utilidades de dinero y tipos de la API (compartidos API ↔ UI).
@@ -53,6 +54,7 @@ scripts/
   smoke-catalog.mjs   Prueba de punta a punta de la Fase 1 (incluye sobreventa concurrente).
   smoke-pos.mjs       Prueba de punta a punta de la Fase 2 (ventas, caja, devoluciones, concurrencia).
   smoke-purchasing.mjs Prueba de punta a punta de la Fase 3 (compras, traspasos, conteos, concurrencia).
+  smoke-store.mjs     Prueba de punta a punta de la Fase 4 (catálogo público, pedidos, carrera por las últimas piezas).
 ```
 
 Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie de sesión no necesita CORS.
@@ -128,6 +130,21 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 - **Traspasos**: al enviar salen del origen (`transfer_out`, falla si no alcanza); al confirmar la llegada entran al destino (`transfer_in`) con lo que realmente llegó. La diferencia queda registrada y valorizada. Cancelar uno en tránsito regresa todo al origen. El costo promedio no cambia.
 - **Conteos físicos** por categoría, de todo el inventario o de productos sueltos. El cajero captura a ciegas (no ve la existencia del sistema); el administrador revisa diferencias y aplica. Al capturar cada línea se guarda la existencia del sistema en ese instante y el ajuste final es `contado − existencia al contar`: **se puede seguir vendiendo durante el conteo** sin descuadrar. El ajuste se aplica con sentencias por conjunto (sirve para miles de productos) y solo genera Kardex donde hay diferencia.
 
+### Tienda en línea
+
+- **Dónde vive**: `apps/store` es una app React publicada en **Cloudflare Pages**. Sus Pages Functions reenvían `/api/store/*` y `/files/*` al Worker de la API por **service binding** (sin salir a internet y en el mismo origen). La API del panel no es accesible desde el dominio de la tienda.
+- **Dirección**: `https://<dominio-de-la-tienda>/<slug-del-negocio>`. El slug se resuelve contra la D1 de control.
+- **Compartir y buscadores**: una Function de middleware pone título, descripción e imagen reales en el HTML de la portada y de cada producto (WhatsApp, redes, Google).
+- **Qué se publica**: productos activos marcados “Mostrar en la tienda en línea” (uno por uno o todos desde Ajustes de la tienda). Los precios se muestran con impuestos, sea cual sea la configuración del negocio.
+- **Existencias reales**: la tienda vende lo que hay en la ubicación que surte los pedidos. **Un pedido aparta existencias al confirmarse** (Kardex tipo `order`) con el mismo `CHECK` que las ventas: la caja y la web nunca venden la misma última pieza. Cancelar las regresa (`order_cancel`).
+- **Pedido = un `d1.batch()`**: folio, pedido, líneas con instantánea de precio, impuesto y costo, y salidas de inventario. Idempotente con `clientId`. El servidor recalcula el total; si los precios cambiaron responde `price_changed` y la tienda actualiza el carrito.
+- **Ciclo**: nuevo → aceptado → listo para recoger / en camino → entregado (o cancelado). El cliente recibe un correo en cada paso y sigue su pedido con un enlace secreto; puede cancelarlo mientras sea nuevo y no esté pagado.
+- **Cobro**: pago al recibir/recoger o transferencia (con tus datos bancarios). El pago se registra en el panel; **el efectivo entra a la caja abierta** como ingreso, así el corte cuadra. Al entregarse, el pedido suma a las ventas del día (`daily_sales.online_*`) y a lo más vendido.
+- **Pedidos olvidados**: cada hora, los pedidos nuevos y sin pagar con más de N horas (48 por defecto, configurable) se cancelan solos y liberan sus existencias.
+- **Protección**: máximo 10 pedidos por hora por IP y por tienda; los pedidos se validan contra productos publicados y activos.
+
+> Pago con tarjeta en línea (pasarela) y dominios propios por negocio (`tenant_domains`) quedan para la Fase 6.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -189,11 +206,17 @@ Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `back
 | `GET /api/counts?status=&locationId=`, `GET /api/counts/:id` | `counts:read` |
 | `POST /api/counts`, `POST /api/counts/:id/complete` · `cancel` | `counts:write` |
 | `POST /api/counts/:id/entries` · `items` | `counts:count` |
+| `GET /api/store/:slug`, `GET /api/store/:slug/products?q=&categoryId=&sort=&page=`, `GET /api/store/:slug/products/:id` | público (tienda) |
+| `POST /api/store/:slug/orders`, `GET /api/store/:slug/orders/:token`, `POST /api/store/:slug/orders/:token/cancel` | público (tienda) |
+| `GET/PUT /api/store-settings`, `POST /api/store-settings/publish` | `settings:read` / `store:write` |
+| `GET /api/orders?status=&q=&page=`, `GET /api/orders/counts`, `GET /api/orders/:id` | `orders:read` |
+| `POST /api/orders/:id/confirm` · `ready` · `pay` · `complete` | `orders:fulfill` |
+| `POST /api/orders/:id/cancel` | `orders:cancel` |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
 
-Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento; confirma la llegada de traspasos y captura conteos a ciegas, pero no ve compras ni proveedores).
+Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento; confirma la llegada de traspasos, captura conteos a ciegas y atiende pedidos en línea sin cancelarlos; no ve compras ni proveedores).
 
 ---
 
@@ -212,7 +235,9 @@ npx wrangler r2 bucket create nexo-files-staging
 1. Copia los `database_id` que imprime cada comando en `apps/api/wrangler.jsonc` (sustituye `REPLACE_WITH_...`).
 2. Ajusta `APP_URL` del entorno con el dominio donde vivirá el dashboard.
 3. Correo transaccional (opcional pero necesario para recuperar contraseñas): `npx wrangler secret put RESEND_API_KEY --env staging` y define `EMAIL_FROM`.
-4. Despliega desde la raíz: `npm run deploy:staging`. Esto compila, aplica las migraciones remotas y publica el Worker.
+4. Ajusta `STORE_URL` con el dominio de la tienda (se usa en los enlaces de los correos).
+5. Crea el proyecto de Pages de la tienda (una sola vez): `cd apps/store && npx wrangler pages project create nexo-store --production-branch main`. El service binding hacia la API ya está en `apps/store/wrangler.toml` (rama `staging` → `nexo-api-staging`, `main` → `nexo-api-production`).
+6. Despliega desde la raíz: `npm run deploy:staging`. Esto compila, aplica las migraciones remotas, publica el Worker y sube la tienda a Pages.
 
 Con GitHub: añade los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`. Cada push a `main` despliega a staging; producción se lanza a mano desde **Actions → Deploy**. El workflow `CI` revisa tipos, ejecuta pruebas, compila y corre la prueba de punta a punta en cada PR.
 
@@ -228,6 +253,6 @@ Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Int
 
 ---
 
-## Siguiente: Fase 4 — Tienda en línea
+## Siguiente: Fase 5 — Reportes, clientes y promociones
 
-Catálogo público en Cloudflare Pages con el inventario real, carrito, pedidos que apartan existencias y su gestión desde el panel.
+Reportes por periodo, producto, categoría y cajero; cuentas por pagar a proveedores; ficha de clientes con historial; promociones y cupones para el punto de venta y la tienda.

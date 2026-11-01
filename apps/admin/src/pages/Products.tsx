@@ -24,6 +24,7 @@ export function ProductsPage() {
   const stock = (params.get("stock") ?? "all") as StockFilter;
   const categoryId = params.get("categoria") ?? "";
   const brandId = params.get("marca") ?? "";
+  const online = params.get("tienda") ?? "";
   const page = Number(params.get("pagina") ?? 1) || 1;
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -36,11 +37,11 @@ export function ProductsPage() {
     const [categories, brands] = await Promise.all([get<Named[]>("/categories"), get<Named[]>("/brands")]);
     return { categories, brands };
   });
-  const search = new URLSearchParams({ status, stock, page: String(page), pageSize: "25", ...(query && { q: query }), ...(categoryId && { categoryId }), ...(brandId && { brandId }) });
+  const search = new URLSearchParams({ status, stock, page: String(page), pageSize: "25", ...(query && { q: query }), ...(categoryId && { categoryId }), ...(brandId && { brandId }), ...(online && { online: online === "si" ? "yes" : "no" }) });
   const { data, error, loading, reload } = useLoad(() => get<Paginated<ProductListItem>>(`/products?${search}`), [search.toString()]);
   const canWrite = can("catalog:write");
   const showValue = can("costs:read");
-  const filtered = Boolean(query || categoryId || brandId || stock !== "all");
+  const filtered = Boolean(query || categoryId || brandId || online || stock !== "all");
 
   return (
     <>
@@ -67,6 +68,11 @@ export function ProductsPage() {
             <select className="nx-select" aria-label="Marca" value={brandId} onChange={(e) => set("marca", e.target.value)}>
               <option value="">Todas las marcas</option>
               {names.data?.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <select className="nx-select" aria-label="Tienda en línea" value={online} onChange={(e) => set("tienda", e.target.value)}>
+              <option value="">Tienda: todos</option>
+              <option value="si">En la tienda</option>
+              <option value="no">Fuera de la tienda</option>
             </select>
             <Segmented label="Existencias" value={stock} onChange={(v) => set("stock", v === "all" ? "" : v)} options={[{ id: "all", label: "Todos" }, { id: "low", label: "Stock bajo" }, { id: "out", label: "Agotados" }]} />
           </div>
@@ -101,7 +107,7 @@ export function ProductsPage() {
                         <Thumb image={p.image} alt="" />
                         <div>
                           <Link to={`/productos/${p.id}`} style={{ color: "inherit", textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>{p.name}</Link>
-                          <div className="nx-sub">{p.variantCount > 1 ? `${p.variantCount} variantes` : p.sku}</div>
+                          <div className="nx-sub">{p.variantCount > 1 ? `${p.variantCount} variantes` : p.sku}{p.online && <span style={{ fontFamily: "var(--font-sans)", color: "var(--accent-text)" }}> · En tienda</span>}</div>
                         </div>
                       </div>
                     </td>

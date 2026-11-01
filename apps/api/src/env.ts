@@ -5,6 +5,8 @@ export interface Env {
   APP_ENV: "development" | "staging" | "production";
   /** Public URL of the dashboard, used to build links in emails. */
   APP_URL: string;
+  /** Public URL of the online store (Cloudflare Pages), used in order links. */
+  STORE_URL: string;
   DB_CONTROL: D1Database;
   DB_TENANT_DEFAULT: D1Database;
   BUCKET: R2Bucket;

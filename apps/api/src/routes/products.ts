@@ -43,6 +43,7 @@ const listQuery = z.object({
   brandId: z.string().max(40).optional(),
   status: z.enum(["active", "archived"]).default("active"),
   stock: z.enum(["all", "low", "out"]).default("all"),
+  online: z.enum(["yes", "no"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -67,7 +68,7 @@ WITH st AS (
 )`;
 
 type ListRow = {
-  id: string; name: string; images: string; unit: string; track_inventory: number; status: "active" | "archived";
+  id: string; name: string; images: string; unit: string; track_inventory: number; online: number; status: "active" | "archived";
   category: string | null; brand: string | null; variant_count: number; price_min: number; price_max: number;
   stock: number; out_count: number; low_count: number; value_milli: number; sku: string;
 };
@@ -98,6 +99,7 @@ async function loadProduct(c: { var: AppEnv["Variables"] }, id: string): Promise
     taxRateId: p.taxRateId,
     unit: p.unit as UnitCode,
     trackInventory: p.trackInventory,
+    online: p.online,
     optionNames: p.optionNames,
     images: p.images,
     status: p.status,
@@ -147,6 +149,7 @@ export const productRoutes = new Hono<AppEnv>()
     const q = query.q ? normalizeSearch(query.q) : "";
     if (q) add("instr(p.search_text, ?) > 0", q);
     if (query.categoryId) add("p.category_id = ?", query.categoryId);
+    if (query.online) add("p.online = ?", query.online === "yes" ? 1 : 0);
     if (query.brandId) add("p.brand_id = ?", query.brandId);
     if (query.stock === "out") where.push("p.track_inventory = 1 AND agg.out_count > 0");
     if (query.stock === "low") where.push("p.track_inventory = 1 AND (agg.out_count > 0 OR agg.low_count > 0)");
@@ -159,7 +162,7 @@ export const productRoutes = new Hono<AppEnv>()
       d1.prepare(`${AGGREGATES} SELECT COUNT(*) AS total ${from}`).bind(...params),
       d1
         .prepare(
-          `${AGGREGATES} SELECT p.id, p.name, p.images, p.unit, p.track_inventory, p.status, c.name AS category, b.name AS brand,
+          `${AGGREGATES} SELECT p.id, p.name, p.images, p.unit, p.track_inventory, p.online, p.status, c.name AS category, b.name AS brand,
              agg.variant_count, agg.price_min, agg.price_max, agg.stock, agg.out_count, agg.low_count, agg.value_milli, agg.sku
            ${from} ORDER BY p.name COLLATE NOCASE, p.id LIMIT ${query.pageSize} OFFSET ${offset}`,
         )
@@ -178,6 +181,7 @@ export const productRoutes = new Hono<AppEnv>()
         unit: r.unit as UnitCode,
         trackInventory: Boolean(r.track_inventory),
         status: r.status,
+        online: Boolean(r.online),
         variantCount: r.variant_count,
         priceMin: r.price_min,
         priceMax: r.price_max,
@@ -308,6 +312,7 @@ export const productRoutes = new Hono<AppEnv>()
       taxRateId: input.taxRateId,
       unit: input.unit,
       trackInventory: input.trackInventory,
+      online: input.online,
       optionNames: input.optionNames,
       images: input.images,
     };

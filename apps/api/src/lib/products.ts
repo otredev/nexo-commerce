@@ -108,6 +108,7 @@ export function createProductStatements(
         taxRateId: input.taxRateId,
         unit: input.unit,
         trackInventory: input.trackInventory,
+        online: input.online ?? false,
         optionNames: input.optionNames,
         images: input.images,
         searchText: searchTextFor(input.name, vs),

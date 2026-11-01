@@ -89,6 +89,7 @@ export interface ProductListItem {
   unit: UnitCode;
   trackInventory: boolean;
   status: "active" | "archived";
+  online: boolean;
   variantCount: number;
   priceMin: number;
   priceMax: number;
@@ -132,6 +133,7 @@ export interface ProductDetail {
   taxRateId: string | null;
   unit: UnitCode;
   trackInventory: boolean;
+  online: boolean;
   optionNames: string[];
   images: string[];
   status: "active" | "archived";
@@ -332,7 +334,9 @@ export interface CashSession {
 
 export interface DashboardData {
   today: string;
-  sales: { count: number; totalCents: number; avgTicketCents: number; grossProfitCents: number | null; yesterdayTotalCents: number };
+  sales: { count: number; totalCents: number; avgTicketCents: number; grossProfitCents: number | null; yesterdayTotalCents: number; onlineCount: number; onlineTotalCents: number };
+  /** Online orders waiting to be handled (null when the store is off). */
+  orders: { pending: number; open: number } | null;
   days: Array<{ date: string; totalCents: number; count: number }>;
   topProducts: Array<{ productId: string; name: string; options: string[]; quantity: number; unit: UnitCode; totalCents: number }>;
   openSessions: Array<{ id: string; locationName: string; openedBy: string | null; openedAt: string }>;
@@ -538,4 +542,168 @@ export interface StockCountDetail extends StockCountListItem {
   /** True when the viewer sees expected stock and differences. */
   showExpected: boolean;
   items: StockCountItem[];
+}
+
+/* ---------- Phase 4: online store ---------- */
+
+export interface StoreSettings {
+  enabled: boolean;
+  locationId: string | null;
+  tagline: string | null;
+  about: string | null;
+  pickupEnabled: boolean;
+  pickupInstructions: string | null;
+  deliveryEnabled: boolean;
+  deliveryFeeCents: number;
+  freeDeliveryFromCents: number | null;
+  deliveryArea: string | null;
+  minOrderCents: number;
+  payOnDelivery: boolean;
+  transferEnabled: boolean;
+  transferInstructions: string | null;
+  whatsapp: string | null;
+  notifyEmail: string | null;
+  holdHours: number;
+  /** Read-only: public address of the store and how many products are published. */
+  slug: string;
+  url: string;
+  publishedCount: number;
+  activeCount: number;
+}
+
+/** Public view of a business's store. */
+export interface StoreInfo {
+  slug: string;
+  name: string;
+  tagline: string | null;
+  about: string | null;
+  logo: string | null;
+  currency: string;
+  locale: string;
+  pricesIncludeTax: boolean;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  whatsapp: string | null;
+  pickupEnabled: boolean;
+  pickupInstructions: string | null;
+  pickupAddress: string | null;
+  deliveryEnabled: boolean;
+  deliveryFeeCents: number;
+  freeDeliveryFromCents: number | null;
+  deliveryArea: string | null;
+  minOrderCents: number;
+  payOnDelivery: boolean;
+  transferEnabled: boolean;
+  categories: Array<{ id: string; name: string; count: number }>;
+}
+
+export interface StoreVariant {
+  id: string;
+  options: string[];
+  sku: string;
+  /** Price before tax handling, as stored. */
+  priceCents: number;
+  /** What the customer pays per unit (with tax). */
+  displayPriceCents: number;
+  /** null when the product does not track inventory (always available). */
+  available: number | null;
+}
+
+export interface StoreProductCard {
+  id: string;
+  name: string;
+  image: string | null;
+  categoryId: string | null;
+  /** Lowest display price of its variants; `priceVaries` when they differ. */
+  fromPriceCents: number;
+  priceVaries: boolean;
+  soldOut: boolean;
+  lowStock: boolean;
+}
+
+export interface StoreProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  images: string[];
+  categoryId: string | null;
+  categoryName: string | null;
+  brandName: string | null;
+  unit: UnitCode;
+  optionNames: string[];
+  taxRateBps: number;
+  variants: StoreVariant[];
+}
+
+export interface OrderItem {
+  id: string;
+  variantId: string;
+  productId: string;
+  name: string;
+  options: string[];
+  sku: string;
+  unit: UnitCode;
+  image: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  taxRateBps: number;
+  totalCents: number;
+}
+
+/** What the customer sees on the tracking page. */
+export interface PublicOrder {
+  number: number;
+  status: import("./store").OrderStatus;
+  fulfillment: import("./store").Fulfillment;
+  paymentMethod: import("./store").OnlinePaymentMethod;
+  paymentStatus: "pending" | "paid";
+  customerName: string;
+  address: string | null;
+  notes: string | null;
+  items: OrderItem[];
+  subtotalCents: number;
+  taxCents: number;
+  shippingCents: number;
+  totalCents: number;
+  createdAt: string;
+  confirmedAt: string | null;
+  readyAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  canCancel: boolean;
+  transferInstructions: string | null;
+  pickupInstructions: string | null;
+  pickupAddress: string | null;
+}
+
+export interface OrderListItem {
+  id: string;
+  number: number;
+  status: import("./store").OrderStatus;
+  fulfillment: import("./store").Fulfillment;
+  paymentMethod: import("./store").OnlinePaymentMethod;
+  paymentStatus: "pending" | "paid";
+  customerName: string;
+  customerPhone: string;
+  itemsCount: number;
+  totalCents: number;
+  createdAt: string;
+}
+
+export interface OrderDetail extends Omit<PublicOrder, "canCancel" | "transferInstructions" | "pickupInstructions" | "pickupAddress"> {
+  id: string;
+  token: string;
+  trackingUrl: string;
+  locationId: string;
+  locationName: string;
+  customerEmail: string;
+  customerPhone: string;
+  paidMethod: string | null;
+  paidReference: string | null;
+  paidAt: string | null;
+  costCents: number | null;
+  completedByName: string | null;
+  cancelledBy: "customer" | "staff" | "system" | null;
 }

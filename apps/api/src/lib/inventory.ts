@@ -31,7 +31,7 @@ export type Movement =
       note?: string | null;
       reference?: string | null;
       /** Type stored in the Kardex when it is not the kind itself. */
-      type?: "return" | "purchase" | "transfer_in";
+      type?: "return" | "purchase" | "transfer_in" | "order_cancel";
     }
   | {
       kind: "out";
@@ -41,7 +41,7 @@ export type Movement =
       reason: string;
       note?: string | null;
       reference?: string | null;
-      type?: "sale" | "transfer_out";
+      type?: "sale" | "transfer_out" | "order";
     }
   | {
       /** Physical count: sets the stock to an absolute quantity. */
@@ -179,7 +179,7 @@ export function countAdjustmentStatements(d1: D1Database, actor: MovementActor, 
  */
 export function transitionStatement(
   d1: D1Database,
-  table: "purchase_orders" | "transfers" | "stock_counts",
+  table: "purchase_orders" | "transfers" | "stock_counts" | "orders",
   where: { id: string; tenantId: string },
   from: readonly string[],
   to: string,

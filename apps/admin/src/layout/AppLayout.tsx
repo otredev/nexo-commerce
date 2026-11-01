@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
+import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
-type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean };
+type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean; badge?: "orders" };
 const NAV: Array<{ group?: string; items: NavItem[] }> = [
   {
     items: [
@@ -18,6 +19,13 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
     items: [
       { to: "/ventas", label: "Ventas", icon: Receipt, permission: "sales:read" },
       { to: "/caja", label: "Cortes de caja", icon: Wallet, permission: "cash:operate" },
+    ],
+  },
+  {
+    group: "Tienda en línea",
+    items: [
+      { to: "/pedidos", label: "Pedidos", icon: ShoppingBag, permission: "orders:read", badge: "orders" },
+      { to: "/tienda", label: "Ajustes de la tienda", icon: Globe, permission: "store:write" },
     ],
   },
   {
@@ -69,6 +77,9 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/traspasos$/, "Traspasos"],
   [/^\/conteos\/.+/, "Conteo físico"],
   [/^\/conteos$/, "Conteos físicos"],
+  [/^\/pedidos\/.+/, "Pedido"],
+  [/^\/pedidos$/, "Pedidos en línea"],
+  [/^\/tienda$/, "Tienda en línea"],
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],
@@ -81,6 +92,17 @@ export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => setOpen(false), [location.pathname]);
+  // New online orders, refreshed every minute and on every page change.
+  const [newOrders, setNewOrders] = useState(0);
+  const canOrders = Boolean(me) && can("orders:read");
+  useEffect(() => {
+    if (!canOrders) return;
+    let alive = true;
+    const load = () => get<{ pending: number }>("/orders/counts").then((r) => alive && setNewOrders(r.pending), () => {});
+    void load();
+    const id = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 60_000);
+    return () => { alive = false; clearInterval(id); };
+  }, [canOrders, location.pathname]);
   if (!me) return null;
 
   return (
@@ -97,10 +119,11 @@ export function AppLayout() {
           return (
             <nav className="nx-nav" key={i}>
               {section.group && <div className="nx-nav__group">{section.group}</div>}
-              {items.map(({ to, label, icon: Icon, end }) => (
+              {items.map(({ to, label, icon: Icon, end, badge }) => (
                 <NavLink key={to} to={to} end={end} className="nx-nav__item">
                   <Icon className="nx-icon" aria-hidden="true" />
                   {label}
+                  {badge === "orders" && newOrders > 0 && <span className="nx-nav__badge" aria-label={`${newOrders} nuevos`}>{newOrders}</span>}
                 </NavLink>
               ))}
             </nav>

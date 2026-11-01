@@ -4,9 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev public --port 8788",
-    "deploy:staging": "wrangler pages deploy public --project-name nexo-store --branch staging",
-    "deploy:production": "wrangler pages deploy public --project-name nexo-store --branch main"
+    "dev": "vite",
+    "build": "tsc -p . && tsc -p functions && vite build",
+    "typecheck": "tsc -p . && tsc -p functions",
+    "preview": "wrangler pages dev dist --port 8788",
+    "deploy:staging": "wrangler pages deploy dist --project-name nexo-store --branch staging",
+    "deploy:production": "wrangler pages deploy dist --project-name nexo-store --branch main"
   },
-  "devDependencies": { "wrangler": "^4.156.0" }
+  "dependencies": {
+    "@nexo/shared": "*",
+    "@nexo/ui": "*",
+    "lucide-react": "^1.66.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.5",
+    "wrangler": "^4.156.0"
+  }
 }

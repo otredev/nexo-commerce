@@ -118,6 +118,8 @@ export const productInputSchema = z
     taxRateId: z.string().max(40).nullable().default(null),
     unit: z.enum(UNIT_CODES).default("unit"),
     trackInventory: z.boolean().default(true),
+    /** Published in the online store. */
+    online: z.boolean().default(false),
     /** Option names, e.g. ["Talla", "Color"]. Empty → simple product with one variant. */
     optionNames: z.array(z.string().trim().min(1, "Requerido").max(30)).max(3).default([]),
     images: z.array(z.string().max(300)).max(8).default([]),
@@ -342,4 +344,72 @@ export const countAddItemsSchema = z.object({ variantIds: z.array(id).min(1).max
 export const completeCountSchema = z.object({
   /** Lines nobody counted are set to 0 instead of being left as they are. */
   zeroUncounted: z.boolean().default(false),
+});
+
+/* ---------- Phase 4: online store ---------- */
+
+export const storeSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    locationId: id.nullable().default(null),
+    tagline: optText(140),
+    about: optText(2000),
+    pickupEnabled: z.boolean(),
+    pickupInstructions: optText(500),
+    deliveryEnabled: z.boolean(),
+    deliveryFeeCents: cents.default(0),
+    freeDeliveryFromCents: cents.nullable().default(null),
+    deliveryArea: optText(500),
+    minOrderCents: cents.default(0),
+    payOnDelivery: z.boolean(),
+    transferEnabled: z.boolean(),
+    transferInstructions: optText(1000),
+    whatsapp: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, "Solo números").nullable().default(null).transform((v) => (v ? v.replace(/[^\d+]/g, "") : null)),
+    notifyEmail: z.union([email, z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
+    holdHours: z.number().int().min(0).max(720).default(48),
+  })
+  .superRefine((s, ctx) => {
+    if (s.enabled && !s.locationId) ctx.addIssue({ code: "custom", path: ["locationId"], message: "Elige qué ubicación surte los pedidos" });
+    if (!s.pickupEnabled && !s.deliveryEnabled) ctx.addIssue({ code: "custom", path: ["pickupEnabled"], message: "Activa recoger en tienda, envío a domicilio o ambos" });
+    if (!s.payOnDelivery && !s.transferEnabled) ctx.addIssue({ code: "custom", path: ["payOnDelivery"], message: "Activa al menos una forma de pago" });
+    if (s.transferEnabled && !s.transferInstructions) ctx.addIssue({ code: "custom", path: ["transferInstructions"], message: "Escribe los datos para transferir" });
+  });
+export type StoreSettingsInput = z.input<typeof storeSettingsSchema>;
+
+export const storeOrderSchema = z
+  .object({
+    clientId: z.string().min(8).max(64),
+    items: z
+      .array(z.object({ variantId: id, quantity: z.number().positive("La cantidad debe ser mayor a 0").max(10_000) }))
+      .min(1, "El carrito está vacío")
+      .max(100, "Máximo 100 productos por pedido"),
+    fulfillment: z.enum(["pickup", "delivery"]),
+    customerName: z.string().trim().min(2, "Escribe tu nombre").max(120),
+    customerEmail: email,
+    customerPhone: z.string().trim().min(7, "Escribe un teléfono de contacto").max(32).regex(/^[+\d\s()-]+$/, "Teléfono no válido"),
+    address: optText(500),
+    notes: optText(500),
+    paymentMethod: z.enum(["on_delivery", "transfer"]),
+    /** What the customer saw; the order is rejected if the server total differs (prices changed). */
+    expectedTotalCents: cents,
+  })
+  .superRefine((o, ctx) => {
+    if (o.fulfillment === "delivery" && (!o.address || o.address.length < 10)) ctx.addIssue({ code: "custom", path: ["address"], message: "Escribe la dirección completa de entrega" });
+  });
+export type StoreOrderInput = z.input<typeof storeOrderSchema>;
+
+export const orderPaymentSchema = z.object({
+  method: z.enum(PAYMENT_CODES),
+  reference: optText(80),
+});
+
+export const completeOrderSchema = z.object({
+  /** Required when the order is not paid yet. */
+  payment: orderPaymentSchema.nullable().default(null),
+});
+
+export const publishProductsSchema = z.object({
+  /** null → every active product. */
+  productIds: z.array(id).max(500).nullable(),
+  online: z.boolean(),
 });

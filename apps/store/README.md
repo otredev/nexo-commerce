@@ -1,11 +1,12 @@
-# Tienda online (Fase 4)
+# Tienda en línea (Fase 4)
 
-Marcador de posición para la tienda pública, que se desplegará en **Cloudflare Pages**.
+App React publicada en **Cloudflare Pages**. Cada negocio vive en `/<slug>`.
 
-Plan para la Fase 4:
-- Astro con SSR en Pages, para buen SEO.
-- Cada negocio en `<slug>.<dominio>`; el slug se resuelve contra `tenant_domains` / `tenants.slug` de la D1 de control.
-- Lectura del catálogo a través del Worker de la API con un **service binding** (sin salir a internet).
-- Mismo sistema de diseño: `@nexo/ui/styles.css` (estilo `body-lg` y `display` para la portada).
+- `src/` — catálogo, producto con variantes, carrito (en `localStorage` por tienda), pago del pedido y seguimiento.
+- `functions/api/[[path]].ts` — reenvía solo `/api/store/*` al Worker de la API por service binding.
+- `functions/files/[[path]].ts` — imágenes de R2 a través de la API.
+- `functions/_middleware.ts` — pone título, descripción e imagen reales en el HTML para compartir y buscadores.
+- `wrangler.toml` — proyecto de Pages y service bindings por entorno.
 
-Hoy solo publica una página estática para reservar el proyecto de Pages.
+Desarrollo: `npm run dev` en la raíz levanta la tienda en http://localhost:5174 (Vite reenvía `/api/store` y `/files` a `wrangler dev`).
+Para probar las Functions tal como en producción: `npm run build -w @nexo/store && cd apps/store && npx wrangler pages dev dist --port 8788` con la API corriendo.

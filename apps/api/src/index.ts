@@ -24,6 +24,10 @@ import { supplierRoutes } from "./routes/suppliers";
 import { purchaseRoutes } from "./routes/purchases";
 import { transferRoutes } from "./routes/transfers";
 import { countRoutes } from "./routes/counts";
+import { orderRoutes } from "./routes/orders";
+import { storeAdminRoutes } from "./routes/storeAdmin";
+import { storeRoutes } from "./routes/store";
+import { expireOrders } from "./lib/orders";
 
 /** Routes that need a session. Each module receives c.var.auth with the tenant's database. */
 const protectedApi = new Hono<AppEnv>()
@@ -46,17 +50,26 @@ const protectedApi = new Hono<AppEnv>()
   .route("/suppliers", supplierRoutes)
   .route("/purchases", purchaseRoutes)
   .route("/transfers", transferRoutes)
-  .route("/counts", countRoutes);
+  .route("/counts", countRoutes)
+  .route("/orders", orderRoutes)
+  .route("/store-settings", storeAdminRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)
   .get("/api/health", (c) => c.json({ ok: true, env: c.env.APP_ENV, time: new Date().toISOString() }))
   .route("/api/auth", authRoutes)
+  // Public online store (no session). Must be mounted before the protected API.
+  .route("/api/store", storeRoutes)
   // Development only: run the daily backup on demand.
   .post("/api/dev/backup", async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
     await cleanupControl(c.env);
     return c.json(await runBackup(c.env));
+  })
+  // Development only: run the hourly order-expiry job on demand.
+  .post("/api/dev/expire-orders", async (c) => {
+    if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
+    return c.json({ expired: await expireOrders(c.env) });
   })
   .route("/api", protectedApi)
   .route("/files", fileRoutes)
@@ -69,7 +82,11 @@ export type AppType = typeof app;
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (event.cron === "15 * * * *") {
+      ctx.waitUntil(expireOrders(env).then((n) => { if (n) console.log(`[orders] released ${n} expired orders`); }));
+      return;
+    }
     ctx.waitUntil(
       (async () => {
         await cleanupControl(env);
