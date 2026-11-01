@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { computeSale, formatMoney, shippingFor, unitInfo, type Fulfillment, type StoreInfo, type UnitCode } from "@nexo/shared";
+import { formatMoney, priceCart, promotionFor, promoUnitPrice, shippingFor, unitInfo, type CouponRule, type Fulfillment, type StoreInfo, type UnitCode } from "@nexo/shared";
 import { api, RequestError } from "./api";
 
 export interface CartLine {
@@ -16,6 +16,8 @@ export interface CartLine {
   /** null = not tracked (always available). */
   available: number | null;
   quantity: number;
+  /** For category promotions. */
+  categoryId?: string | null;
 }
 
 interface StoreState {
@@ -32,7 +34,13 @@ interface StoreState {
   clear: () => void;
   cartOpen: boolean;
   setCartOpen: (open: boolean) => void;
-  totals: (fulfillment: Fulfillment) => { itemsCents: number; taxCents: number; shippingCents: number; totalCents: number };
+  /** Reloads the store (prices, promotions) after the server says something changed. */
+  reload: () => Promise<void>;
+  coupon: CouponRule | null;
+  setCoupon: (c: CouponRule | null) => void;
+  totals: (fulfillment: Fulfillment) => { itemsCents: number; subtotalCents: number; discountCents: number; couponDiscountCents: number; couponError: string | null; taxCents: number; shippingCents: number; totalCents: number };
+  /** What the customer pays per unit for a cart line, after its promotion. */
+  linePrice: (line: CartLine) => number;
 }
 
 const Ctx = createContext<StoreState | null>(null);
@@ -53,6 +61,7 @@ export function StoreProvider({ slug, children }: { slug: string; children: Reac
   const [error, setError] = useState<RequestError | null>(null);
   const [cart, setCart] = useState<CartLine[]>(() => readCart(slug));
   const [cartOpen, setCartOpen] = useState(false);
+  const [coupon, setCoupon] = useState<CouponRule | null>(null);
 
   useEffect(() => {
     setStore(null);
@@ -60,6 +69,7 @@ export function StoreProvider({ slug, children }: { slug: string; children: Reac
     setCart(readCart(slug));
     api<StoreInfo>("GET", `/${slug}`).then(setStore, (e: RequestError) => setError(e));
   }, [slug]);
+  const reload = useCallback(async () => { setStore(await api<StoreInfo>("GET", `/${slug}`)); }, [slug]);
   useEffect(() => {
     try { localStorage.setItem(key(slug), JSON.stringify(cart)); } catch { /* private mode: the cart lives in memory */ }
   }, [cart, slug]);
@@ -88,12 +98,23 @@ export function StoreProvider({ slug, children }: { slug: string; children: Reac
     clear: () => setCart([]),
     cartOpen,
     setCartOpen,
+    reload,
+    coupon,
+    setCoupon,
+    // Same pricing as the server: promotions per line, then the coupon.
     totals: (fulfillment) => {
-      const t = computeSale(cart.map((l) => ({ unitPriceCents: l.priceCents, quantity: l.quantity, discountCents: 0, taxRateBps: l.taxRateBps })), 0, store?.pricesIncludeTax ?? true);
+      const p = priceCart(
+        cart.map((l) => ({ productId: l.productId, categoryId: l.categoryId ?? null, unitPriceCents: l.priceCents, quantity: l.quantity, taxRateBps: l.taxRateBps })),
+        { promotions: store?.promotions ?? [], coupon, pricesIncludeTax: store?.pricesIncludeTax ?? true, formatMoney: money },
+      );
+      const t = p.totals;
       const shippingCents = store ? shippingFor(store, t.totalCents, fulfillment) : 0;
-      return { itemsCents: t.totalCents, taxCents: t.taxCents, shippingCents, totalCents: t.totalCents + shippingCents };
+      // Subtotal shown with taxes (gross) whatever the pricing mode, like every price in the store.
+      const gross = t.totalCents + t.discountCents;
+      return { itemsCents: t.totalCents, subtotalCents: gross, discountCents: t.discountCents, couponDiscountCents: p.couponDiscountCents, couponError: p.couponError, taxCents: t.taxCents, shippingCents, totalCents: t.totalCents + shippingCents };
     },
-  }), [slug, store, error, money, cart, cartOpen]);
+    linePrice: (line) => promoUnitPrice(line.displayPriceCents, promotionFor(store?.promotions ?? [], line.productId, line.categoryId ?? null)),
+  }), [slug, store, error, money, cart, cartOpen, coupon, reload]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

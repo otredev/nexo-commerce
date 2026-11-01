@@ -67,6 +67,8 @@ export async function toPublicOrder(db: TenantDb, tenantId: string, order: Order
     notes: order.notes,
     items: items.map(toOrderItem),
     subtotalCents: order.subtotalCents,
+    discountCents: order.discountCents,
+    couponCode: order.couponCode,
     taxCents: order.taxCents,
     shippingCents: order.shippingCents,
     totalCents: order.totalCents,

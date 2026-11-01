@@ -130,6 +130,7 @@ export function OrderPage() {
             ))}
           </div>
           <dl className="st-sum" style={{ margin: 0 }}>
+            {order.discountCents > 0 && <div style={{ color: "var(--accent-text)" }}><dt style={{ color: "inherit" }}>Descuentos{order.couponCode && ` (cupón ${order.couponCode})`}</dt><dd>−{money(order.discountCents)}</dd></div>}
             <div><dt>Productos</dt><dd>{money(order.totalCents - order.shippingCents)}</dd></div>
             <div><dt>Envío</dt><dd>{order.shippingCents ? money(order.shippingCents) : "Gratis"}</dd></div>
             <div className="st-sum__total"><dt>Total</dt><dd>{money(order.totalCents)}</dd></div>

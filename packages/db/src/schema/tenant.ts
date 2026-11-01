@@ -289,6 +289,11 @@ export const sales = sqliteTable(
     userName: text("user_name"),
     customerName: text("customer_name"),
     customerContact: text("customer_contact"),
+    /** Customer record (Phase 5); name/contact above stay as the snapshot printed on the receipt. */
+    customerId: text("customer_id"),
+    couponCode: text("coupon_code"),
+    /** Part of discount_cents that came from automatic promotions and the coupon (not given by hand). */
+    promoDiscountCents: integer("promo_discount_cents").notNull().default(0),
     note: text("note"),
     status: text("status", { enum: ["completed", "voided"] }).notNull().default("completed"),
     pricesIncludeTax: integer("prices_include_tax", { mode: "boolean" }).notNull(),
@@ -312,6 +317,7 @@ export const sales = sqliteTable(
     uniqueIndex("sales_tenant_client_uq").on(t.tenantId, t.clientId),
     index("sales_tenant_date_idx").on(t.tenantId, t.businessDate),
     index("sales_session_idx").on(t.sessionId),
+    index("sales_customer_idx").on(t.tenantId, t.customerId),
   ],
 );
 
@@ -339,6 +345,7 @@ export const saleItems = sqliteTable(
     taxCents: integer("tax_cents").notNull(),
     totalCents: integer("total_cents").notNull(),
     unitCostCents: integer("unit_cost_cents").notNull(),
+    promotionId: text("promotion_id"),
     returnedQuantity: integer("returned_quantity").notNull().default(0),
     position: integer("position").notNull(),
   },
@@ -530,7 +537,13 @@ export const purchaseReceipts = sqliteTable(
     /** Supplier invoice or delivery note number. */
     supplierReference: text("supplier_reference"),
     note: text("note"),
+    /** Net value received. */
     totalCents: integer("total_cents").notNull(),
+    /** Accounts payable (Phase 5): tax of the receipt, what is owed (net + tax), paid so far and due date. */
+    taxCents: integer("tax_cents").notNull().default(0),
+    amountDueCents: integer("amount_due_cents").notNull().default(0),
+    paidCents: integer("paid_cents").notNull().default(0),
+    dueDate: text("due_date"),
     userId: text("user_id"),
     userName: text("user_name"),
     createdAt: text("created_at").notNull().default(now),
@@ -706,6 +719,10 @@ export const orders = sqliteTable(
     customerName: text("customer_name").notNull(),
     customerEmail: text("customer_email").notNull(),
     customerPhone: text("customer_phone").notNull(),
+    customerId: text("customer_id"),
+    couponCode: text("coupon_code"),
+    /** Promotions + coupon. */
+    discountCents: integer("discount_cents").notNull().default(0),
     address: text("address"),
     notes: text("notes"),
     /** What the customer chose: pay on pickup/delivery or bank transfer. */
@@ -741,6 +758,7 @@ export const orders = sqliteTable(
     uniqueIndex("orders_tenant_client_uq").on(t.tenantId, t.clientId),
     uniqueIndex("orders_token_uq").on(t.token),
     index("orders_tenant_status_idx").on(t.tenantId, t.status, t.createdAt),
+    index("orders_customer_idx").on(t.tenantId, t.customerId),
   ],
 );
 
@@ -761,6 +779,8 @@ export const orderItems = sqliteTable(
     quantity: integer("quantity").notNull(),
     unitPriceCents: integer("unit_price_cents").notNull(),
     taxRateBps: integer("tax_rate_bps").notNull(),
+    discountCents: integer("discount_cents").notNull().default(0),
+    promotionId: text("promotion_id"),
     netCents: integer("net_cents").notNull(),
     taxCents: integer("tax_cents").notNull(),
     totalCents: integer("total_cents").notNull(),
@@ -768,4 +788,108 @@ export const orderItems = sqliteTable(
     position: integer("position").notNull(),
   },
   (t) => [index("order_items_order_idx").on(t.orderId)],
+);
+
+
+/* ======================================================================
+ * Phase 5: customers, promotions, coupons and accounts payable.
+ * ==================================================================== */
+
+export const customers = sqliteTable(
+  "customers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    /** Lowercase. */
+    email: text("email"),
+    /** Digits only, to match however it was typed. */
+    phone: text("phone"),
+    taxId: text("tax_id"),
+    address: text("address"),
+    notes: text("notes"),
+    acceptsMarketing: integer("accepts_marketing", { mode: "boolean" }).notNull().default(false),
+    /** Where it was created: dashboard, POS or the online store. */
+    source: text("source", { enum: ["admin", "pos", "online"] }).notNull().default("admin"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    searchText: text("search_text").notNull().default(""),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [
+    index("customers_tenant_name_idx").on(t.tenantId, t.name),
+    index("customers_tenant_email_idx").on(t.tenantId, t.email),
+    index("customers_tenant_phone_idx").on(t.tenantId, t.phone),
+  ],
+);
+
+/** Automatic percentage discount on everything, some categories or some products, for a date range. */
+export const promotions = sqliteTable(
+  "promotions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    percentBps: integer("percent_bps").notNull(),
+    target: text("target", { enum: ["all", "category", "product"] }).notNull(),
+    targetIds: text("target_ids", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
+    channel: text("channel", { enum: ["all", "pos", "online"] }).notNull().default("all"),
+    /** Inclusive local dates (business time zone). null = no limit. */
+    startsOn: text("starts_on"),
+    endsOn: text("ends_on"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [index("promotions_tenant_idx").on(t.tenantId, t.active)],
+);
+
+export const coupons = sqliteTable(
+  "coupons",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    /** Uppercase. */
+    code: text("code").notNull(),
+    description: text("description"),
+    kind: text("kind", { enum: ["percent", "amount"] }).notNull(),
+    /** Basis points for percent, cents for amount. */
+    value: integer("value").notNull(),
+    minSubtotalCents: integer("min_subtotal_cents").notNull().default(0),
+    maxUses: integer("max_uses"),
+    usesCount: integer("uses_count").notNull().default(0),
+    channel: text("channel", { enum: ["all", "pos", "online"] }).notNull().default("all"),
+    startsOn: text("starts_on"),
+    endsOn: text("ends_on"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [
+    uniqueIndex("coupons_tenant_code_uq").on(t.tenantId, t.code),
+    // Two checkouts using the last available redemption at once: one batch fails.
+    check("coupons_uses_le_max", sql`${t.maxUses} IS NULL OR ${t.usesCount} <= ${t.maxUses}`),
+  ],
+);
+
+/** A payment to a supplier against one receipt (invoice). */
+export const supplierPayments = sqliteTable(
+  "supplier_payments",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    supplierId: text("supplier_id").notNull(),
+    receiptId: text("receipt_id").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    method: text("method").notNull(),
+    reference: text("reference"),
+    paidOn: text("paid_on").notNull(),
+    note: text("note"),
+    /** Cash session it was taken from, when paid from the drawer. */
+    sessionId: text("session_id"),
+    userId: text("user_id"),
+    userName: text("user_name"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("supplier_payments_receipt_idx").on(t.receiptId), index("supplier_payments_supplier_idx").on(t.tenantId, t.supplierId)],
 );

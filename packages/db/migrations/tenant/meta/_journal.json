@@ -36,6 +36,13 @@
       "when": 1793561990444,
       "tag": "0004_online_store",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793563676229,
+      "tag": "0005_customers_promotions",
+      "breakpoints": true
     }
   ]
 }

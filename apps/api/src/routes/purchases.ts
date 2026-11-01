@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { tenant } from "@nexo/db";
 import {
+  businessDate,
   computePurchase,
   docNumber,
   dueDate,
@@ -120,7 +121,7 @@ export async function loadOrder(c: Context<AppEnv>, id: string): Promise<Purchas
       supplierReference: r.supplierReference,
       note: r.note,
       totalCents: r.totalCents,
-      dueDate: dueDate(r.createdAt.slice(0, 10), s.paymentTermsDays),
+      dueDate: r.dueDate ?? dueDate(r.createdAt.slice(0, 10), s.paymentTermsDays),
       items: receiptItems
         .filter((x) => x.receiptId === r.id)
         .map((x) => {
@@ -341,12 +342,19 @@ export const purchaseRoutes = new Hono<AppEnv>()
     const receiptId = newId();
     const now = new Date().toISOString();
     const total = lines.reduce((a, l) => a + Math.round((l.cost * l.q) / 1000), 0);
+    // Accounts payable: what is owed for this invoice (net + tax) and when.
+    const tax = lines.reduce((a, l) => a + Math.round((Math.round((l.cost * l.q) / 1000) * l.item.taxRateBps) / 10_000), 0);
+    const [supplier, settings] = await Promise.all([
+      db.select({ terms: suppliers.paymentTermsDays }).from(suppliers).where(eq(suppliers.id, o.supplierId)).get(),
+      getSettings(c),
+    ]);
+    const due = dueDate(businessDate(settings.timezone), supplier?.terms ?? 0);
     const actor = { tenantId: t.id, userId: user.id, userName: user.name };
     const label = docNumber("purchase", o.number);
     const statements: D1PreparedStatement[] = [
       transitionStatement(d1, "purchase_orders", { id: o.id, tenantId: t.id }, ["ordered", "partial"], "partial", { updated_at: now }),
       d1.prepare("UPDATE purchase_orders SET received_cents = received_cents + ?1 WHERE id = ?2 AND tenant_id = ?3").bind(total, o.id, t.id),
-      toStatement(d1, db.insert(purchaseReceipts).values({ id: receiptId, tenantId: t.id, orderId: o.id, locationId: o.locationId, supplierReference: input.supplierReference, note: input.note, totalCents: total, userId: user.id, userName: user.name, createdAt: now })),
+      toStatement(d1, db.insert(purchaseReceipts).values({ id: receiptId, tenantId: t.id, orderId: o.id, locationId: o.locationId, supplierReference: input.supplierReference, note: input.note, totalCents: total, taxCents: tax, amountDueCents: total + tax, dueDate: due, userId: user.id, userName: user.name, createdAt: now })),
     ];
     for (const l of lines) {
       statements.push(

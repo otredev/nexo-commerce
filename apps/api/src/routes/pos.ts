@@ -29,7 +29,7 @@ export const posRoutes = new Hono<AppEnv>().get("/products", requirePermission("
   if (input.categoryId) where.push(`p.category_id = ${add(input.categoryId)}`);
   const { results } = await d1
     .prepare(
-      `SELECT v.id AS variant_id, p.id AS product_id, p.name, v.options, v.sku, v.barcode, p.unit, p.images, v.price_cents, p.track_inventory,
+      `SELECT v.id AS variant_id, p.id AS product_id, p.category_id, p.name, v.options, v.sku, v.barcode, p.unit, p.images, v.price_cents, p.track_inventory,
          COALESCE(tr.rate_bps, (SELECT rate_bps FROM tax_rates WHERE tenant_id = ?1 AND is_default = 1 LIMIT 1), 0) AS rate_bps,
          sl.quantity AS qty, ${exact} AS exact
        FROM variants v JOIN products p ON p.id = v.product_id
@@ -53,6 +53,7 @@ export const posRoutes = new Hono<AppEnv>().get("/products", requirePermission("
     priceCents: r.price_cents as number,
     taxRateBps: r.rate_bps as number,
     trackInventory: Boolean(r.track_inventory),
+    categoryId: r.category_id as string | null,
     stock: r.track_inventory ? fromMilli((r.qty as number | null) ?? 0) : null,
     exact: Boolean(r.exact),
   }));

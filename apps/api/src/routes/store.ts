@@ -7,8 +7,13 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { control, controlDb, tenant } from "@nexo/db";
 import {
-  computeSale,
+  businessDate,
+  couponProblem,
   displayPrice,
+  normalizeCode,
+  priceCart,
+  promotionFor,
+  promoUnitPrice,
   formatMoney,
   formatQty,
   fromMilli,
@@ -27,8 +32,9 @@ import {
 import type { AppEnv, TenantRef } from "../env";
 import { newId, randomToken } from "../lib/crypto";
 import { AppError } from "../lib/errors";
-import { chunk, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
+import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
 import { cancelStatements, loadOrderRows, sendOrderEmail, toPublicOrder } from "../lib/orders";
+import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
 import { json } from "../lib/validate";
 
@@ -53,7 +59,8 @@ async function resolveStore(c: Context<AppEnv>) {
     db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get(),
   ]);
   if (!store?.enabled || !store.locationId || !biz) throw notFound();
-  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz };
+  const today = businessDate(biz.timezone);
+  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz, today };
 }
 
 /** Tax rate of each product: its own or the business default. */
@@ -78,7 +85,7 @@ const short = { "Cache-Control": "public, max-age=30" };
 export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Store front: name, logo, rules, categories ---------- */
   .get("/:slug", async (c) => {
-    const { tenant: t, d1, store, biz } = await resolveStore(c);
+    const { tenant: t, d1, db, store, biz, today } = await resolveStore(c);
     const { results: cats } = await d1
       .prepare(
         `SELECT c.id, c.name, COUNT(p.id) AS count FROM categories c JOIN products p ON p.category_id = c.id AND ${PUBLISHED.replaceAll("p.tenant_id = ?1", "p.tenant_id = c.tenant_id")}
@@ -87,6 +94,11 @@ export const storeRoutes = new Hono<AppEnv>()
       .bind(t.id)
       .all<{ id: string; name: string; count: number }>();
     const location = await d1.prepare("SELECT name, address FROM locations WHERE id = ?1").bind(store.locationId).first<{ name: string; address: string | null }>();
+    const promotions = await livePromotions(db, t.id, today, "online");
+    const coupon = await d1
+      .prepare("SELECT 1 AS ok FROM coupons WHERE tenant_id = ?1 AND active = 1 AND channel IN ('all', 'online') AND (ends_on IS NULL OR ends_on >= ?2) LIMIT 1")
+      .bind(t.id, today)
+      .first<{ ok: number }>();
     const body: StoreInfo = {
       slug: t.slug,
       name: biz.tradeName,
@@ -111,6 +123,8 @@ export const storeRoutes = new Hono<AppEnv>()
       payOnDelivery: store.payOnDelivery,
       transferEnabled: store.transferEnabled,
       categories: cats,
+      promotions,
+      couponsEnabled: Boolean(coupon),
     };
     return c.json(body, 200, short);
   })
@@ -118,7 +132,8 @@ export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Catalog ---------- */
   .get("/:slug/products", async (c) => {
     const query = listQuery.parse(c.req.query());
-    const { tenant: t, d1, db, store, biz } = await resolveStore(c);
+    const { tenant: t, d1, db, store, biz, today } = await resolveStore(c);
+    const promos = await livePromotions(db, t.id, today, "online");
     const params: unknown[] = [t.id];
     const add = (v: unknown) => { params.push(v); return `?${params.length}`; };
     const where = [PUBLISHED];
@@ -154,7 +169,9 @@ export const storeRoutes = new Hono<AppEnv>()
     const items: StoreProductCard[] = list.map((p) => {
       const own = vs.filter((v) => v.productId === p.id);
       const rate = rateOf(p.tax_rate_id);
-      const prices = own.map((v) => displayPrice(v.price, rate, biz.pricesIncludeTax));
+      const promo = promotionFor(promos, p.id, p.category_id);
+      const regular = own.map((v) => displayPrice(v.price, rate, biz.pricesIncludeTax));
+      const prices = regular.map((v) => promoUnitPrice(v, promo));
       const stock = own.reduce((a, v) => a + Math.max(v.qty ?? 0, 0), 0);
       const tracked = Boolean(p.track_inventory);
       return {
@@ -163,6 +180,7 @@ export const storeRoutes = new Hono<AppEnv>()
         image: (JSON.parse(p.images) as string[])[0] ?? null,
         categoryId: p.category_id,
         fromPriceCents: Math.min(...prices),
+        compareAtCents: promo ? Math.min(...regular) : null,
         priceVaries: new Set(prices).size > 1,
         soldOut: tracked && stock <= 0,
         lowStock: tracked && stock > 0 && stock <= LOW_STOCK_BADGE * 1000,
@@ -172,7 +190,7 @@ export const storeRoutes = new Hono<AppEnv>()
   })
 
   .get("/:slug/products/:id", async (c) => {
-    const { tenant: t, db, store, biz } = await resolveStore(c);
+    const { tenant: t, db, store, biz, today } = await resolveStore(c);
     const p = await db
       .select()
       .from(products)
@@ -191,6 +209,7 @@ export const storeRoutes = new Hono<AppEnv>()
     ]);
     if (!vs.length) throw new AppError(404, "not_found", "Este producto ya no está disponible.");
     const rate = rateOf(p.taxRateId);
+    const promo = promotionFor(await livePromotions(db, t.id, today, "online"), p.id, p.categoryId);
     vs.sort((a, b) => a.position - b.position);
     const body: StoreProduct = {
       id: p.id,
@@ -203,6 +222,7 @@ export const storeRoutes = new Hono<AppEnv>()
       unit: p.unit as UnitCode,
       optionNames: p.optionNames,
       taxRateBps: rate,
+      promotion: promo ? { id: promo.id, name: promo.name, percentBps: promo.percentBps } : null,
       variants: vs.map((v) => ({
         id: v.id,
         options: v.options,
@@ -218,7 +238,7 @@ export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Checkout: one atomic batch that reserves the stock ---------- */
   .post("/:slug/orders", json(storeOrderSchema), async (c) => {
     const input = c.req.valid("json");
-    const { tenant: t, db, d1, store, biz } = await resolveStore(c);
+    const { tenant: t, db, d1, store, biz, today } = await resolveStore(c);
     const ip = c.req.header("cf-connecting-ip") ?? null;
 
     const existing = await db.select({ token: orders.token, number: orders.number }).from(orders).where(and(eq(orders.tenantId, t.id), eq(orders.clientId, input.clientId))).get();
@@ -238,13 +258,13 @@ export const storeRoutes = new Hono<AppEnv>()
     // Current prices, taxes and costs: the store only says what and how much.
     const ids = [...new Set(input.items.map((i) => i.variantId))];
     if (ids.length !== input.items.length) throw new AppError(422, "validation_error", "Un producto aparece dos veces en el carrito.");
-    const rows: Array<{ id: string; productId: string; sku: string; options: string[]; price: number; cost: number; name: string; unit: string; track: boolean; taxRateId: string | null; images: string[] }> = [];
+    const rows: Array<{ id: string; productId: string; sku: string; options: string[]; price: number; cost: number; name: string; unit: string; track: boolean; taxRateId: string | null; images: string[]; categoryId: string | null }> = [];
     for (const part of chunk(ids, 80)) {
       rows.push(
         ...(await db
           .select({
             id: variants.id, productId: variants.productId, sku: variants.sku, options: variants.options, price: variants.priceCents, cost: variants.costCents,
-            name: products.name, unit: products.unit, track: products.trackInventory, taxRateId: products.taxRateId, images: products.images,
+            name: products.name, unit: products.unit, track: products.trackInventory, taxRateId: products.taxRateId, images: products.images, categoryId: products.categoryId,
           })
           .from(variants)
           .innerJoin(products, eq(products.id, variants.productId))
@@ -265,8 +285,21 @@ export const storeRoutes = new Hono<AppEnv>()
       const v = byId.get(item.variantId)!;
       return { unitPriceCents: v.price, quantity: item.quantity, discountCents: 0, taxRateBps: rateOf(v.taxRateId) };
     });
-    const totals = computeSale(lines, 0, biz.pricesIncludeTax);
     const money = (v: number) => formatMoney(v, biz.currency, biz.locale);
+    const coupon = input.couponCode ? await findCoupon(db, t.id, input.couponCode) : null;
+    if (input.couponCode) {
+      const problem = coupon ? couponProblem(toCouponRule(coupon), today, "online") : "Este cupón no existe.";
+      if (problem) throw new AppError(422, "coupon_invalid", problem, { couponCode: problem });
+    }
+    const priced = priceCart(
+      input.items.map((item, i) => {
+        const v = byId.get(item.variantId)!;
+        return { productId: v.productId, categoryId: v.categoryId, unitPriceCents: v.price, quantity: item.quantity, taxRateBps: lines[i]!.taxRateBps };
+      }),
+      { promotions: await livePromotions(db, t.id, today, "online"), coupon: coupon ? toCouponRule(coupon) : null, pricesIncludeTax: biz.pricesIncludeTax, formatMoney: money },
+    );
+    if (priced.couponError) throw new AppError(422, "coupon_invalid", priced.couponError, { couponCode: priced.couponError });
+    const totals = priced.totals;
     if (totals.totalCents < store.minOrderCents) throw new AppError(422, "min_order", `El pedido mínimo es de ${money(store.minOrderCents)}.`);
     const shipping = shippingFor(store, totals.totalCents, input.fulfillment);
     const total = totals.totalCents + shipping;
@@ -279,20 +312,24 @@ export const storeRoutes = new Hono<AppEnv>()
     const now = new Date().toISOString();
     const actor = { tenantId: t.id, userId: null, userName: input.customerName };
     const cost = input.items.reduce((a, item) => a + Math.round((byId.get(item.variantId)!.cost * toMilli(item.quantity)) / 1000), 0);
+    const customer = await customerForOrder(d1, db, t.id, { name: input.customerName, email: input.customerEmail, phone: input.customerPhone });
     const statements: D1PreparedStatement[] = [
       d1.prepare("INSERT INTO counters (tenant_id, name, value) VALUES (?1, 'order', 1) ON CONFLICT(tenant_id, name) DO UPDATE SET value = value + 1").bind(t.id),
       d1
         .prepare(
           `INSERT INTO orders (id, tenant_id, number, token, client_id, location_id, status, fulfillment, customer_name, customer_email, customer_phone, address, notes,
-             payment_method, payment_status, prices_include_tax, subtotal_cents, tax_cents, shipping_cents, total_cents, cost_cents, ip, created_at, updated_at)
-           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20
+             payment_method, payment_status, prices_include_tax, subtotal_cents, tax_cents, shipping_cents, total_cents, cost_cents, ip, created_at, updated_at,
+             customer_id, coupon_code, discount_cents)
+           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20, ?21, ?22, ?23
            FROM counters WHERE tenant_id = ?2 AND name = 'order'`,
         )
         .bind(
           orderId, t.id, token, input.clientId, store.locationId, input.fulfillment, input.customerName, input.customerEmail, input.customerPhone,
           input.fulfillment === "delivery" ? input.address : null, input.notes, input.paymentMethod, biz.pricesIncludeTax ? 1 : 0,
-          totals.subtotalCents, totals.taxCents, shipping, total, cost, ip, now,
+          totals.subtotalCents, totals.taxCents, shipping, total, cost, ip, now, customer.id, coupon?.code ?? null, totals.discountCents,
         ),
+      ...customer.statements,
+      ...(coupon ? [couponUseStatement(d1, coupon.id)] : []),
     ];
     input.items.forEach((item, i) => {
       const v = byId.get(item.variantId)!;
@@ -301,6 +338,7 @@ export const storeRoutes = new Hono<AppEnv>()
         toStatement(d1, db.insert(orderItems).values({
           id: newId(), tenantId: t.id, orderId, variantId: v.id, productId: v.productId, name: v.name, options: v.options, sku: v.sku, unit: v.unit,
           image: v.images[0] ?? null, trackInventory: v.track, quantity: toMilli(item.quantity), unitPriceCents: v.price, taxRateBps: lines[i]!.taxRateBps,
+          discountCents: l.lineDiscountCents + l.cartDiscountCents, promotionId: priced.lines[i]!.promotionId,
           netCents: l.netCents, taxCents: l.taxCents, totalCents: l.totalCents, unitCostCents: v.cost, position: i,
         })),
       );
@@ -314,6 +352,7 @@ export const storeRoutes = new Hono<AppEnv>()
     try {
       await d1.batch(statements);
     } catch (err) {
+      if (isCheckError(err, "coupons_uses_le_max")) throw new AppError(409, "coupon_exhausted", "El cupón se agotó justo ahora. Quítalo para continuar.", { couponCode: "Se agotó" });
       if (isUniqueError(err) && String((err as Error).message).includes("client_id")) {
         const again = await db.select({ token: orders.token, number: orders.number }).from(orders).where(and(eq(orders.tenantId, t.id), eq(orders.clientId, input.clientId))).get();
         if (again) return c.json(again, 200);
@@ -341,6 +380,16 @@ export const storeRoutes = new Hono<AppEnv>()
       );
     }
     return c.json({ token, number: created?.order.number ?? 0 }, 201);
+  })
+
+  /** Checks a coupon code; the store then prices the cart with it (same function as the server). */
+  .post("/:slug/coupons/check", json(z.object({ code: z.string().trim().min(1).max(40) })), async (c) => {
+    const { code } = c.req.valid("json");
+    const { tenant: t, db, today } = await resolveStore(c);
+    const coupon = await findCoupon(db, t.id, normalizeCode(code));
+    const problem = coupon ? couponProblem(toCouponRule(coupon), today, "online") : "Este cupón no existe.";
+    if (problem) throw new AppError(422, "coupon_invalid", problem, { code: problem });
+    return c.json(toCouponRule(coupon!));
   })
 
   /* ---------- Tracking page ---------- */

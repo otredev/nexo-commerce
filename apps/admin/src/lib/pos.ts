@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PosProduct } from "@nexo/shared";
+import type { CouponRule, PosProduct } from "@nexo/shared";
 
 export interface CartLine {
   key: string;
@@ -14,6 +14,8 @@ export interface CartLine {
   quantity: number;
   discountCents: number;
   stock: number | null;
+  /** For category promotions (carts saved before Phase 5 may not have it). */
+  categoryId?: string | null;
 }
 
 export interface Cart {
@@ -21,9 +23,13 @@ export interface Cart {
   discountCents: number;
   customerName: string;
   customerContact: string;
+  /** Registered customer; name and contact above are its snapshot. */
+  customerId?: string | null;
+  /** Validated coupon applied to this sale. */
+  coupon?: CouponRule | null;
 }
 
-export const EMPTY_CART: Cart = { lines: [], discountCents: 0, customerName: "", customerContact: "" };
+export const EMPTY_CART: Cart = { lines: [], discountCents: 0, customerName: "", customerContact: "", customerId: null, coupon: null };
 
 const read = <T,>(key: string, fallback: T): T => {
   try {

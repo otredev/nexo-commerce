@@ -9,6 +9,7 @@ Estado actual:
 - **Fase 2 — Punto de venta:** caja para teclado y escáner, descuentos con límite por rol, impuestos por línea, pagos mixtos con cambio, apertura y cierre ciego de caja, ingresos y retiros, recibo térmico o por correo, historial, anulaciones, devoluciones y dashboard del día.
 - **Fase 3 — Abastecimiento:** proveedores, órdenes de compra con recepciones parciales y costo real de factura, sugerencias de reorden, traspasos entre ubicaciones y conteos físicos con captura ciega y escáner.
 - **Fase 4 — Tienda en línea:** catálogo público en Cloudflare Pages con existencias reales, variantes, carrito, pedidos con recogida o envío, pago al recibir o por transferencia, seguimiento para el cliente con correos, y atención de pedidos desde el panel.
+- **Fase 5 — Crecimiento:** clientes con historial en caja y en línea, promociones automáticas y cupones (iguales en caja y tienda), cuentas por pagar a proveedores y reportes por periodo e inventario.
 
 ---
 
@@ -31,7 +32,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3 y 60 de la Fase 4) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4 y 63 de la Fase 5) |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
 | `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega la API y la tienda |
@@ -55,6 +56,7 @@ scripts/
   smoke-pos.mjs       Prueba de punta a punta de la Fase 2 (ventas, caja, devoluciones, concurrencia).
   smoke-purchasing.mjs Prueba de punta a punta de la Fase 3 (compras, traspasos, conteos, concurrencia).
   smoke-store.mjs     Prueba de punta a punta de la Fase 4 (catálogo público, pedidos, carrera por las últimas piezas).
+  smoke-growth.mjs    Prueba de punta a punta de la Fase 5 (clientes, promociones, cupones, cuentas por pagar, reportes).
 ```
 
 Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie de sesión no necesita CORS.
@@ -145,6 +147,16 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 
 > Pago con tarjeta en línea (pasarela) y dominios propios por negocio (`tenant_domains`) quedan para la Fase 6.
 
+### Clientes, promociones y cuentas por pagar
+
+- **Clientes**: se registran en el panel, en la caja al cobrar o solos con cada pedido en línea (se reconocen por correo o teléfono, escrito como sea). La ficha junta compras en caja y en línea, total, ticket promedio, última compra y lo que más compra. No se borran: se archivan. Exportación a CSV.
+- **Un solo motor de precios** (`priceCart` en `@nexo/shared`) corre en la caja, en la tienda y en el servidor, así que lo que el cliente ve es lo que se cobra. Orden: promoción automática por línea (la mejor, no se suman) → descuento a mano por línea → cupón sobre el subtotal → descuento general a mano.
+- **Promociones automáticas**: porcentaje sobre todo, categorías o productos, con fechas (en la zona horaria del negocio) y canal (caja, tienda o ambos). En la tienda se ve el precio antes y ahora.
+- **Cupones**: porcentaje o importe, compra mínima, usos máximos, fechas y canal. `CHECK (uses_count <= max_uses)` en el mismo lote que la venta: dos cajas no pueden gastar la última redención.
+- **El límite de descuento del cajero** solo cuenta los descuentos a mano, no las promociones ni los cupones (que autorizó el negocio).
+- **Cuentas por pagar**: cada recepción de compra es una factura (neto + IVA) con vencimiento según los días de crédito del proveedor. Pagos parciales o totales, opcionalmente en efectivo desde la caja (queda como retiro en el corte). El saldo nunca baja de cero, ni con dos pagos al mismo tiempo.
+- **Reportes**: ventas por periodo con comparación contra el periodo anterior, utilidad sin impuestos, por día, categoría, producto (exportable), forma de pago, cajero, hora y cupón; inventario valorizado por categoría y productos sin movimiento. La utilidad del inicio también se calcula ya sin impuestos.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -212,11 +224,17 @@ Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `back
 | `GET /api/orders?status=&q=&page=`, `GET /api/orders/counts`, `GET /api/orders/:id` | `orders:read` |
 | `POST /api/orders/:id/confirm` · `ready` · `pay` · `complete` | `orders:fulfill` |
 | `POST /api/orders/:id/cancel` | `orders:cancel` |
+| `GET/POST /api/customers`, `GET/PUT /api/customers/:id`, `POST /api/customers/:id/archive`, `GET /api/customers/export` | `customers:read` / `customers:write` |
+| `GET /api/promotions`, `POST/PUT/DELETE /api/promotions[/:id]`, `POST/PUT /api/promotions/coupons[/:id]` | `promotions:read` / `promotions:write` |
+| `GET /api/promotions/live`, `GET /api/promotions/coupons/check/:code` | `pos:sell` |
+| `POST /api/store/:slug/coupons/check` | público (tienda) |
+| `GET /api/payables?status=&supplierId=`, `POST /api/payables/:receiptId/payments` | `payables:read` / `payables:write` |
+| `GET /api/reports/sales?from=&to=`, `GET /api/reports/inventory?days=` | `reports:read` |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
 
-Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento; confirma la llegada de traspasos, captura conteos a ciegas y atiende pedidos en línea sin cancelarlos; no ve compras ni proveedores).
+Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento; confirma la llegada de traspasos, captura conteos a ciegas, atiende pedidos en línea sin cancelarlos y registra clientes; no ve compras, proveedores, cuentas por pagar ni reportes).
 
 ---
 
@@ -253,6 +271,6 @@ Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Int
 
 ---
 
-## Siguiente: Fase 5 — Reportes, clientes y promociones
+## Siguiente: Fase 6 — SaaS
 
-Reportes por periodo, producto, categoría y cajero; cuentas por pagar a proveedores; ficha de clientes con historial; promociones y cupones para el punto de venta y la tienda.
+Planes y cobro de la suscripción, pasarela de pago con tarjeta para la tienda, dominios propios por negocio, facturación electrónica (CFDI) y una D1 por negocio para los que crezcan.

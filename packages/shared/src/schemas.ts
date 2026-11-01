@@ -214,6 +214,9 @@ export const saleInputSchema = z.object({
     .max(6),
   customerName: z.string().trim().max(120).nullable().default(null).transform((v) => (v ? v : null)),
   customerContact: z.string().trim().max(160).nullable().default(null).transform((v) => (v ? v : null)),
+  /** Customer record; when set, name and contact are taken from it. */
+  customerId: z.string().max(40).nullable().default(null),
+  couponCode: z.string().trim().max(40).nullable().default(null).transform((v) => (v ? v : null)),
   note: z.string().trim().max(300).nullable().default(null).transform((v) => (v ? v : null)),
 });
 export type SaleInput = z.input<typeof saleInputSchema>;
@@ -390,6 +393,7 @@ export const storeOrderSchema = z
     address: optText(500),
     notes: optText(500),
     paymentMethod: z.enum(["on_delivery", "transfer"]),
+    couponCode: optText(40),
     /** What the customer saw; the order is rejected if the server total differs (prices changed). */
     expectedTotalCents: cents,
   })
@@ -413,3 +417,70 @@ export const publishProductsSchema = z.object({
   productIds: z.array(id).max(500).nullable(),
   online: z.boolean(),
 });
+
+/* ---------- Phase 5: customers, promotions, coupons, payables ---------- */
+
+const optDate = isoDate.nullable().default(null);
+
+export const customerSchema = z
+  .object({
+    name: z.string().trim().min(2, "Escribe el nombre").max(120),
+    email: z.union([email, z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
+    phone: z.string().trim().max(32).regex(/^[+\d\s()-]*$/, "Teléfono no válido").nullable().default(null).transform((v) => (v ? v : null)),
+    taxId: optText(20),
+    address: optText(300),
+    notes: optText(1000),
+    acceptsMarketing: z.boolean().default(false),
+  });
+export type CustomerInput = z.input<typeof customerSchema>;
+
+const dateRange = <T extends { startsOn: string | null; endsOn: string | null }>(v: T, ctx: z.RefinementCtx) => {
+  if (v.startsOn && v.endsOn && v.endsOn < v.startsOn) ctx.addIssue({ code: "custom", path: ["endsOn"], message: "Termina antes de empezar" });
+};
+
+export const promotionSchema = z
+  .object({
+    name: z.string().trim().min(2, "Ponle un nombre").max(80),
+    percentBps: z.number().int().min(100, "Mínimo 1 %").max(9_000, "Máximo 90 %"),
+    target: z.enum(["all", "category", "product"]),
+    targetIds: z.array(id).max(200).default([]),
+    channel: z.enum(["all", "pos", "online"]).default("all"),
+    startsOn: optDate,
+    endsOn: optDate,
+    active: z.boolean().default(true),
+  })
+  .superRefine((p, ctx) => {
+    if (p.target !== "all" && !p.targetIds.length) ctx.addIssue({ code: "custom", path: ["targetIds"], message: p.target === "category" ? "Elige al menos una categoría" : "Elige al menos un producto" });
+    dateRange(p, ctx);
+  });
+export type PromotionInput = z.input<typeof promotionSchema>;
+
+export const couponSchema = z
+  .object({
+    code: z.string().trim().toUpperCase().min(3, "Mínimo 3 caracteres").max(30).regex(/^[A-Z0-9_-]+$/, "Solo letras, números, guion y guion bajo"),
+    description: optText(200),
+    kind: z.enum(["percent", "amount"]),
+    value: z.number().int().positive("Debe ser mayor a 0"),
+    minSubtotalCents: cents.default(0),
+    maxUses: z.number().int().min(1).max(1_000_000).nullable().default(null),
+    channel: z.enum(["all", "pos", "online"]).default("all"),
+    startsOn: optDate,
+    endsOn: optDate,
+    active: z.boolean().default(true),
+  })
+  .superRefine((c, ctx) => {
+    if (c.kind === "percent" && c.value > 10_000) ctx.addIssue({ code: "custom", path: ["value"], message: "Máximo 100 %" });
+    dateRange(c, ctx);
+  });
+export type CouponInput = z.input<typeof couponSchema>;
+
+export const supplierPaymentSchema = z.object({
+  amountCents: cents.refine((v) => v > 0, "Debe ser mayor a 0"),
+  method: z.enum(PAYMENT_CODES),
+  reference: optText(80),
+  paidOn: isoDate,
+  note: optText(300),
+  /** Take the cash out of the open drawer of the receipt's location. */
+  fromCashDrawer: z.boolean().default(false),
+});
+export type SupplierPaymentInput = z.input<typeof supplierPaymentSchema>;

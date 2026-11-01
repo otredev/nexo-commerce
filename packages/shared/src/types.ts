@@ -1,6 +1,7 @@
 import type { Role } from "./roles";
 import type { MovementType, StockStatus, UnitCode } from "./catalog";
 import type { CountStatus, PurchaseStatus, TransferStatus } from "./purchasing";
+import type { CouponRule, PromotionRule } from "./promotions";
 
 /** Shapes returned by the API. Shared by the dashboard so both sides stay in sync. */
 
@@ -207,6 +208,7 @@ export interface PosProduct {
   priceCents: number;
   taxRateBps: number;
   trackInventory: boolean;
+  categoryId: string | null;
   /** Stock in the POS location. null when not tracked. */
   stock: number | null;
   /** True when the search matched this SKU or barcode exactly (scanner). */
@@ -259,6 +261,10 @@ export interface SaleDetail {
   userName: string | null;
   customerName: string | null;
   customerContact: string | null;
+  customerId: string | null;
+  couponCode: string | null;
+  /** Part of discountCents from promotions and the coupon. */
+  promoDiscountCents: number;
   note: string | null;
   subtotalCents: number;
   discountCents: number;
@@ -596,6 +602,10 @@ export interface StoreInfo {
   payOnDelivery: boolean;
   transferEnabled: boolean;
   categories: Array<{ id: string; name: string; count: number }>;
+  /** Live online promotions, so the cart prices exactly like the server. */
+  promotions: PromotionRule[];
+  /** True when at least one coupon is active (shows the coupon field). */
+  couponsEnabled: boolean;
 }
 
 export interface StoreVariant {
@@ -604,7 +614,7 @@ export interface StoreVariant {
   sku: string;
   /** Price before tax handling, as stored. */
   priceCents: number;
-  /** What the customer pays per unit (with tax). */
+  /** What the customer pays per unit (with tax), before promotions. */
   displayPriceCents: number;
   /** null when the product does not track inventory (always available). */
   available: number | null;
@@ -615,8 +625,10 @@ export interface StoreProductCard {
   name: string;
   image: string | null;
   categoryId: string | null;
-  /** Lowest display price of its variants; `priceVaries` when they differ. */
+  /** Lowest display price of its variants (after any promotion); `priceVaries` when they differ. */
   fromPriceCents: number;
+  /** Price before the promotion, when one applies. */
+  compareAtCents: number | null;
   priceVaries: boolean;
   soldOut: boolean;
   lowStock: boolean;
@@ -633,6 +645,8 @@ export interface StoreProduct {
   unit: UnitCode;
   optionNames: string[];
   taxRateBps: number;
+  /** Promotion that applies to this product, if any. */
+  promotion: { id: string; name: string; percentBps: number } | null;
   variants: StoreVariant[];
 }
 
@@ -663,6 +677,9 @@ export interface PublicOrder {
   notes: string | null;
   items: OrderItem[];
   subtotalCents: number;
+  /** Promotions and coupon. */
+  discountCents: number;
+  couponCode: string | null;
   taxCents: number;
   shippingCents: number;
   totalCents: number;
@@ -706,4 +723,120 @@ export interface OrderDetail extends Omit<PublicOrder, "canCancel" | "transferIn
   costCents: number | null;
   completedByName: string | null;
   cancelledBy: "customer" | "staff" | "system" | null;
+}
+
+/* ---------- Phase 5 ---------- */
+
+export interface CustomerStats {
+  purchases: number;
+  totalCents: number;
+  lastPurchaseAt: string | null;
+  avgTicketCents: number;
+}
+
+export interface Customer extends CustomerStats {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  taxId: string | null;
+  address: string | null;
+  notes: string | null;
+  acceptsMarketing: boolean;
+  source: "admin" | "pos" | "online";
+  archived: boolean;
+  createdAt: string;
+}
+
+export interface CustomerHistoryItem {
+  kind: "sale" | "order";
+  id: string;
+  number: number;
+  date: string;
+  totalCents: number;
+  status: string;
+  items: number;
+  channelLabel: string;
+}
+
+export interface CustomerDetail extends Customer {
+  history: CustomerHistoryItem[];
+  topProducts: Array<{ productId: string; name: string; quantity: number; unit: UnitCode; totalCents: number }>;
+}
+
+export interface Promotion extends PromotionRule {
+  /** Names of the categories or products it applies to. */
+  targetNames: string[];
+  /** Uses so far (sale and order lines). */
+  uses: number;
+  discountGivenCents: number;
+}
+
+export interface Coupon extends CouponRule {
+  id: string;
+  description: string | null;
+  /** Total of the sales and delivered orders that used it. */
+  salesCents: number;
+}
+
+export interface Payable {
+  receiptId: string;
+  orderId: string;
+  orderNumber: number;
+  supplierId: string;
+  supplierName: string;
+  supplierReference: string | null;
+  receivedAt: string;
+  dueDate: string | null;
+  amountDueCents: number;
+  paidCents: number;
+  balanceCents: number;
+  /** Days until due (negative = overdue). null without due date. */
+  daysToDue: number | null;
+  payments: Array<{ id: string; amountCents: number; method: string; reference: string | null; paidOn: string; userName: string | null; note: string | null }>;
+}
+
+export interface PayablesSummary {
+  openCents: number;
+  overdueCents: number;
+  dueSoonCents: number;
+  bySupplier: Array<{ supplierId: string; supplierName: string; balanceCents: number; overdueCents: number }>;
+}
+
+/** Period report. Money in cents; quantities in units. */
+export interface SalesReport {
+  from: string;
+  to: string;
+  totals: {
+    count: number;
+    grossCents: number;
+    discountCents: number;
+    promoDiscountCents: number;
+    returnsCents: number;
+    netCents: number;
+    taxCents: number;
+    costCents: number | null;
+    profitCents: number | null;
+    avgTicketCents: number;
+    onlineCount: number;
+    onlineCents: number;
+    voidedCount: number;
+  };
+  previous: { netCents: number; count: number };
+  days: Array<{ date: string; netCents: number; count: number }>;
+  products: Array<{ productId: string; variantId: string; name: string; options: string[]; sku: string; unit: UnitCode; quantity: number; netCents: number; costCents: number | null; profitCents: number | null }>;
+  categories: Array<{ categoryId: string | null; name: string; quantity: number; netCents: number; profitCents: number | null }>;
+  payments: Array<{ method: string; label: string; count: number; amountCents: number }>;
+  cashiers: Array<{ userId: string | null; name: string; count: number; netCents: number; discountCents: number }>;
+  hours: Array<{ hour: number; count: number; netCents: number }>;
+  coupons: Array<{ code: string; uses: number; salesCents: number }>;
+}
+
+export interface InventoryReport {
+  valuation: Array<{ categoryId: string | null; name: string; units: number; costCents: number; retailCents: number }>;
+  totalCostCents: number;
+  totalRetailCents: number;
+  /** Products with stock and no sales in `days` days. */
+  stale: Array<{ productId: string; variantId: string; name: string; options: string[]; unit: UnitCode; stock: number; costCents: number; lastSaleAt: string | null }>;
+  days: number;
 }

@@ -9,7 +9,10 @@ const newClientId = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random
 const SAVED = "nx-customer";
 
 export function CheckoutPage() {
-  const { slug, store, cart, money, totals, replace, clear } = useStore();
+  const { slug, store, cart, money, totals, replace, clear, coupon, setCoupon, linePrice, reload } = useStore();
+  const [code, setCode] = useState(coupon?.code ?? "");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [checkingCode, setCheckingCode] = useState(false);
   const navigate = useNavigate();
   const saved = (() => { try { return JSON.parse(localStorage.getItem(SAVED) ?? "{}") as Record<string, string>; } catch { return {}; } })();
   const [name, setName] = useState(saved.name ?? "");
@@ -50,9 +53,10 @@ export function CheckoutPage() {
         changes.push(`De ${line.name} solo quedan ${v.available}`);
       }
       if (v.displayPriceCents !== line.displayPriceCents) changes.push(`${line.name} cambió de precio`);
-      next.push({ ...line, priceCents: v.priceCents, displayPriceCents: v.displayPriceCents, taxRateBps: p.taxRateBps, available: v.available, quantity });
+      next.push({ ...line, priceCents: v.priceCents, displayPriceCents: v.displayPriceCents, taxRateBps: p.taxRateBps, available: v.available, quantity, categoryId: p.categoryId });
     }
     replace(next);
+    await reload().catch(() => {});
     setNotice(changes.length ? `Actualizamos tu carrito: ${changes.join("; ")}.` : null);
     return next;
   };
@@ -74,6 +78,18 @@ export function CheckoutPage() {
   }
   const t = totals(fulfillment);
   const below = t.itemsCents < store.minOrderCents;
+  const applyCode = async () => {
+    if (!code.trim()) return;
+    setCheckingCode(true);
+    setCodeError(null);
+    try {
+      setCoupon(await api("POST", `/${slug}/coupons/check`, { code }));
+    } catch (e) {
+      setCodeError((e as RequestError).message);
+    } finally {
+      setCheckingCode(false);
+    }
+  };
 
   const submit = async () => {
     setPending(true);
@@ -90,14 +106,20 @@ export function CheckoutPage() {
         address: fulfillment === "delivery" ? address : null,
         notes: notes || null,
         paymentMethod: payment,
+        couponCode: coupon?.code ?? null,
         expectedTotalCents: t.totalCents,
       });
       try { localStorage.setItem(SAVED, JSON.stringify({ name, email, phone, address })); } catch { /* ignore */ }
       clear();
+      setCoupon(null);
       navigate(`/${slug}/pedido/${res.token}?nuevo=1`, { replace: true });
     } catch (e) {
       const err = e as RequestError;
-      if (err.code === "price_changed" || err.code === "insufficient_stock" || err.code === "unavailable") {
+      if (err.code === "coupon_invalid" || err.code === "coupon_exhausted") {
+        setCoupon(null);
+        clientId.current = newClientId();
+        setMessage(`${err.message} Quitamos el cupón; revisa el total y confirma de nuevo.`);
+      } else if (err.code === "price_changed" || err.code === "insufficient_stock" || err.code === "unavailable") {
         // Prices or stock changed: update the cart and let the customer confirm again (with a new id).
         await refresh();
         clientId.current = newClientId();
@@ -201,19 +223,37 @@ export function CheckoutPage() {
                   <div style={{ fontWeight: 500 }}>{l.name}</div>
                   {l.options.length > 0 && <div style={{ color: "var(--ink-muted)" }}>{l.options.join(" / ")}</div>}
                 </div>
-                <div className="nx-num">{money(Math.round(l.displayPriceCents * l.quantity))}</div>
+                <div className="nx-num" style={{ textAlign: "right" }}>
+                  {money(Math.round(linePrice(l) * l.quantity))}
+                  {linePrice(l) !== l.displayPriceCents && <s className="st-price-was" style={{ display: "block", fontSize: 12 }}>{money(Math.round(l.displayPriceCents * l.quantity))}</s>}
+                </div>
               </div>
             ))}
           </div>
+          {store.couponsEnabled && (
+            coupon ? (
+              <div className="st-coupon" style={{ alignItems: "center", justifyContent: "space-between", fontSize: 14 }}>
+                <span>Cupón <strong className="nx-mono">{coupon.code}</strong></span>
+                <button type="button" className="st-line__remove" onClick={() => { setCoupon(null); setCode(""); }}>Quitar</button>
+              </div>
+            ) : (
+              <div className="st-coupon">
+                <TextField label="Cupón de descuento" optional value={code} onChange={(e) => { setCode(e.target.value.toUpperCase()); setCodeError(null); }} error={codeError ?? undefined} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void applyCode(); } }} />
+                <Button style={{ marginTop: 22 }} loading={checkingCode} onClick={() => void applyCode()}>Aplicar</Button>
+              </div>
+            )
+          )}
+          {t.couponError && <p className="nx-help" style={{ color: "var(--warning)", margin: "0 0 12px" }}>{t.couponError}</p>}
           <dl className="st-sum" style={{ margin: 0 }}>
-            <div><dt>Productos</dt><dd>{money(t.itemsCents)}</dd></div>
+            <div><dt>Productos</dt><dd>{money(t.subtotalCents)}</dd></div>
+            {t.discountCents > 0 && <div style={{ color: "var(--accent-text)" }}><dt style={{ color: "inherit" }}>{t.couponDiscountCents ? "Descuentos y cupón" : "Descuentos"}</dt><dd>−{money(t.discountCents)}</dd></div>}
             <div><dt>{fulfillment === "pickup" ? "Recoger en tienda" : "Envío"}</dt><dd>{t.shippingCents ? money(t.shippingCents) : "Gratis"}</dd></div>
             <div className="st-sum__total"><dt>Total</dt><dd>{money(t.totalCents)}</dd></div>
             {t.taxCents > 0 && <div style={{ fontSize: 12 }}><dt>Incluye IVA</dt><dd>{money(t.taxCents)}</dd></div>}
           </dl>
           {below && <p className="nx-help" style={{ color: "var(--warning)", marginTop: 12 }}>El pedido mínimo es de {money(store.minOrderCents)}.</p>}
           <div style={{ marginTop: 20 }}>
-            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked}>Confirmar pedido</Button>
+            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError)}>Confirmar pedido</Button>
           </div>
           <p className="nx-help" style={{ marginTop: 12, textAlign: "center" }}>Apartamos tus productos al confirmar.</p>
         </aside>

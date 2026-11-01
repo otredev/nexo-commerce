@@ -186,3 +186,10 @@ img { display: block; max-width: 100%; }
   .st-wa__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   main { padding-bottom: 56px; }
 }
+
+/* ---------- Promotions ---------- */
+.st-price-now { color: var(--ink); font-weight: 500; }
+.st-price-was { color: var(--ink-subtle); font-weight: 400; }
+.st-promo-tag { display: inline-flex; margin-top: 4px; padding: 3px 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 500; }
+.st-coupon { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 16px; }
+.st-coupon .nx-field { flex: 1; }

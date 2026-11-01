@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Banknote, Lock, Minus, Percent, Plus, ScanBarcode, ShoppingCart, Trash2, UserRound, X } from "lucide-react";
-import { computeSale, formatQty, parseMoney, unitInfo, type CashSession, type Named, type PosProduct, type SaleDetail } from "@nexo/shared";
+import { ArrowLeft, Banknote, Lock, Minus, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserRound, X } from "lucide-react";
+import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
 import { Alert, Badge, Button, EmptyState, Modal, Segmented, TextField, useDebounced, useToast } from "@nexo/ui";
 import { get, RequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -11,6 +11,7 @@ import { EMPTY_CART, lineLabel, useStored, type Cart, type CartLine } from "../.
 import { Thumb } from "../../components/StockBadge";
 import { CashMovementModal, CloseCashModal, OpenCashPanel } from "./CashModals";
 import { CheckoutModal } from "./Checkout";
+import { CouponModal, CustomerPicker } from "./CustomerCoupon";
 
 const timeFmt = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
 
@@ -91,6 +92,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
   const [customerOpen, setCustomerOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [couponOpen, setCouponOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -98,11 +100,19 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
   const params = new URLSearchParams({ locationId: session.locationId, ...(query.trim() && { q: query.trim() }), ...(categoryId && { categoryId }) });
   const results = useLoad(() => get<PosProduct[]>(`/pos/products?${params}`), [params.toString(), refreshKey]);
 
-  const totals = useMemo(
-    () => computeSale(cart.lines.map((l) => ({ unitPriceCents: l.priceCents, quantity: l.quantity, discountCents: l.discountCents, taxRateBps: l.taxRateBps })), cart.discountCents, pricesIncludeTax),
-    [cart, pricesIncludeTax],
+  // Automatic promotions valid today; refreshed after every sale.
+  const promos = useLoad(() => get<PromotionRule[]>("/promotions/live"), [refreshKey]);
+  const priced = useMemo(
+    () =>
+      priceCart(
+        cart.lines.map((l) => ({ productId: l.productId, categoryId: l.categoryId ?? null, unitPriceCents: l.priceCents, quantity: l.quantity, taxRateBps: l.taxRateBps, manualDiscountCents: l.discountCents })),
+        { promotions: promos.data ?? [], coupon: cart.coupon ?? null, manualCartDiscountCents: cart.discountCents, pricesIncludeTax, formatMoney: (c) => money(c) },
+      ),
+    [cart, pricesIncludeTax, promos.data, money],
   );
-  const overLimit = maxDiscountBps !== null && totals.discountCents * 10_000 > totals.subtotalCents * maxDiscountBps;
+  const totals = priced.totals;
+  // The cashier's limit only counts discounts given by hand.
+  const overLimit = maxDiscountBps !== null && priced.manualDiscountCents * 10_000 > totals.subtotalCents * maxDiscountBps;
   const focusSearch = () => setTimeout(() => searchRef.current?.focus(), 0);
 
   const add = useCallback((p: PosProduct, qty?: number) => {
@@ -110,7 +120,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
     setCart((c) => {
       const existing = c.lines.find((l) => l.variantId === p.variantId);
       if (existing) return { ...c, lines: c.lines.map((l) => (l.variantId === p.variantId ? { ...l, quantity: +(l.quantity + step).toFixed(3), stock: p.stock } : l)) };
-      const line: CartLine = { key: p.variantId, variantId: p.variantId, productId: p.productId, name: p.name, options: p.options, sku: p.sku, unit: p.unit, priceCents: p.priceCents, taxRateBps: p.taxRateBps, quantity: step, discountCents: 0, stock: p.stock };
+      const line: CartLine = { key: p.variantId, variantId: p.variantId, productId: p.productId, name: p.name, options: p.options, sku: p.sku, unit: p.unit, priceCents: p.priceCents, taxRateBps: p.taxRateBps, quantity: step, discountCents: 0, stock: p.stock, categoryId: p.categoryId };
       return { ...c, lines: [...c.lines, line] };
     });
     setSelected(p.variantId);
@@ -138,8 +148,8 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (paying || discountFor || customerOpen || cashOpen || closeOpen) return;
-      if (e.key === "F2") { e.preventDefault(); if (cart.lines.length && !overLimit) setPaying(true); }
+      if (paying || discountFor || customerOpen || cashOpen || closeOpen || couponOpen) return;
+      if (e.key === "F2") { e.preventDefault(); if (cart.lines.length && !overLimit && !priced.couponError) setPaying(true); }
       else if (e.key === "F4") { e.preventDefault(); if (cart.lines.length) setDiscountFor("cart"); }
       else if (e.key === "Escape") { setQ(""); focusSearch(); }
       else if (selected && document.activeElement === searchRef.current && !q && (e.key === "+" || e.key === "-")) {
@@ -214,6 +224,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           ) : (
             cart.lines.map((l, i) => {
               const t = totals.lines[i]!;
+              const promo = priced.lines[i]!;
               const short = l.stock !== null && l.quantity > l.stock;
               return (
                 <div className="nx-pos__line" key={l.key} aria-current={selected === l.variantId} onClick={() => setSelected(l.variantId)}>
@@ -221,8 +232,13 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
                     <div className="nx-pos__line-name">{lineLabel(l)}</div>
                     <div className="nx-pos__line-meta">
                       {money(l.priceCents)} {l.unit !== "unit" && `/ ${unitInfo(l.unit).short}`}
-                      {t.lineDiscountCents > 0 && <> · descuento {money(t.lineDiscountCents)}</>}
+                      {promo.manualDiscountCents > 0 && <> · descuento {money(promo.manualDiscountCents)}</>}
                     </div>
+                    {promo.promotionName && (
+                      <div className="nx-pos__line-meta" style={{ color: "var(--accent-text)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Tag size={12} aria-hidden="true" />{promo.promotionName} · −{money(promo.promoDiscountCents)}
+                      </div>
+                    )}
                     {short && <div className="nx-pos__line-meta" style={{ color: "var(--danger)" }}>Solo hay {formatQty(l.stock!, l.unit)}</div>}
                   </div>
                   <div className="nx-pos__line-total">{money(t.grossCents - t.lineDiscountCents)}</div>
@@ -249,23 +265,36 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
         </div>
         <div className="nx-pos__summary">
           <div className="nx-pos__summary-row"><span>Subtotal</span><span>{money(totals.subtotalCents)}</span></div>
-          {totals.discountCents > 0 && (
+          {priced.promoDiscountCents - priced.couponDiscountCents > 0 && (
+            <div className="nx-pos__summary-row" style={{ color: "var(--accent-text)" }}><span>Promociones</span><span>−{money(priced.promoDiscountCents - priced.couponDiscountCents)}</span></div>
+          )}
+          {cart.coupon && (
+            <div className="nx-pos__summary-row" style={{ color: priced.couponError ? "var(--warning)" : "var(--accent-text)" }}>
+              <span>Cupón {cart.coupon.code}<button type="button" className="nx-link" style={{ border: 0, background: "none", cursor: "pointer", font: "inherit", marginLeft: 6 }} onClick={() => setCart({ ...cart, coupon: null })}>quitar</button></span>
+              <span>{priced.couponError ? "No aplica" : `−${money(priced.couponDiscountCents)}`}</span>
+            </div>
+          )}
+          {priced.manualDiscountCents > 0 && (
             <div className="nx-pos__summary-row">
               <span>Descuento{cart.discountCents > 0 && <button type="button" className="nx-link" style={{ border: 0, background: "none", cursor: "pointer", font: "inherit", marginLeft: 6 }} onClick={() => setCart({ ...cart, discountCents: 0 })}>quitar</button>}</span>
-              <span>−{money(totals.discountCents)}</span>
+              <span>−{money(priced.manualDiscountCents)}</span>
             </div>
           )}
           <div className="nx-pos__summary-row"><span>Impuestos{pricesIncludeTax ? " incluidos" : ""}</span><span>{money(totals.taxCents)}</span></div>
           <div className="nx-pos__summary-total"><span style={{ fontWeight: 500 }}>Total</span><strong>{money(totals.totalCents)}</strong></div>
           {overLimit && <Alert tone="warning">El descuento supera tu límite ({maxDiscountBps! / 100} %). Pide autorización a un administrador.</Alert>}
           {invalidQty && <Alert tone="warning">Revisa la cantidad de {lineLabel(invalidQty)}.</Alert>}
+          {priced.couponError && <Alert tone="warning">{priced.couponError}</Alert>}
         </div>
         <div className="nx-pos__pay nx-stack" style={{ gap: 8 }}>
-          <Button variant="primary" block disabled={!cart.lines.length || overLimit || Boolean(invalidQty)} onClick={() => setPaying(true)}>
+          <Button variant="primary" block disabled={!cart.lines.length || overLimit || Boolean(invalidQty) || Boolean(priced.couponError)} onClick={() => setPaying(true)}>
             Cobrar {money(totals.totalCents)} <kbd>F2</kbd>
           </Button>
           <div className="nx-row" style={{ justifyContent: "space-between" }}>
-            <Button size="sm" variant="ghost" disabled={!cart.lines.length} onClick={() => setDiscountFor("cart")}>Descuento general <kbd>F4</kbd></Button>
+            <div className="nx-row" style={{ gap: 2 }}>
+              <Button size="sm" variant="ghost" disabled={!cart.lines.length} onClick={() => setDiscountFor("cart")}>Descuento <kbd>F4</kbd></Button>
+              <Button size="sm" variant="ghost" disabled={!cart.lines.length} onClick={() => setCouponOpen(true)}><Ticket className="nx-icon" aria-hidden="true" />Cupón</Button>
+            </div>
             <Button size="sm" variant="danger-ghost" disabled={!cart.lines.length} onClick={clear}><X className="nx-icon" aria-hidden="true" />Cancelar venta</Button>
           </div>
         </div>
@@ -280,6 +309,8 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           discountCents: cart.discountCents,
           customerName: cart.customerName || null,
           customerContact: cart.customerContact || null,
+          customerId: cart.customerId ?? null,
+          couponCode: cart.coupon?.code ?? null,
         })}
         onClose={() => { setPaying(false); focusSearch(); }}
         onPaid={(_sale: SaleDetail) => { setCart(EMPTY_CART); setSelected(null); setRefreshKey((k) => k + 1); }}
@@ -287,7 +318,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
       />
       <DiscountModal
         target={discountFor}
-        baseCents={discountFor === "cart" ? totals.subtotalCents - totals.lines.reduce((a, l) => a + l.lineDiscountCents, 0) : discountFor ? Math.round(discountFor.priceCents * discountFor.quantity) : 0}
+        baseCents={discountFor === "cart" ? totals.subtotalCents - totals.lines.reduce((a, l) => a + l.lineDiscountCents, 0) - priced.couponDiscountCents : discountFor ? Math.round(discountFor.priceCents * discountFor.quantity) - (priced.lines[cart.lines.findIndex((l) => l.variantId === discountFor.variantId)]?.promoDiscountCents ?? 0) : 0}
         current={discountFor === "cart" ? cart.discountCents : discountFor ? discountFor.discountCents : 0}
         money={money}
         onClose={() => { setDiscountFor(null); focusSearch(); }}
@@ -298,7 +329,13 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           focusSearch();
         }}
       />
-      <CustomerModal open={customerOpen} cart={cart} onClose={() => { setCustomerOpen(false); focusSearch(); }} onSave={(name, contact) => { setCart({ ...cart, customerName: name, customerContact: contact }); setCustomerOpen(false); focusSearch(); }} />
+      <CustomerPicker
+        open={customerOpen}
+        current={cart.customerId ? { id: cart.customerId, name: cart.customerName } : null}
+        onClose={() => { setCustomerOpen(false); focusSearch(); }}
+        onPick={(c) => { setCart({ ...cart, customerId: c?.id ?? null, customerName: c?.name ?? "", customerContact: c ? (c.email ?? c.phone ?? "") : "" }); setCustomerOpen(false); focusSearch(); }}
+      />
+      <CouponModal open={couponOpen} onClose={() => { setCouponOpen(false); focusSearch(); }} onApply={(coupon) => { setCart({ ...cart, coupon }); setCouponOpen(false); focusSearch(); }} />
       <CashMovementModal session={session} open={cashOpen} onClose={() => { setCashOpen(false); focusSearch(); }} onDone={onSessionChange} />
       <CloseCashModal session={session} open={closeOpen} onClose={() => setCloseOpen(false)} onClosed={() => { setCloseOpen(false); onClosed(); }} />
     </>
@@ -333,21 +370,6 @@ function DiscountModal({ target, baseCents, current, money, onClose, onApply }: 
       <form className="nx-stack" onSubmit={(e) => { e.preventDefault(); void apply.submit(); }}>
         <Segmented label="Tipo de descuento" value={mode} onChange={(m) => { setMode(m); setValue(""); }} options={[{ id: "percent", label: "Porcentaje" }, { id: "amount", label: "Importe" }]} />
         <TextField label={mode === "percent" ? "Porcentaje" : "Importe"} inputMode="decimal" className="nx-num" value={value} onChange={(e) => setValue(e.target.value)} error={apply.fields.value} help={`Sobre ${money(baseCents)}`} autoFocus />
-      </form>
-    </Modal>
-  );
-}
-
-function CustomerModal({ open, cart, onClose, onSave }: { open: boolean; cart: Cart; onClose: () => void; onSave: (name: string, contact: string) => void }) {
-  const [name, setName] = useState("");
-  const [contact, setContact] = useState("");
-  useEffect(() => { if (open) { setName(cart.customerName); setContact(cart.customerContact); } }, [open, cart.customerName, cart.customerContact]);
-  return (
-    <Modal open={open} title="Cliente" onClose={onClose} footer={<><Button variant="ghost" onClick={() => onSave("", "")}>Sin cliente</Button><Button variant="primary" onClick={() => onSave(name.trim(), contact.trim())}>Guardar</Button></>}>
-      <form className="nx-stack" onSubmit={(e) => { e.preventDefault(); onSave(name.trim(), contact.trim()); }}>
-        <TextField label="Nombre" optional value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        <TextField label="Teléfono o correo" optional value={contact} onChange={(e) => setContact(e.target.value)} help="Para enviarle el recibo o contactarlo después." />
-        <button type="submit" hidden />
       </form>
     </Modal>
   );

@@ -389,3 +389,21 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-grid-doc { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--space-6); align-items: start; }
 @media (max-width: 1024px) { .nx-grid-doc { grid-template-columns: minmax(0, 1fr); } }
 .nx-nav__badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-full); background: var(--primary); color: var(--primary-ink); font-size: 11px; font-weight: 600; line-height: 20px; text-align: center; box-sizing: border-box; font-variant-numeric: tabular-nums; }
+
+/* ---------- Report charts (single series, one hue; values in ink, never in the series color) ---------- */
+.nx-bars--dense { gap: 2px; }
+.nx-bars--dense .nx-bars__bar { max-width: 22px; }
+.nx-bars--dense + .nx-bars__labels { gap: 2px; }
+.nx-bars__labels span:empty::after { content: "\00a0"; }
+.nx-hbars { display: grid; gap: var(--space-3); }
+.nx-hbar { display: grid; grid-template-columns: minmax(90px, 1.2fr) minmax(0, 2fr) auto; align-items: center; gap: var(--space-3); font-size: 13px; position: relative; }
+.nx-hbar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.nx-hbar__track { height: 10px; border-radius: 0 4px 4px 0; background: transparent; }
+.nx-hbar__fill { height: 100%; min-width: 2px; background: var(--primary); border-radius: 0 4px 4px 0; opacity: .85; }
+.nx-hbar:hover .nx-hbar__fill { opacity: 1; }
+.nx-hbar__value { font-variant-numeric: tabular-nums; color: var(--ink); text-align: right; white-space: nowrap; }
+.nx-hbar__value small { display: block; font-size: 11px; color: var(--ink-muted); }
+.nx-presets { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.nx-presets .nx-input { height: var(--control-sm); font-size: 13px; width: auto; }
+.nx-th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
+.nx-th-sort[aria-sort="descending"]::after { content: " ↓"; }

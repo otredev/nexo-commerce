@@ -7,7 +7,7 @@ import { useStore } from "../lib/store";
 import { Qty } from "./Qty";
 
 export function CartDrawer() {
-  const { cart, cartOpen, setCartOpen, setQuantity, remove, money, totals, slug, store } = useStore();
+  const { cart, cartOpen, setCartOpen, setQuantity, remove, money, totals, slug, store, linePrice } = useStore();
   const navigate = useNavigate();
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -54,7 +54,10 @@ export function CartDrawer() {
                       <button type="button" className="st-line__remove" onClick={() => remove(l.variantId)}>Quitar</button>
                     </div>
                   </div>
-                  <div className="st-line__price">{money(Math.round(l.displayPriceCents * l.quantity))}</div>
+                  <div className="st-line__price">
+                    {money(Math.round(linePrice(l) * l.quantity))}
+                    {linePrice(l) !== l.displayPriceCents && <s className="st-price-was" style={{ display: "block", fontSize: 12 }}>{money(Math.round(l.displayPriceCents * l.quantity))}</s>}
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Check, Store, Truck } from "lucide-react";
-import { formatQty, LOW_STOCK_BADGE, type StoreProduct } from "@nexo/shared";
+import { bpsToPercent, formatQty, LOW_STOCK_BADGE, percentOf, type StoreProduct } from "@nexo/shared";
 import { Button, useToast } from "@nexo/ui";
 import { api, imageUrl, RequestError } from "../lib/api";
 import { stepFor, useStore } from "../lib/store";
@@ -47,6 +47,7 @@ export function ProductPage() {
   if (!p || !store) return <div className="st-wrap st-product"><div className="st-skeleton" style={{ aspectRatio: "1" }} /><div><div className="st-skeleton" style={{ height: 40, width: "70%" }} /></div></div>;
 
   const inCart = variant ? (cart.find((l) => l.variantId === variant.id)?.quantity ?? 0) : 0;
+  const unitPrice = (price: number) => (p.promotion ? price - percentOf(price, p.promotion.percentBps) : price);
   const left = variant?.available === null || variant === null ? null : Math.max(variant.available - inCart, 0);
   const soldOut = variant !== null && variant.available !== null && variant.available <= 0;
   const valuesFor = (index: number) => [...new Set(p.variants.map((v) => v.options[index]!))];
@@ -59,7 +60,7 @@ export function ProductPage() {
     if (!variant) return;
     add({
       variantId: variant.id, productId: p.id, name: p.name, options: variant.options, image: p.images[0] ?? null, unit: p.unit,
-      priceCents: variant.priceCents, taxRateBps: p.taxRateBps, displayPriceCents: variant.displayPriceCents, available: variant.available, quantity: qty,
+      priceCents: variant.priceCents, taxRateBps: p.taxRateBps, displayPriceCents: variant.displayPriceCents, available: variant.available, quantity: qty, categoryId: p.categoryId,
     });
     toast(`${p.name} se agregó al carrito`);
     setCartOpen(true);
@@ -89,8 +90,10 @@ export function ProductPage() {
           </nav>
           <h1 className="st-product__title">{p.name}</h1>
           {p.brandName && <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 8 }}>{p.brandName}</div>}
+          {p.promotion && <div className="st-promo-tag">{p.promotion.name} · −{bpsToPercent(p.promotion.percentBps)} %</div>}
           <div className="st-product__price">
-            {variant ? money(variant.displayPriceCents) : "—"}
+            {variant ? money(unitPrice(variant.displayPriceCents)) : "—"}
+            {variant && p.promotion && <s className="st-price-was" style={{ marginLeft: 8, fontSize: 16 }}>{money(variant.displayPriceCents)}</s>}
             {p.unit !== "unit" && p.unit !== "service" && <span className="st-product__tax">por {formatQty(1, p.unit).replace(/^1\s*/, "")}</span>}
             <span className="st-product__tax">IVA incluido</span>
           </div>
@@ -129,7 +132,7 @@ export function ProductPage() {
           <div className="st-buy">
             {!soldOut && <Qty value={qty} onChange={setQty} unit={p.unit} max={left} label="Cantidad" />}
             <Button variant="primary" size="lg" disabled={!variant || soldOut || left === 0} onClick={onAdd}>
-              {soldOut ? "Agotado" : left === 0 ? "Ya tienes todas en tu carrito" : `Agregar · ${money(Math.round((variant?.displayPriceCents ?? 0) * qty))}`}
+              {soldOut ? "Agotado" : left === 0 ? "Ya tienes todas en tu carrito" : `Agregar · ${money(Math.round(unitPrice(variant?.displayPriceCents ?? 0) * qty))}`}
             </Button>
           </div>
           {variant && variant.available !== null && !soldOut && (

@@ -76,7 +76,8 @@ export function SaleDetailPage() {
           <Card title="Resumen">
             <dl className="nx-kv">
               <div><dt>Subtotal</dt><dd>{money(sale.subtotalCents)}</dd></div>
-              {sale.discountCents > 0 && <div><dt>Descuento</dt><dd>−{money(sale.discountCents)}</dd></div>}
+              {sale.promoDiscountCents > 0 && <div><dt>Promociones{sale.couponCode && ` y cupón ${sale.couponCode}`}</dt><dd>−{money(sale.promoDiscountCents)}</dd></div>}
+              {sale.discountCents - sale.promoDiscountCents > 0 && <div><dt>Descuento</dt><dd>−{money(sale.discountCents - sale.promoDiscountCents)}</dd></div>}
               <div><dt>Impuestos{sale.pricesIncludeTax ? " incluidos" : ""}</dt><dd>{money(sale.taxCents)}</dd></div>
               <div><dt style={{ color: "var(--ink)", fontWeight: 600 }}>Total</dt><dd style={{ fontSize: 18 }}>{money(sale.totalCents)}</dd></div>
               {sale.payments.map((p, i) => <div key={i}><dt>{paymentLabel(p.method)}{p.reference && ` · ${p.reference}`}</dt><dd>{money(p.amountCents)}</dd></div>)}
@@ -87,7 +88,7 @@ export function SaleDetailPage() {
           {(sale.customerName || sale.customerContact || sale.note) && (
             <Card title="Cliente">
               <dl className="nx-kv">
-                {sale.customerName && <div><dt>Nombre</dt><dd>{sale.customerName}</dd></div>}
+                {sale.customerName && <div><dt>Nombre</dt><dd>{sale.customerId ? <Link className="nx-link" to={`/clientes/${sale.customerId}`}>{sale.customerName}</Link> : sale.customerName}</dd></div>}
                 {sale.customerContact && <div><dt>Contacto</dt><dd>{sale.customerContact}</dd></div>}
                 {sale.note && <div><dt>Nota</dt><dd>{sale.note}</dd></div>}
               </dl>

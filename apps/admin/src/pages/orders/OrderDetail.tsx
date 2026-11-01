@@ -97,6 +97,7 @@ export function OrderDetailPage() {
           </div>
           <div style={{ padding: "16px 16px 20px", borderTop: "1px solid var(--border)", display: "flex" }}>
             <dl className="nx-doc-totals" style={{ margin: "0 0 0 auto" }}>
+              {o.discountCents > 0 && <div><dt>Descuentos{o.couponCode && ` · cupón ${o.couponCode}`}</dt><dd>−{money(o.discountCents)}</dd></div>}
               <div><dt>Productos</dt><dd>{money(o.totalCents - o.shippingCents)}</dd></div>
               <div><dt>Envío</dt><dd>{o.shippingCents ? money(o.shippingCents) : "Gratis"}</dd></div>
               <div><dt>IVA incluido</dt><dd>{money(o.taxCents)}</dd></div>

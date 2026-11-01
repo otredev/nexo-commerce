@@ -69,7 +69,7 @@ export function ReceiptPage() {
         ))}
         <hr />
         <div className="row"><span>Subtotal</span><span>{money(sale.subtotalCents)}</span></div>
-        {sale.discountCents > 0 && <div className="row"><span>Descuento</span><span>−{money(sale.discountCents)}</span></div>}
+        {sale.discountCents > 0 && <div className="row"><span>{sale.couponCode ? `Descuento (cupón ${sale.couponCode})` : "Descuento"}</span><span>−{money(sale.discountCents)}</span></div>}
         <div className="row"><span>Impuestos{sale.pricesIncludeTax ? " incluidos" : ""}</span><span>{money(sale.taxCents)}</span></div>
         <div className="row total"><span>TOTAL</span><span>{money(sale.totalCents)}</span></div>
         <hr />

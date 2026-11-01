@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
+import { Activity, ArrowLeftRight, BarChart3, Boxes, Contact, Landmark, Percent, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { get } from "../lib/api";
@@ -12,6 +12,7 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
     items: [
       { to: "/", label: "Inicio", icon: Home, end: true },
       { to: "/pos", label: "Punto de venta", icon: ShoppingCart, permission: "pos:sell" },
+      { to: "/reportes", label: "Reportes", icon: BarChart3, permission: "reports:read" },
     ],
   },
   {
@@ -19,6 +20,8 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
     items: [
       { to: "/ventas", label: "Ventas", icon: Receipt, permission: "sales:read" },
       { to: "/caja", label: "Cortes de caja", icon: Wallet, permission: "cash:operate" },
+      { to: "/clientes", label: "Clientes", icon: Contact, permission: "customers:read" },
+      { to: "/promociones", label: "Promociones", icon: Percent, permission: "promotions:read" },
     ],
   },
   {
@@ -42,6 +45,7 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
     items: [
       { to: "/compras", label: "Compras", icon: ClipboardList, permission: "purchases:read" },
       { to: "/proveedores", label: "Proveedores", icon: Warehouse, permission: "suppliers:read" },
+      { to: "/cuentas-por-pagar", label: "Cuentas por pagar", icon: Landmark, permission: "payables:read" },
       { to: "/traspasos", label: "Traspasos", icon: Truck, permission: "transfers:read" },
       { to: "/conteos", label: "Conteos físicos", icon: ClipboardCheck, permission: "counts:read" },
     ],
@@ -77,6 +81,11 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/traspasos$/, "Traspasos"],
   [/^\/conteos\/.+/, "Conteo físico"],
   [/^\/conteos$/, "Conteos físicos"],
+  [/^\/clientes\/.+/, "Cliente"],
+  [/^\/clientes$/, "Clientes"],
+  [/^\/promociones$/, "Promociones"],
+  [/^\/cuentas-por-pagar$/, "Cuentas por pagar"],
+  [/^\/reportes$/, "Reportes"],
   [/^\/pedidos\/.+/, "Pedido"],
   [/^\/pedidos$/, "Pedidos en línea"],
   [/^\/tienda$/, "Tienda en línea"],

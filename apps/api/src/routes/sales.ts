@@ -6,6 +6,8 @@ import {
   businessDate,
   can,
   computeSale,
+  couponProblem,
+  priceCart,
   emailReceiptSchema,
   formatFolio,
   formatMoney,
@@ -27,12 +29,13 @@ import { auditEntry } from "../lib/audit";
 import { newId } from "../lib/crypto";
 import { sendEmail } from "../lib/email";
 import { AppError, notFound } from "../lib/errors";
-import { chunk, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
+import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
+import { couponUseStatement, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { dailyProductUpsert, dailySalesUpsert, getSettings, loadSale, openSessionFor, sessionTotals } from "../lib/sales";
 import { json } from "../lib/validate";
 import { requirePermission } from "../middleware/auth";
 
-const { variants, products, taxRates, stockLevels, saleItems, salePayments, saleReturns, saleReturnItems, sales, locations } = tenant;
+const { variants, products, taxRates, stockLevels, saleItems, salePayments, saleReturns, saleReturnItems, sales, locations, customers } = tenant;
 
 const listQuery = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -61,13 +64,13 @@ export const saleRoutes = new Hono<AppEnv>()
 
     // Current prices, taxes and costs from the database: the client only says what and how much.
     const ids = [...new Set(input.items.map((i) => i.variantId))];
-    const rows: Array<{ id: string; productId: string; sku: string; options: string[]; price: number; cost: number; name: string; unit: string; track: boolean; taxRateId: string | null }> = [];
+    const rows: Array<{ id: string; productId: string; sku: string; options: string[]; price: number; cost: number; name: string; unit: string; track: boolean; taxRateId: string | null; categoryId: string | null }> = [];
     for (const part of chunk(ids, 80)) {
       rows.push(
         ...(await db
           .select({
             id: variants.id, productId: variants.productId, sku: variants.sku, options: variants.options, price: variants.priceCents, cost: variants.costCents,
-            name: products.name, unit: products.unit, track: products.trackInventory, taxRateId: products.taxRateId,
+            name: products.name, unit: products.unit, track: products.trackInventory, taxRateId: products.taxRateId, categoryId: products.categoryId,
           })
           .from(variants)
           .innerJoin(products, eq(products.id, variants.productId))
@@ -91,15 +94,41 @@ export const saleRoutes = new Hono<AppEnv>()
       const v = byId.get(item.variantId)!;
       return { unitPriceCents: v.price, quantity: item.quantity, discountCents: item.discountCents, taxRateBps: rateOf(v.taxRateId) };
     });
-    const totals = computeSale(lines, input.discountCents, settings.pricesIncludeTax);
-    if (totals.discountCents > 0 && !can(role, "discount:unlimited") && totals.discountCents * 10_000 > totals.subtotalCents * settings.cashierMaxDiscountBps) {
+    // Promotions and coupon: the same pricing the POS showed.
+    const today = businessDate(settings.timezone);
+    const promos = await livePromotions(db, t.id, today, "pos");
+    const coupon = input.couponCode ? await findCoupon(db, t.id, input.couponCode) : null;
+    if (input.couponCode) {
+      const problem = coupon ? couponProblem(toCouponRule(coupon), today, "pos") : "Este cupón no existe.";
+      if (problem) throw new AppError(422, "coupon_invalid", problem, { couponCode: problem });
+    }
+    const priced = priceCart(
+      input.items.map((item, i) => {
+        const v = byId.get(item.variantId)!;
+        return { productId: v.productId, categoryId: v.categoryId, unitPriceCents: v.price, quantity: item.quantity, taxRateBps: lines[i]!.taxRateBps, manualDiscountCents: item.discountCents };
+      }),
+      { promotions: promos, coupon: coupon ? toCouponRule(coupon) : null, manualCartDiscountCents: input.discountCents, pricesIncludeTax: settings.pricesIncludeTax, formatMoney: (v) => formatMoney(v, settings.currency, settings.locale) },
+    );
+    if (priced.couponError) throw new AppError(422, "coupon_invalid", priced.couponError, { couponCode: priced.couponError });
+    const totals = priced.totals;
+    // The cashier's limit applies only to discounts given by hand, not to promotions or coupons.
+    if (priced.manualDiscountCents > 0 && !can(role, "discount:unlimited") && priced.manualDiscountCents * 10_000 > totals.subtotalCents * settings.cashierMaxDiscountBps) {
       throw new AppError(403, "discount_limit", `Tu descuento máximo es ${settings.cashierMaxDiscountBps / 100} % del subtotal. Pide autorización a un administrador.`);
+    }
+    // Customer record: its name and contact go on the receipt.
+    let customerName = input.customerName;
+    let customerContact = input.customerContact;
+    if (input.customerId) {
+      const cust = await db.select().from(customers).where(and(eq(customers.id, input.customerId), eq(customers.tenantId, t.id))).get();
+      if (!cust) throw new AppError(422, "validation_error", "El cliente ya no existe.", { customerId: "No encontrado" });
+      customerName = cust.name;
+      customerContact = cust.email ?? cust.phone ?? null;
     }
     const settled = settle(totals.totalCents, input.payments);
     if (!settled.ok) throw new AppError(422, "payment_error", settled.message);
 
     const saleId = newId();
-    const date = businessDate(settings.timezone);
+    const date = today;
     const now = new Date().toISOString();
     const costs = input.items.map((item) => Math.round((byId.get(item.variantId)!.cost * toMilli(item.quantity)) / 1000));
     const totalCost = costs.reduce((a, b) => a + b, 0);
@@ -110,15 +139,17 @@ export const saleRoutes = new Hono<AppEnv>()
       d1
         .prepare(
           `INSERT INTO sales (id, tenant_id, number, client_id, location_id, session_id, user_id, user_name, customer_name, customer_contact, note, status,
-             prices_include_tax, subtotal_cents, discount_cents, tax_cents, total_cents, cost_cents, paid_cents, change_cents, business_date, created_at)
-           SELECT ?1, ?2, value, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'completed', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20
+             prices_include_tax, subtotal_cents, discount_cents, tax_cents, total_cents, cost_cents, paid_cents, change_cents, business_date, created_at,
+             customer_id, coupon_code, promo_discount_cents)
+           SELECT ?1, ?2, value, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'completed', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
            FROM counters WHERE tenant_id = ?2 AND name = 'sale'`,
         )
         .bind(
-          saleId, t.id, input.clientId, input.locationId, session.id, user.id, user.name, input.customerName, input.customerContact, input.note,
+          saleId, t.id, input.clientId, input.locationId, session.id, user.id, user.name, customerName, customerContact, input.note,
           settings.pricesIncludeTax ? 1 : 0, totals.subtotalCents, totals.discountCents, totals.taxCents, totals.totalCents, totalCost,
-          settled.paidCents, settled.changeCents, date, now,
+          settled.paidCents, settled.changeCents, date, now, input.customerId, coupon?.code ?? null, priced.promoDiscountCents,
         ),
+      ...(coupon ? [couponUseStatement(d1, coupon.id)] : []),
     ];
     input.items.forEach((item, i) => {
       const v = byId.get(item.variantId)!;
@@ -130,6 +161,7 @@ export const saleRoutes = new Hono<AppEnv>()
             id: newId(), tenantId: t.id, saleId, variantId: v.id, productId: v.productId, name: v.name, options: v.options, sku: v.sku, unit: v.unit,
             trackInventory: v.track, quantity: toMilli(item.quantity), unitPriceCents: v.price, discountCents: l.lineDiscountCents + l.cartDiscountCents,
             taxRateBps: lines[i]!.taxRateBps, netCents: l.netCents, taxCents: l.taxCents, totalCents: l.totalCents, unitCostCents: v.cost, position: i,
+            promotionId: priced.lines[i]!.promotionId,
           }),
         ),
       );
@@ -159,6 +191,7 @@ export const saleRoutes = new Hono<AppEnv>()
     try {
       await d1.batch(statements);
     } catch (err) {
+      if (isCheckError(err, "coupons_uses_le_max")) throw new AppError(409, "coupon_exhausted", "El cupón se agotó justo ahora. Quítalo para cobrar.", { couponCode: "Se agotó" });
       if (isUniqueError(err) && String((err as Error).message).includes("client_id")) {
         const again = await db.select({ id: sales.id }).from(sales).where(and(eq(sales.tenantId, t.id), eq(sales.clientId, input.clientId))).get();
         if (again) return c.json(await loadSale(c, again.id), 200);

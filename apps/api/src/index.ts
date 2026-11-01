@@ -28,6 +28,9 @@ import { orderRoutes } from "./routes/orders";
 import { storeAdminRoutes } from "./routes/storeAdmin";
 import { storeRoutes } from "./routes/store";
 import { expireOrders } from "./lib/orders";
+import { customerRoutes } from "./routes/customers";
+import { promotionRoutes } from "./routes/promotions";
+import { payableRoutes } from "./routes/payables";
 
 /** Routes that need a session. Each module receives c.var.auth with the tenant's database. */
 const protectedApi = new Hono<AppEnv>()
@@ -52,7 +55,10 @@ const protectedApi = new Hono<AppEnv>()
   .route("/transfers", transferRoutes)
   .route("/counts", countRoutes)
   .route("/orders", orderRoutes)
-  .route("/store-settings", storeAdminRoutes);
+  .route("/store-settings", storeAdminRoutes)
+  .route("/customers", customerRoutes)
+  .route("/promotions", promotionRoutes)
+  .route("/payables", payableRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)

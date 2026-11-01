@@ -57,6 +57,14 @@ export const PERMISSIONS = {
   "orders:fulfill": ["owner", "admin", "cashier"],
   "orders:cancel": ["owner", "admin"],
   "store:write": ["owner", "admin"],
+  /** Customers: cashiers find and create them at the register. */
+  "customers:read": ["owner", "admin", "cashier"],
+  "customers:write": ["owner", "admin", "cashier"],
+  "promotions:read": ["owner", "admin", "cashier"],
+  "promotions:write": ["owner", "admin"],
+  /** Supplier invoices and payments. */
+  "payables:read": ["owner", "admin"],
+  "payables:write": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

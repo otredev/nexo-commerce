@@ -51,6 +51,8 @@ async function loadDetail(c: Context<AppEnv>, id: string): Promise<OrderDetail> 
     notes: o.notes,
     items: items.map(toOrderItem),
     subtotalCents: o.subtotalCents,
+    discountCents: o.discountCents,
+    couponCode: o.couponCode,
     taxCents: o.taxCents,
     shippingCents: o.shippingCents,
     totalCents: o.totalCents,
