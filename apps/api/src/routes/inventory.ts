@@ -5,6 +5,7 @@ import { tenant } from "@nexo/db";
 import {
   can,
   formatQty,
+  MOVEMENT_TYPES,
   fromMilli,
   normalizeSearch,
   quantityFitsUnit,
@@ -40,7 +41,7 @@ const movementsQuery = z.object({
   variantId: z.string().max(40).optional(),
   productId: z.string().max(40).optional(),
   locationId: z.string().max(40).optional(),
-  type: z.enum(["initial", "in", "out", "adjust"]).optional(),
+  type: z.enum(MOVEMENT_TYPES).optional(),
   cursor: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });

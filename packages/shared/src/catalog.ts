@@ -64,7 +64,7 @@ export function combinations(values: string[][]): string[][] {
   return values.reduce<string[][]>((acc, list) => acc.flatMap((prefix) => list.map((v) => [...prefix, v])), [[]]);
 }
 
-export const MOVEMENT_TYPES = ["initial", "in", "out", "adjust"] as const;
+export const MOVEMENT_TYPES = ["initial", "in", "out", "adjust", "sale", "return"] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
@@ -72,6 +72,8 @@ export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   in: "Entrada",
   out: "Salida",
   adjust: "Ajuste por conteo",
+  sale: "Venta",
+  return: "Devolución",
 };
 
 /** Reasons the user can pick for a manual movement, grouped by direction. */
@@ -96,6 +98,9 @@ export const MOVEMENT_REASONS = {
 export const ALL_REASONS: Record<string, string> = {
   initial: "Carga inicial",
   import: "Importación CSV",
+  sale: "Venta",
+  void: "Venta anulada",
+  return_restock: "Devolución de cliente",
   ...Object.fromEntries(Object.values(MOVEMENT_REASONS).flat().map((r) => [r.code, r.label])),
 };
 export const REASON_CODES = Object.values(MOVEMENT_REASONS).flat().map((r) => r.code) as [string, ...string[]];

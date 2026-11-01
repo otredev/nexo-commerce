@@ -16,6 +16,10 @@ import { userRoutes } from "./routes/users";
 import { productRoutes } from "./routes/products";
 import { brandRoutes, categoryRoutes } from "./routes/named";
 import { inventoryRoutes } from "./routes/inventory";
+import { saleRoutes } from "./routes/sales";
+import { cashRoutes } from "./routes/cash";
+import { posRoutes } from "./routes/pos";
+import { reportRoutes } from "./routes/reports";
 
 /** Routes that need a session. Each module receives c.var.auth with the tenant's database. */
 const protectedApi = new Hono<AppEnv>()
@@ -30,7 +34,11 @@ const protectedApi = new Hono<AppEnv>()
   .route("/products", productRoutes)
   .route("/categories", categoryRoutes)
   .route("/brands", brandRoutes)
-  .route("/inventory", inventoryRoutes);
+  .route("/inventory", inventoryRoutes)
+  .route("/pos", posRoutes)
+  .route("/sales", saleRoutes)
+  .route("/cash", cashRoutes)
+  .route("/reports", reportRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)

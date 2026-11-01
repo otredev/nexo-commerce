@@ -30,6 +30,8 @@ export type Movement =
       reason: string;
       note?: string | null;
       reference?: string | null;
+      /** Type stored in the Kardex when it is not the kind itself ("return" for customer returns). */
+      type?: "return";
     }
   | {
       kind: "out";
@@ -39,6 +41,7 @@ export type Movement =
       reason: string;
       note?: string | null;
       reference?: string | null;
+      type?: "sale";
     }
   | {
       /** Physical count: sets the stock to an absolute quantity. */
@@ -67,7 +70,7 @@ export function movementStatements(d1: D1Database, actor: MovementActor, m: Move
       .bind(tenantId, m.variantId, m.locationId),
   ];
   const common = (amount: number, cost: number | null) =>
-    [newId(), tenantId, m.variantId, m.locationId, m.kind, m.reason, amount, m.note ?? null, m.reference ?? null, actor.userId, actor.userName, cost] as const;
+    [newId(), tenantId, m.variantId, m.locationId, ("type" in m && m.type) || m.kind, m.reason, amount, m.note ?? null, m.reference ?? null, actor.userId, actor.userName, cost] as const;
 
   if (m.kind === "initial" || m.kind === "in") {
     if (!(m.quantityMilli > 0)) throw new AppError(422, "validation_error", "La cantidad debe ser mayor a 0");

@@ -129,6 +129,20 @@ function BusinessTab() {
               onChange={(e) => setForm({ ...form, pricesIncludeTax: e.target.checked })}
             />
           </div>
+          <TextField
+            label="Descuento máximo del cajero (%)"
+            inputMode="decimal"
+            className="nx-num"
+            value={String(form.cashierMaxDiscountBps / 100)}
+            onChange={(e) => { const n = Number(e.target.value.replace(",", ".")); if (Number.isFinite(n) && n >= 0 && n <= 100) setForm({ ...form, cashierMaxDiscountBps: Math.round(n * 100) }); }}
+            disabled={!editable}
+            error={save.fields.cashierMaxDiscountBps}
+            help="Por encima de esto, un administrador debe dar el descuento."
+          />
+          <SelectField label="Ancho del recibo" value={String(form.receiptWidthMm)} onChange={(e) => setForm({ ...form, receiptWidthMm: Number(e.target.value) as 58 | 80 })} disabled={!editable} help="Según tu impresora térmica.">
+            <option value="80">80 mm</option>
+            <option value="58">58 mm</option>
+          </SelectField>
           <TextAreaField label="Mensaje al pie del recibo" optional fieldClassName="nx-span-2" {...text("receiptFooter")} placeholder="¡Gracias por tu compra!" rows={2} />
         </div>
       </Card>

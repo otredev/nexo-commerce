@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ToastProvider } from "@nexo/ui";
@@ -13,11 +13,16 @@ import { SettingsPage } from "./pages/Settings";
 import { UsersPage } from "./pages/Users";
 import { ActivityPage } from "./pages/Activity";
 import { ProductsPage } from "./pages/Products";
-import { ProductFormPage } from "./pages/ProductForm";
+const ProductFormPage = lazy(() => import("./pages/ProductForm").then((m) => ({ default: m.ProductFormPage })));
 import { InventoryPage } from "./pages/Inventory";
 import { MovementsPage } from "./pages/Movements";
 import { CatalogNamesPage } from "./pages/CatalogNames";
 import { BusinessProvider } from "./lib/business";
+const PosPage = lazy(() => import("./pages/pos/PosPage").then((m) => ({ default: m.PosPage })));
+const ReceiptPage = lazy(() => import("./pages/Receipt").then((m) => ({ default: m.ReceiptPage })));
+import { SalesPage } from "./pages/Sales";
+import { SaleDetailPage } from "./pages/SaleDetail";
+import { CashSessionPage, CashSessionsPage } from "./pages/CashSessions";
 import type { ReactNode } from "react";
 
 function Protected({ children }: { children: ReactNode }) {
@@ -40,11 +45,14 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+          <Suspense fallback={<div className="nx-page-loading"><span className="nx-spinner" aria-label="Cargando" /></div>}>
           <Routes>
             <Route path="/ingresar" element={<PublicOnly><LoginPage /></PublicOnly>} />
             <Route path="/registro" element={<PublicOnly><RegisterPage /></PublicOnly>} />
             <Route path="/recuperar" element={<ForgotPasswordPage />} />
             <Route path="/restablecer" element={<ResetPasswordPage />} />
+            <Route path="/pos" element={<Protected><BusinessProvider><PosPage /></BusinessProvider></Protected>} />
+            <Route path="/recibo/:id" element={<Protected><BusinessProvider><ReceiptPage /></BusinessProvider></Protected>} />
             <Route element={<Protected><BusinessProvider><AppLayout /></BusinessProvider></Protected>}>
               <Route index element={<HomePage />} />
               <Route path="productos" element={<ProductsPage />} />
@@ -53,12 +61,17 @@ createRoot(document.getElementById("root")!).render(
               <Route path="inventario" element={<InventoryPage />} />
               <Route path="inventario/movimientos" element={<MovementsPage />} />
               <Route path="catalogo" element={<CatalogNamesPage />} />
+              <Route path="ventas" element={<SalesPage />} />
+              <Route path="ventas/:id" element={<SaleDetailPage />} />
+              <Route path="caja" element={<CashSessionsPage />} />
+              <Route path="caja/:id" element={<CashSessionPage />} />
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

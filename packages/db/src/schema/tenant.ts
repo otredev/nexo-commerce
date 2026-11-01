@@ -21,6 +21,9 @@ export const businessSettings = sqliteTable("business_settings", {
   pricesIncludeTax: integer("prices_include_tax", { mode: "boolean" }).notNull().default(true),
   receiptFooter: text("receipt_footer"),
   logoKey: text("logo_key"),
+  /** Highest discount a cashier can give, in basis points of the subtotal (1000 = 10 %). */
+  cashierMaxDiscountBps: integer("cashier_max_discount_bps").notNull().default(1000),
+  receiptWidthMm: integer("receipt_width_mm").notNull().default(80),
   updatedAt: text("updated_at").notNull().default(now),
 });
 
@@ -190,7 +193,7 @@ export const stockMovements = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     variantId: text("variant_id").notNull(),
     locationId: text("location_id").notNull(),
-    type: text("type", { enum: ["initial", "in", "out", "adjust"] }).notNull(),
+    type: text("type", { enum: ["initial", "in", "out", "adjust", "sale", "return"] }).notNull(),
     reason: text("reason").notNull(),
     /** Signed, thousandths of the unit. */
     quantityDelta: integer("quantity_delta").notNull(),
@@ -210,4 +213,212 @@ export const stockMovements = sqliteTable(
     index("movements_tenant_idx").on(t.tenantId, t.id),
     index("movements_location_idx").on(t.tenantId, t.locationId, t.id),
   ],
+);
+
+/* ======================= Phase 2 — Point of sale ======================= */
+
+/** Gapless per-business sequences (sale folios). Incremented inside the same batch as the sale. */
+export const counters = sqliteTable(
+  "counters",
+  {
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    value: integer("value").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
+);
+
+/** A cash drawer shift: opened with a float, closed with a blind count. One open session per location. */
+export const cashSessions = sqliteTable(
+  "cash_sessions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    locationId: text("location_id").notNull(),
+    status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
+    openingCashCents: integer("opening_cash_cents").notNull(),
+    openedBy: text("opened_by"),
+    openedByName: text("opened_by_name"),
+    openedAt: text("opened_at").notNull().default(now),
+    closedBy: text("closed_by"),
+    closedByName: text("closed_by_name"),
+    closedAt: text("closed_at"),
+    expectedCashCents: integer("expected_cash_cents"),
+    countedCashCents: integer("counted_cash_cents"),
+    differenceCents: integer("difference_cents"),
+    /** Snapshot of the totals at closing time. */
+    totals: text("totals", { mode: "json" }),
+    note: text("note"),
+  },
+  (t) => [
+    index("cash_sessions_tenant_idx").on(t.tenantId, t.openedAt),
+    uniqueIndex("cash_sessions_one_open_uq").on(t.tenantId, t.locationId).where(sql`status = 'open'`),
+  ],
+);
+
+export const cashMovements = sqliteTable(
+  "cash_movements",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    type: text("type", { enum: ["in", "out"] }).notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    reason: text("reason").notNull(),
+    userId: text("user_id"),
+    userName: text("user_name"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("cash_movements_session_idx").on(t.sessionId)],
+);
+
+export const sales = sqliteTable(
+  "sales",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    /** Gapless folio per business. */
+    number: integer("number").notNull(),
+    /** Idempotency key sent by the POS. */
+    clientId: text("client_id").notNull(),
+    locationId: text("location_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    userId: text("user_id"),
+    userName: text("user_name"),
+    customerName: text("customer_name"),
+    customerContact: text("customer_contact"),
+    note: text("note"),
+    status: text("status", { enum: ["completed", "voided"] }).notNull().default("completed"),
+    pricesIncludeTax: integer("prices_include_tax", { mode: "boolean" }).notNull(),
+    subtotalCents: integer("subtotal_cents").notNull(),
+    discountCents: integer("discount_cents").notNull(),
+    taxCents: integer("tax_cents").notNull(),
+    totalCents: integer("total_cents").notNull(),
+    costCents: integer("cost_cents").notNull(),
+    paidCents: integer("paid_cents").notNull(),
+    changeCents: integer("change_cents").notNull(),
+    refundedCents: integer("refunded_cents").notNull().default(0),
+    /** Local date in the business time zone, used by reports and summaries. */
+    businessDate: text("business_date").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+    voidedAt: text("voided_at"),
+    voidedBy: text("voided_by"),
+    voidReason: text("void_reason"),
+  },
+  (t) => [
+    uniqueIndex("sales_tenant_number_uq").on(t.tenantId, t.number),
+    uniqueIndex("sales_tenant_client_uq").on(t.tenantId, t.clientId),
+    index("sales_tenant_date_idx").on(t.tenantId, t.businessDate),
+    index("sales_session_idx").on(t.sessionId),
+  ],
+);
+
+/** Snapshot of what was sold: later product changes never alter past sales. */
+export const saleItems = sqliteTable(
+  "sale_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    saleId: text("sale_id").notNull(),
+    variantId: text("variant_id").notNull(),
+    productId: text("product_id").notNull(),
+    name: text("name").notNull(),
+    options: text("options", { mode: "json" }).$type<string[]>().notNull(),
+    sku: text("sku").notNull(),
+    unit: text("unit").notNull(),
+    trackInventory: integer("track_inventory", { mode: "boolean" }).notNull(),
+    /** Thousandths of the unit. */
+    quantity: integer("quantity").notNull(),
+    unitPriceCents: integer("unit_price_cents").notNull(),
+    /** Line discount + its share of the cart discount. */
+    discountCents: integer("discount_cents").notNull(),
+    taxRateBps: integer("tax_rate_bps").notNull(),
+    netCents: integer("net_cents").notNull(),
+    taxCents: integer("tax_cents").notNull(),
+    totalCents: integer("total_cents").notNull(),
+    unitCostCents: integer("unit_cost_cents").notNull(),
+    returnedQuantity: integer("returned_quantity").notNull().default(0),
+    position: integer("position").notNull(),
+  },
+  (t) => [index("sale_items_sale_idx").on(t.saleId), check("sale_items_returned_le_qty", sql`${t.returnedQuantity} <= ${t.quantity}`)],
+);
+
+export const salePayments = sqliteTable(
+  "sale_payments",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    saleId: text("sale_id").notNull(),
+    method: text("method").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    reference: text("reference"),
+  },
+  (t) => [index("sale_payments_sale_idx").on(t.saleId)],
+);
+
+export const saleReturns = sqliteTable(
+  "sale_returns",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    saleId: text("sale_id").notNull(),
+    locationId: text("location_id").notNull(),
+    /** Cash session that paid a cash refund (null for other methods). */
+    sessionId: text("session_id"),
+    refundMethod: text("refund_method").notNull(),
+    refundCents: integer("refund_cents").notNull(),
+    restock: integer("restock", { mode: "boolean" }).notNull(),
+    reason: text("reason").notNull(),
+    userId: text("user_id"),
+    userName: text("user_name"),
+    businessDate: text("business_date").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("sale_returns_sale_idx").on(t.saleId), index("sale_returns_session_idx").on(t.sessionId)],
+);
+
+export const saleReturnItems = sqliteTable(
+  "sale_return_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    returnId: text("return_id").notNull(),
+    saleItemId: text("sale_item_id").notNull(),
+    quantity: integer("quantity").notNull(),
+    refundCents: integer("refund_cents").notNull(),
+  },
+  (t) => [index("sale_return_items_return_idx").on(t.returnId)],
+);
+
+/** Per-day totals, updated in the same batch as each sale, void or return. Reports read these. */
+export const dailySales = sqliteTable(
+  "daily_sales",
+  {
+    tenantId: text("tenant_id").notNull(),
+    date: text("date").notNull(),
+    locationId: text("location_id").notNull(),
+    salesCount: integer("sales_count").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    discountCents: integer("discount_cents").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+    returnsCents: integer("returns_cents").notNull().default(0),
+    voidedCount: integer("voided_count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.date, t.locationId] })],
+);
+
+export const dailyProductSales = sqliteTable(
+  "daily_product_sales",
+  {
+    tenantId: text("tenant_id").notNull(),
+    date: text("date").notNull(),
+    variantId: text("variant_id").notNull(),
+    productId: text("product_id").notNull(),
+    /** Net of returns, thousandths. */
+    quantity: integer("quantity").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    costCents: integer("cost_cents").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.date, t.variantId] }), index("daily_product_tenant_date_idx").on(t.tenantId, t.date)],
 );

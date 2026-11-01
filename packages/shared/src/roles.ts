@@ -29,6 +29,14 @@ export const PERMISSIONS = {
   "inventory:write": ["owner", "admin"],
   /** Purchase cost, margins and inventory value. Hidden from cashiers. */
   "costs:read": ["owner", "admin"],
+  "pos:sell": ["owner", "admin", "cashier"],
+  "cash:operate": ["owner", "admin", "cashier"],
+  "sales:read": ["owner", "admin", "cashier"],
+  "sales:void": ["owner", "admin"],
+  "sales:return": ["owner", "admin"],
+  /** Discounts above the business's cashier limit. */
+  "discount:unlimited": ["owner", "admin"],
+  "reports:read": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

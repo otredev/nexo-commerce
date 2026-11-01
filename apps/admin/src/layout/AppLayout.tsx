@@ -1,13 +1,25 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, Boxes, Home, LogOut, Menu, Package, Settings, Tags, Users } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingCart, Tags, Users, Wallet } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { useAuth } from "../lib/auth";
 
 type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean };
 const NAV: Array<{ group?: string; items: NavItem[] }> = [
-  { items: [{ to: "/", label: "Inicio", icon: Home, end: true }] },
+  {
+    items: [
+      { to: "/", label: "Inicio", icon: Home, end: true },
+      { to: "/pos", label: "Punto de venta", icon: ShoppingCart, permission: "pos:sell" },
+    ],
+  },
+  {
+    group: "Ventas",
+    items: [
+      { to: "/ventas", label: "Ventas", icon: Receipt, permission: "sales:read" },
+      { to: "/caja", label: "Cortes de caja", icon: Wallet, permission: "cash:operate" },
+    ],
+  },
   {
     group: "Catálogo",
     items: [
@@ -35,6 +47,10 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/inventario\/movimientos$/, "Movimientos"],
   [/^\/inventario$/, "Inventario"],
   [/^\/catalogo$/, "Categorías y marcas"],
+  [/^\/ventas\/.+/, "Venta"],
+  [/^\/ventas$/, "Ventas"],
+  [/^\/caja\/.+/, "Corte de caja"],
+  [/^\/caja$/, "Cortes de caja"],
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],

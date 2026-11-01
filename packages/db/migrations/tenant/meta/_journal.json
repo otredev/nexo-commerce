@@ -15,6 +15,13 @@
       "when": 1793549334426,
       "tag": "0001_catalog_inventory",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793551031094,
+      "tag": "0002_point_of_sale",
+      "breakpoints": true
     }
   ]
 }

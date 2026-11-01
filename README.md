@@ -6,6 +6,7 @@ Estado actual:
 
 - **Fase 0 — Fundamentos:** autenticación, negocios (multi-tenant), usuarios y roles, configuración del negocio, impuestos, ubicaciones, auditoría, archivos en R2, respaldos y el sistema de diseño.
 - **Fase 1 — Catálogo e inventario:** productos con variantes, categorías y marcas, SKU y código de barras, imágenes, unidades de medida, costo promedio y margen, búsqueda y filtros, importación por CSV, existencias por ubicación y Kardex.
+- **Fase 2 — Punto de venta:** caja para teclado y escáner, descuentos con límite por rol, impuestos por línea, pagos mixtos con cambio, apertura y cierre ciego de caja, ingresos y retiros, recibo térmico o por correo, historial, anulaciones, devoluciones y dashboard del día.
 
 ---
 
@@ -28,7 +29,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API + dashboard |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0 + 60 de la Fase 1) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1 y 56 de la Fase 2) |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens y dashboard |
 | `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega |
@@ -49,6 +50,7 @@ packages/
 scripts/
   smoke.mjs           Prueba de punta a punta de la Fase 0.
   smoke-catalog.mjs   Prueba de punta a punta de la Fase 1 (incluye sobreventa concurrente).
+  smoke-pos.mjs       Prueba de punta a punta de la Fase 2 (ventas, caja, devoluciones, concurrencia).
 ```
 
 Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie de sesión no necesita CORS.
@@ -93,6 +95,25 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 - El cajero ve productos y existencias, pero no costos, márgenes ni el valor del inventario (`costs:read`).
 - Importación CSV: el dashboard lee el archivo (coma o punto y coma, como lo exporta Excel en español), agrupa por nombre las filas con opciones como variantes y envía lotes de 25. El servidor valida cada producto, crea las categorías, marcas y tasas de impuesto que falten, y reporta los errores por número de fila. Plantilla descargable desde el propio diálogo.
 
+### Punto de venta
+
+- **Una venta = un `d1.batch()`**: folio, venta, líneas, pagos, salidas de inventario (Kardex tipo `sale`) y tablas de resumen. Si falta existencia de un solo producto, el `CHECK` revierte todo: no queda venta a medias ni folio consumido.
+- **Folios consecutivos sin huecos** por negocio (`counters`, incrementado dentro del mismo lote).
+- **Idempotencia**: el POS genera un `clientId` por cobro y lo reenvía en cada reintento; el índice único `(tenant_id, client_id)` garantiza que un corte de red no cobre dos veces.
+- **El servidor recalcula todo** con `computeSale()` (de `@nexo/shared`) usando precios, impuestos y costos de la base. El cliente solo envía qué productos, cuánto y qué descuento.
+- **Instantánea en cada línea**: nombre, opciones, SKU, precio, tasa, impuesto y costo del momento. Cambiar un producto después nunca altera ventas pasadas.
+- **Impuestos por línea** según el impuesto del producto (o el predeterminado), con precios que incluyen o no impuestos según la configuración. Los descuentos generales se reparten proporcionalmente sin perder centavos.
+- **Pagos**: efectivo, tarjeta, transferencia u otro, combinables. Solo el efectivo genera cambio.
+- **Descuentos**: el cajero tiene un límite configurable (10 % por defecto); propietario y administrador no.
+- **Caja**: una sesión abierta por ubicación (índice único parcial). Cierre ciego: el cajero cuenta antes de ver el esperado. Efectivo esperado = fondo + ventas en efectivo − cambio + ingresos − retiros − reembolsos en efectivo.
+- **Anulación** solo dentro del turno de caja abierto y sin devoluciones (después, se usa devolución). Regresa existencias y descuenta de los resúmenes.
+- **Devoluciones** parciales o totales, con o sin reingreso al inventario, reembolso por cualquier método (en efectivo exige caja abierta). `CHECK (returned_quantity <= quantity)` impide devolver de más aunque haya dos devoluciones simultáneas.
+- **Resúmenes diarios** (`daily_sales`, `daily_product_sales`), actualizados en el mismo lote que cada venta, anulación o devolución, por fecha local del negocio. El dashboard solo lee estas tablas.
+- **Recibo** en `/recibo/:id`, ajustado a impresora térmica de 58 u 80 mm, o enviado por correo.
+- Atajos del POS: escanear o escribir y `Enter` agrega; `F2` cobrar; `F4` descuento general; `Esc` vuelve a la búsqueda; `+`/`−` cambian la cantidad de la línea seleccionada; en el cobro, `Enter` confirma y abre la siguiente venta.
+
+> Facturación electrónica: no incluida. El recibo indica que no es comprobante fiscal. Se integra por país en la Fase 6 (o antes, si el mercado lo exige).
+
 > Escala: la lista de productos calcula existencias y valor al vuelo. Es suficiente para miles de productos; cuando un negocio crezca mucho, la Fase 5 agrega tablas de resumen.
 
 ### Seguridad
@@ -133,11 +154,21 @@ Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `back
 | `GET /api/inventory/summary` | `inventory:read` |
 | `POST /api/inventory/movements` (entrada, salida o conteo) | `inventory:write` |
 | `GET /api/inventory/movements?variantId=&productId=&locationId=&type=&cursor=` | `inventory:read` |
+| `GET /api/pos/products?locationId=&q=&categoryId=` | `pos:sell` |
+| `POST /api/sales` (con `clientId`) | `pos:sell` |
+| `GET /api/sales?from=&to=&status=&q=&locationId=&sessionId=&page=`, `GET /api/sales/:id` | `sales:read` |
+| `POST /api/sales/:id/void` | `sales:void` |
+| `POST /api/sales/:id/returns` | `sales:return` |
+| `POST /api/sales/:id/email` | `pos:sell` |
+| `GET /api/cash/current?locationId=`, `POST /api/cash/open` | `cash:operate` |
+| `POST /api/cash/:id/movements`, `POST /api/cash/:id/close` | `cash:operate` |
+| `GET /api/cash/sessions`, `GET /api/cash/sessions/:id` | `cash:operate` |
+| `GET /api/reports/dashboard` | `sales:read` |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
 
-Roles: **Propietario** y **Administrador** (todo), **Cajero** (punto de venta y consulta del catálogo y existencias, sin costos).
+Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento).
 
 ---
 
@@ -172,6 +203,6 @@ Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Int
 
 ---
 
-## Siguiente: Fase 2 — Punto de venta
+## Siguiente: Fase 3 — Compras y proveedores
 
-Interfaz de caja para teclado y escáner, carrito, descuentos, impuestos, pagos mixtos, apertura y cierre de caja, recibos y devoluciones. Cada venta usará `movementStatements()` para descontar existencias en el mismo lote que la venta, con tablas de resumen para el dashboard.
+Proveedores, órdenes de compra, recepción parcial o total (entradas con costo que actualizan el promedio), transferencias entre ubicaciones y conteos físicos.

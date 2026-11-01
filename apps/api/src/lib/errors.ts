@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { ZodError } from "zod";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 export class AppError extends Error {
@@ -20,6 +21,9 @@ export const unauthorized = () => new AppError(401, "unauthorized", "Inicia sesi
 export function errorResponse(c: Context, err: unknown) {
   if (err instanceof AppError) {
     return c.json({ error: { code: err.code, message: err.message, fields: err.fields } }, err.status);
+  }
+  if (err instanceof ZodError) {
+    return c.json({ error: { code: "validation_error", message: "Parámetros no válidos" } }, 400);
   }
   if (err instanceof HTTPException) {
     return c.json({ error: { code: "http_error", message: err.message } }, err.status);

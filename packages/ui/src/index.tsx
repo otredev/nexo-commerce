@@ -13,6 +13,7 @@ import {
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
@@ -74,11 +75,11 @@ function FieldShell({ label, help, error, optional, className, children }: Field
 
 type Common = { label: string; help?: ReactNode; error?: string; optional?: boolean; fieldClassName?: string };
 
-export function TextField({ label, help, error, optional, fieldClassName, className, ...rest }: Common & InputHTMLAttributes<HTMLInputElement>) {
+export function TextField({ label, help, error, optional, fieldClassName, className, inputRef, ...rest }: Common & InputHTMLAttributes<HTMLInputElement> & { inputRef?: Ref<HTMLInputElement> }) {
   return (
     <FieldShell label={label} help={help} error={error} optional={optional} className={fieldClassName}>
       {(id, describedBy) => (
-        <input id={id} className={cx("nx-input", className)} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...rest} />
+        <input ref={inputRef} id={id} className={cx("nx-input", className)} aria-invalid={error ? true : undefined} aria-describedby={describedBy} {...rest} />
       )}
     </FieldShell>
   );
