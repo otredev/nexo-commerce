@@ -1,0 +1,131 @@
+/* GENERATED from tokens.json by scripts/build-tokens.mjs — do not edit by hand. */
+:root, [data-theme="light"] {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-muted: #f4f4f2;
+  --border: #e7e6e3;
+  --border-strong: #d6d5d1;
+  --border-control: #8f8e88;
+  --ink: #1c1c1a;
+  --ink-muted: #5f5e5a;
+  --ink-subtle: #8a8984;
+  --primary: #2f6b4f;
+  --primary-hover: #275a42;
+  --primary-ink: #ffffff;
+  --accent-soft: #eaf2ed;
+  --accent-text: #2a5e45;
+  --success: #2e7044;
+  --success-soft: #e9f3ec;
+  --warning: #8a5a0f;
+  --warning-soft: #fbf3e2;
+  --danger: #b4382f;
+  --danger-soft: #fbecea;
+  --info: #365a85;
+  --info-soft: #ecf1f7;
+  --focus: #2f6b4f59;
+  --overlay: rgba(20, 20, 18, 0.32);
+  --shadow-xs: 0 1px 2px rgba(20, 20, 18, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 20, 18, 0.05), 0 1px 2px rgba(20, 20, 18, 0.03);
+  --shadow-md: 0 6px 16px rgba(20, 20, 18, 0.06), 0 1px 3px rgba(20, 20, 18, 0.04);
+  --shadow-lg: 0 20px 48px rgba(20, 20, 18, 0.10), 0 2px 6px rgba(20, 20, 18, 0.05);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211;
+  --surface: #1a1a19;
+  --surface-muted: #222220;
+  --border: #2e2e2b;
+  --border-strong: #3d3d39;
+  --border-control: #6b6a64;
+  --ink: #ededea;
+  --ink-muted: #a8a7a1;
+  --ink-subtle: #7d7c75;
+  --primary: #6fb08d;
+  --primary-hover: #82bf9e;
+  --primary-ink: #0f1f17;
+  --accent-soft: #1c2a22;
+  --accent-text: #8cc5a5;
+  --success: #7cbf98;
+  --success-soft: #18261d;
+  --warning: #d9a748;
+  --warning-soft: #2b2414;
+  --danger: #e0786e;
+  --danger-soft: #2e1a18;
+  --info: #86a9d4;
+  --info-soft: #1a2230;
+  --focus: #6fb08d66;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1a1a19;
+    --surface-muted: #222220;
+    --border: #2e2e2b;
+    --border-strong: #3d3d39;
+    --border-control: #6b6a64;
+    --ink: #ededea;
+    --ink-muted: #a8a7a1;
+    --ink-subtle: #7d7c75;
+    --primary: #6fb08d;
+    --primary-hover: #82bf9e;
+    --primary-ink: #0f1f17;
+    --accent-soft: #1c2a22;
+    --accent-text: #8cc5a5;
+    --success: #7cbf98;
+    --success-soft: #18261d;
+    --warning: #d9a748;
+    --warning-soft: #2b2414;
+    --danger: #e0786e;
+    --danger-soft: #2e1a18;
+    --info: #86a9d4;
+    --info-soft: #1a2230;
+    --focus: #6fb08d66;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+  }
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+  --control-sm: 32px;
+  --control-md: 36px;
+  --control-lg: 44px;
+  --sidebar-width: 248px;
+  --topbar-height: 56px;
+  --content-max: 1280px;
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+.text-display { font-family: var(--font-serif); font-size: 44px; line-height: 48px; font-weight: 400; letter-spacing: -0.01em; }
+.text-heading { font-family: var(--font-serif); font-size: 30px; line-height: 36px; font-weight: 400; }
+.text-title { font-family: var(--font-sans); font-size: 18px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.text-subtitle { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 600; }
+.text-body { font-family: var(--font-sans); font-size: 14px; line-height: 22px; font-weight: 400; }
+.text-body-lg { font-family: var(--font-sans); font-size: 16px; line-height: 26px; font-weight: 400; }
+.text-label { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 500; }
+.text-caption { font-family: var(--font-sans); font-size: 12px; line-height: 16px; font-weight: 400; }
+.text-overline { font-family: var(--font-sans); font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.text-metric { font-family: var(--font-sans); font-size: 28px; line-height: 32px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.text-mono { font-family: var(--font-mono); font-size: 12px; line-height: 18px; font-weight: 400; }

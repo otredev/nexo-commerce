@@ -1,0 +1,52 @@
+{
+  // One Worker serves the API (/api/*) and the dashboard (static assets) on the same origin,
+  // so the session cookie needs no CORS. Each environment has its own D1 and R2.
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "nexo-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  "assets": {
+    "directory": "../admin/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/files/*"]
+  },
+
+  // Daily backup of both databases to R2 (07:00 UTC).
+  "triggers": { "crons": ["0 7 * * *"] },
+
+  // ---------- Local development (wrangler dev) ----------
+  "vars": { "APP_ENV": "development", "APP_URL": "http://localhost:5173" },
+  "d1_databases": [
+    { "binding": "DB_CONTROL", "database_name": "nexo-control-dev", "database_id": "00000000-0000-0000-0000-000000000001", "migrations_dir": "../../packages/db/migrations/control" },
+    { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-dev", "database_id": "00000000-0000-0000-0000-000000000002", "migrations_dir": "../../packages/db/migrations/tenant" }
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-dev" }],
+
+  "env": {
+    // ---------- Staging ----------
+    // Create resources with: wrangler d1 create nexo-control-staging / nexo-tenant-staging, wrangler r2 bucket create nexo-files-staging
+    "staging": {
+      "name": "nexo-api-staging",
+      "vars": { "APP_ENV": "staging", "APP_URL": "https://staging.example.com" },
+      "d1_databases": [
+        { "binding": "DB_CONTROL", "database_name": "nexo-control-staging", "database_id": "REPLACE_WITH_STAGING_CONTROL_ID", "migrations_dir": "../../packages/db/migrations/control" },
+        { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-staging", "database_id": "REPLACE_WITH_STAGING_TENANT_ID", "migrations_dir": "../../packages/db/migrations/tenant" }
+      ],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-staging" }]
+    },
+    // ---------- Production ----------
+    "production": {
+      "name": "nexo-api-production",
+      "vars": { "APP_ENV": "production", "APP_URL": "https://app.example.com" },
+      "d1_databases": [
+        { "binding": "DB_CONTROL", "database_name": "nexo-control-production", "database_id": "REPLACE_WITH_PRODUCTION_CONTROL_ID", "migrations_dir": "../../packages/db/migrations/control" },
+        { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-production", "database_id": "REPLACE_WITH_PRODUCTION_TENANT_ID", "migrations_dir": "../../packages/db/migrations/tenant" }
+      ],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-production" }]
+    }
+  }
+}

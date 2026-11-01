@@ -1,0 +1,17 @@
+{
+  "name": "@nexo/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./control": "./src/schema/control.ts",
+    "./tenant": "./src/schema/tenant.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate --config drizzle.control.config.ts && drizzle-kit generate --config drizzle.tenant.config.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": { "drizzle-orm": "^0.45.4" },
+  "devDependencies": { "drizzle-kit": "^0.31.11", "@cloudflare/workers-types": "^5.20261101.1" }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@nexo/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node -e \"require('fs').mkdirSync('../admin/dist', { recursive: true })\"",
+    "dev": "wrangler dev --port 8787",
+    "migrate:local": "wrangler d1 migrations apply DB_CONTROL --local && wrangler d1 migrations apply DB_TENANT_DEFAULT --local",
+    "migrate:staging": "wrangler d1 migrations apply DB_CONTROL --remote --env staging && wrangler d1 migrations apply DB_TENANT_DEFAULT --remote --env staging",
+    "migrate:production": "wrangler d1 migrations apply DB_CONTROL --remote --env production && wrangler d1 migrations apply DB_TENANT_DEFAULT --remote --env production",
+    "deploy:staging": "npm run migrate:staging && wrangler deploy --env staging",
+    "deploy:production": "npm run migrate:production && wrangler deploy --env production",
+    "types": "wrangler types",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
+    "@nexo/db": "*",
+    "@nexo/shared": "*",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.16",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "wrangler": "^4.156.0"
+  }
+}

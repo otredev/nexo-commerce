@@ -1,0 +1,4 @@
+# Copia este archivo como .dev.vars para desarrollo local (no se sube al repositorio).
+# Sin RESEND_API_KEY los correos se imprimen en la consola de wrangler.
+RESEND_API_KEY=
+EMAIL_FROM=Nexo <no-reply@tudominio.com>

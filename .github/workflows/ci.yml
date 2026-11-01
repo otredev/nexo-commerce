@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Migraciones en D1 local
+        run: npm run db:migrate:local
+      - name: Prueba de punta a punta contra wrangler dev
+        run: |
+          (cd apps/api && npx wrangler dev --port 8787 > /tmp/wrangler.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://localhost:8787/api/health && break; sleep 1; done
+          node scripts/smoke.mjs || (cat /tmp/wrangler.log; exit 1)
