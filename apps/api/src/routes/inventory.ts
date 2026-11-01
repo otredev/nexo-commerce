@@ -23,6 +23,7 @@ import {
 import type { AppEnv } from "../env";
 import { AppError, notFound } from "../lib/errors";
 import { isStockCheckError, movementStatements } from "../lib/inventory";
+import { lookupVariants } from "../lib/lookup";
 import { json } from "../lib/validate";
 import { requirePermission } from "../middleware/auth";
 
@@ -99,6 +100,15 @@ export const inventoryRoutes = new Hono<AppEnv>()
     });
     const body: Paginated<InventoryRow> = { items, total: (count!.results[0] as { total: number }).total, page: query.page, pageSize: query.pageSize };
     return c.json(body);
+  })
+
+  /* ---------- Product picker for purchases, transfers and counts ---------- */
+  .get("/lookup", requirePermission("inventory:read"), async (c) => {
+    const query = z
+      .object({ locationId: z.string().min(1).max(40), q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
+      .parse(c.req.query());
+    const { d1, tenant: t, role } = c.var.auth;
+    return c.json(await lookupVariants(d1, t.id, { ...query, showCost: can(role, "costs:read") }));
   })
 
   /* ---------- Dashboard numbers ---------- */

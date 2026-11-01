@@ -350,3 +350,41 @@ kbd, .nx-kbd { display: inline-block; min-width: 20px; padding: 1px 5px; border:
 
 /* In the POS the bottom-right corner holds the pay button: show toasts at the top. */
 body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4)); bottom: auto; }
+
+/* ---------- Product picker (combobox) ---------- */
+.nx-picker { position: relative; width: 100%; max-width: 420px; }
+.nx-picker .nx-input-group { width: 100%; }
+.nx-picker__list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; max-height: 320px; overflow-y: auto; margin: 0; padding: var(--space-1); list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.nx-picker__option { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
+.nx-picker__option[aria-selected="true"] { background: var(--surface-muted); }
+.nx-picker__option .nx-thumb { width: 28px; height: 28px; }
+.nx-picker__main { flex: 1; min-width: 0; }
+.nx-picker__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.nx-picker__meta { font: 400 12px/16px var(--font-mono); color: var(--ink-muted); }
+.nx-picker__side { text-align: right; font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
+.nx-picker__empty { padding: var(--space-3); font-size: 13px; color: var(--ink-muted); }
+
+/* ---------- Document lines (purchases, transfers, counts) ---------- */
+.nx-doc-totals { display: grid; gap: var(--space-2); min-width: 240px; margin-left: auto; font-size: 13px; }
+.nx-doc-totals > div { display: flex; justify-content: space-between; gap: var(--space-6); }
+.nx-doc-totals dt { color: var(--ink-muted); }
+.nx-doc-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.nx-doc-totals .nx-doc-totals__grand { padding-top: var(--space-2); border-top: 1px solid var(--border); font-weight: 600; font-size: 15px; }
+.nx-doc-totals .nx-doc-totals__grand dt { color: var(--ink); }
+.nx-line-input { width: 96px; text-align: right; }
+.nx-row-done td { color: var(--ink-muted); }
+.nx-diff-up { color: var(--success); font-weight: 500; }
+.nx-diff-down { color: var(--danger); font-weight: 500; }
+.nx-progress-cell { display: flex; align-items: center; gap: var(--space-2); min-width: 120px; }
+.nx-progress-cell .nx-progress { flex: 1; }
+.nx-steps { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--ink-muted); }
+.nx-steps__item { display: inline-flex; align-items: center; gap: 6px; }
+.nx-steps__item[data-state="done"] { color: var(--ink); }
+.nx-steps__item[data-state="current"] { color: var(--ink); font-weight: 600; }
+.nx-steps__dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--border-strong); }
+.nx-steps__item[data-state="done"] .nx-steps__dot { background: var(--primary); }
+.nx-steps__item[data-state="current"] .nx-steps__dot { background: var(--primary); box-shadow: 0 0 0 3px var(--accent-soft); }
+.nx-steps__sep { width: 16px; height: 1px; background: var(--border); }
+/* Document page: lines on the left, summary cards on the right; stacked on narrow screens. */
+.nx-grid-doc { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: var(--space-6); align-items: start; }
+@media (max-width: 1024px) { .nx-grid-doc { grid-template-columns: minmax(0, 1fr); } }

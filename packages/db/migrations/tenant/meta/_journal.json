@@ -22,6 +22,13 @@
       "when": 1793551031094,
       "tag": "0002_point_of_sale",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793558602165,
+      "tag": "0003_purchasing",
+      "breakpoints": true
     }
   ]
 }

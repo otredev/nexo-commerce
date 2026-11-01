@@ -1,5 +1,6 @@
 import type { Role } from "./roles";
 import type { MovementType, StockStatus, UnitCode } from "./catalog";
+import type { CountStatus, PurchaseStatus, TransferStatus } from "./purchasing";
 
 /** Shapes returned by the API. Shared by the dashboard so both sides stay in sync. */
 
@@ -335,4 +336,206 @@ export interface DashboardData {
   days: Array<{ date: string; totalCents: number; count: number }>;
   topProducts: Array<{ productId: string; name: string; options: string[]; quantity: number; unit: UnitCode; totalCents: number }>;
   openSessions: Array<{ id: string; locationName: string; openedBy: string | null; openedAt: string }>;
+}
+
+/* ---------- Phase 3 ---------- */
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  taxId: string | null;
+  address: string | null;
+  paymentTermsDays: number;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+  /** Orders that are not draft or cancelled, and the net value received from this supplier. */
+  ordersCount?: number;
+  openOrdersCount?: number;
+  receivedCents?: number;
+  lastOrderAt?: string | null;
+}
+
+/** A variant found by the product picker of purchases, transfers and counts. */
+export interface LookupVariant {
+  variantId: string;
+  productId: string;
+  name: string;
+  options: string[];
+  sku: string;
+  barcode: string | null;
+  unit: UnitCode;
+  image: string | null;
+  /** Average cost; null without costs:read. */
+  costCents: number | null;
+  /** Effective tax rate of the product. */
+  taxRateBps: number;
+  /** Stock in the requested location (decimal units). */
+  stock: number;
+  minStock: number;
+  exact: boolean;
+}
+
+export interface PurchaseSuggestion extends LookupVariant {
+  suggestedQuantity: number;
+}
+
+export interface PurchaseOrderListItem {
+  id: string;
+  number: number;
+  status: PurchaseStatus;
+  supplierId: string;
+  supplierName: string;
+  locationName: string;
+  expectedDate: string | null;
+  totalCents: number;
+  receivedCents: number;
+  itemsCount: number;
+  /** Ordered and received quantity over all lines, 0–1. */
+  progress: number;
+  createdAt: string;
+  orderedAt: string | null;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  variantId: string;
+  productId: string;
+  name: string;
+  options: string[];
+  sku: string;
+  unit: UnitCode;
+  quantity: number;
+  receivedQuantity: number;
+  unitCostCents: number;
+  taxRateBps: number;
+  netCents: number;
+  taxCents: number;
+  totalCents: number;
+  /** Current stock at the order's location, for context while editing or receiving. */
+  stock: number;
+  /** Current average cost, to spot price changes. */
+  currentCostCents: number;
+}
+
+export interface PurchaseReceipt {
+  id: string;
+  createdAt: string;
+  userName: string | null;
+  supplierReference: string | null;
+  note: string | null;
+  totalCents: number;
+  /** Due date of the invoice from the supplier's credit days. */
+  dueDate: string;
+  items: Array<{ orderItemId: string; name: string; options: string[]; unit: UnitCode; quantity: number; unitCostCents: number }>;
+}
+
+export interface PurchaseOrderDetail extends Omit<PurchaseOrderListItem, "itemsCount" | "progress" | "supplierName"> {
+  supplier: Supplier;
+  locationId: string;
+  note: string | null;
+  subtotalCents: number;
+  taxCents: number;
+  createdByName: string | null;
+  closedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  items: PurchaseOrderItem[];
+  receipts: PurchaseReceipt[];
+  progress: number;
+}
+
+export interface TransferListItem {
+  id: string;
+  number: number;
+  status: TransferStatus;
+  fromLocationId: string;
+  fromLocationName: string;
+  toLocationId: string;
+  toLocationName: string;
+  itemsCount: number;
+  units: number;
+  createdAt: string;
+  createdByName: string | null;
+  sentAt: string | null;
+  receivedAt: string | null;
+}
+
+export interface TransferItem {
+  id: string;
+  variantId: string;
+  productId: string;
+  name: string;
+  options: string[];
+  sku: string;
+  unit: UnitCode;
+  quantity: number;
+  receivedQuantity: number | null;
+  unitCostCents: number | null;
+  /** Current stock at the origin (to check availability before sending). */
+  originStock: number;
+}
+
+export interface TransferDetail extends TransferListItem {
+  note: string | null;
+  sentByName: string | null;
+  receivedByName: string | null;
+  cancelledAt: string | null;
+  cancelledByName: string | null;
+  items: TransferItem[];
+}
+
+export interface StockCountSummary {
+  lines: number;
+  counted: number;
+  adjusted: number;
+  /** Net units of difference (decimal) and their value at average cost. */
+  unitsOver: number;
+  unitsShort: number;
+  valueDeltaCents: number | null;
+}
+
+export interface StockCountListItem {
+  id: string;
+  number: number;
+  status: CountStatus;
+  locationId: string;
+  locationName: string;
+  scope: "all" | "category" | "manual";
+  categoryName: string | null;
+  lines: number;
+  counted: number;
+  createdAt: string;
+  createdByName: string | null;
+  completedAt: string | null;
+  summary: StockCountSummary | null;
+}
+
+export interface StockCountItem {
+  id: string;
+  variantId: string;
+  productId: string;
+  name: string;
+  options: string[];
+  sku: string;
+  barcode: string | null;
+  unit: UnitCode;
+  /** null when hidden (blind count for users without counts:write). */
+  expectedQuantity: number | null;
+  countedQuantity: number | null;
+  countedByName: string | null;
+  /** After completion: the applied difference. */
+  finalDelta: number | null;
+  unitCostCents: number | null;
+}
+
+export interface StockCountDetail extends StockCountListItem {
+  note: string | null;
+  completedByName: string | null;
+  /** True when the viewer sees expected stock and differences. */
+  showExpected: boolean;
+  items: StockCountItem[];
 }

@@ -19,7 +19,7 @@
     "db:migrate:local": "npm run migrate:local -w @nexo/api",
     "deploy:staging": "npm run build && npm run deploy:staging -w @nexo/api",
     "deploy:production": "npm run build && npm run deploy:production -w @nexo/api",
-    "smoke": "node scripts/smoke.mjs && node scripts/smoke-catalog.mjs && node scripts/smoke-pos.mjs"
+    "smoke": "node scripts/smoke.mjs && node scripts/smoke-catalog.mjs && node scripts/smoke-pos.mjs && node scripts/smoke-purchasing.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -7,6 +7,7 @@ Estado actual:
 - **Fase 0 — Fundamentos:** autenticación, negocios (multi-tenant), usuarios y roles, configuración del negocio, impuestos, ubicaciones, auditoría, archivos en R2, respaldos y el sistema de diseño.
 - **Fase 1 — Catálogo e inventario:** productos con variantes, categorías y marcas, SKU y código de barras, imágenes, unidades de medida, costo promedio y margen, búsqueda y filtros, importación por CSV, existencias por ubicación y Kardex.
 - **Fase 2 — Punto de venta:** caja para teclado y escáner, descuentos con límite por rol, impuestos por línea, pagos mixtos con cambio, apertura y cierre ciego de caja, ingresos y retiros, recibo térmico o por correo, historial, anulaciones, devoluciones y dashboard del día.
+- **Fase 3 — Abastecimiento:** proveedores, órdenes de compra con recepciones parciales y costo real de factura, sugerencias de reorden, traspasos entre ubicaciones y conteos físicos con captura ciega y escáner.
 
 ---
 
@@ -29,7 +30,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API + dashboard |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1 y 56 de la Fase 2) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2 y 84 de la Fase 3) |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens y dashboard |
 | `npm run deploy:staging` / `deploy:production` | Compila, migra la D1 remota y despliega |
@@ -51,6 +52,7 @@ scripts/
   smoke.mjs           Prueba de punta a punta de la Fase 0.
   smoke-catalog.mjs   Prueba de punta a punta de la Fase 1 (incluye sobreventa concurrente).
   smoke-pos.mjs       Prueba de punta a punta de la Fase 2 (ventas, caja, devoluciones, concurrencia).
+  smoke-purchasing.mjs Prueba de punta a punta de la Fase 3 (compras, traspasos, conteos, concurrencia).
 ```
 
 Un solo Worker sirve la API y el dashboard en el mismo dominio, así la cookie de sesión no necesita CORS.
@@ -116,6 +118,16 @@ Hoy todos los negocios comparten `DB_TENANT_DEFAULT`. Cada fila de `tenants` gua
 
 > Escala: la lista de productos calcula existencias y valor al vuelo. Es suficiente para miles de productos; cuando un negocio crezca mucho, la Fase 5 agrega tablas de resumen.
 
+### Abastecimiento
+
+- **Documentos con folio propio** y sin huecos: órdenes `OC-000001`, traspasos `TR-000001`, conteos `CF-000001`. Nunca se borran: se cancelan.
+- **Cambios de estado a prueba de carreras**: cada transición va en el mismo lote que sus movimientos como `SET status = CASE WHEN status IN (...) THEN 'siguiente' END`. Si otra petición cambió el estado antes, el `CASE` da `NULL`, falla el `NOT NULL` y se revierte todo (existencias incluidas). Dos envíos o dos aplicaciones simultáneas: solo una entra.
+- **Órdenes de compra**: borrador → pedida → recibida en parte → recibida (o cancelada). Se editan mientras no tengan recepciones. Costos netos (antes de impuesto) e impuesto por línea. Se envían al proveedor por correo y se pueden repetir.
+- **Recepciones**: parciales o totales, con el costo real de la factura. Cada una sube existencias (Kardex tipo `purchase`, con folio y número de factura) y recalcula el costo promedio ponderado. `CHECK (received_quantity <= quantity)` impide recibir de más aunque dos personas reciban a la vez. Una orden parcial se puede cerrar con pendientes. El vencimiento de la factura sale de los días de crédito del proveedor.
+- **Sugerencias de reorden**: productos en su mínimo o por debajo, con cantidad sugerida para llegar al doble del mínimo.
+- **Traspasos**: al enviar salen del origen (`transfer_out`, falla si no alcanza); al confirmar la llegada entran al destino (`transfer_in`) con lo que realmente llegó. La diferencia queda registrada y valorizada. Cancelar uno en tránsito regresa todo al origen. El costo promedio no cambia.
+- **Conteos físicos** por categoría, de todo el inventario o de productos sueltos. El cajero captura a ciegas (no ve la existencia del sistema); el administrador revisa diferencias y aplica. Al capturar cada línea se guarda la existencia del sistema en ese instante y el ajuste final es `contado − existencia al contar`: **se puede seguir vendiendo durante el conteo** sin descuadrar. El ajuste se aplica con sentencias por conjunto (sirve para miles de productos) y solo genera Kardex donde hay diferencia.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -164,11 +176,24 @@ Un cron diario (07:00 UTC) exporta todas las tablas de ambas bases a R2 en `back
 | `POST /api/cash/:id/movements`, `POST /api/cash/:id/close` | `cash:operate` |
 | `GET /api/cash/sessions`, `GET /api/cash/sessions/:id` | `cash:operate` |
 | `GET /api/reports/dashboard` | `sales:read` |
+| `GET /api/inventory/lookup?locationId=&q=` (buscador de documentos) | `inventory:read` |
+| `GET/POST /api/suppliers`, `GET/PUT/DELETE /api/suppliers/:id` | `suppliers:read` / `suppliers:write` |
+| `GET /api/purchases?status=&supplierId=&q=&page=`, `GET /api/purchases/:id` | `purchases:read` |
+| `GET /api/purchases/suggestions?locationId=` | `purchases:write` |
+| `POST /api/purchases`, `PUT /api/purchases/:id` | `purchases:write` |
+| `POST /api/purchases/:id/order` · `cancel` · `close` · `duplicate` · `email` | `purchases:write` |
+| `POST /api/purchases/:id/receive` | `purchases:receive` |
+| `GET /api/transfers?status=&locationId=`, `GET /api/transfers/:id` | `transfers:read` |
+| `POST /api/transfers`, `PUT /api/transfers/:id`, `POST /api/transfers/:id/send` · `cancel` | `transfers:write` |
+| `POST /api/transfers/:id/receive` | `transfers:receive` |
+| `GET /api/counts?status=&locationId=`, `GET /api/counts/:id` | `counts:read` |
+| `POST /api/counts`, `POST /api/counts/:id/complete` · `cancel` | `counts:write` |
+| `POST /api/counts/:id/entries` · `items` | `counts:count` |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
 
-Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento).
+Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su caja con cierre ciego y consulta catálogo y existencias; no ve costos ni utilidad, no anula ni hace devoluciones y tiene límite de descuento; confirma la llegada de traspasos y captura conteos a ciegas, pero no ve compras ni proveedores).
 
 ---
 
@@ -203,6 +228,6 @@ Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Int
 
 ---
 
-## Siguiente: Fase 3 — Compras y proveedores
+## Siguiente: Fase 4 — Tienda en línea
 
-Proveedores, órdenes de compra, recepción parcial o total (entradas con costo que actualizan el promedio), transferencias entre ubicaciones y conteos físicos.
+Catálogo público en Cloudflare Pages con el inventario real, carrito, pedidos que apartan existencias y su gestión desde el panel.

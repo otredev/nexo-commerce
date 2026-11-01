@@ -193,7 +193,7 @@ export const stockMovements = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     variantId: text("variant_id").notNull(),
     locationId: text("location_id").notNull(),
-    type: text("type", { enum: ["initial", "in", "out", "adjust", "sale", "return"] }).notNull(),
+    type: text("type", { enum: ["initial", "in", "out", "adjust", "sale", "return", "purchase", "transfer_out", "transfer_in"] }).notNull(),
     reason: text("reason").notNull(),
     /** Signed, thousandths of the unit. */
     quantityDelta: integer("quantity_delta").notNull(),
@@ -421,4 +421,230 @@ export const dailyProductSales = sqliteTable(
     costCents: integer("cost_cents").notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.date, t.variantId] }), index("daily_product_tenant_date_idx").on(t.tenantId, t.date)],
+);
+
+
+/* ======================================================================
+ * Phase 3: suppliers, purchase orders, transfers and physical counts.
+ * Status changes run as `SET status = CASE WHEN status IN (...) THEN 'next' END`
+ * inside the same batch as their stock movements: if another request changed the
+ * status first, the CASE yields NULL, the NOT NULL constraint fails and the whole
+ * batch (stock included) rolls back.
+ * ==================================================================== */
+
+export const suppliers = sqliteTable(
+  "suppliers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    taxId: text("tax_id"),
+    address: text("address"),
+    /** Credit days the supplier gives (0 = cash on delivery). */
+    paymentTermsDays: integer("payment_terms_days").notNull().default(0),
+    notes: text("notes"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("suppliers_tenant_name_uq").on(t.tenantId, t.name)],
+);
+
+export const purchaseOrders = sqliteTable(
+  "purchase_orders",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    /** Gapless folio per business (counter "purchase"). Orders are cancelled, never deleted. */
+    number: integer("number").notNull(),
+    supplierId: text("supplier_id").notNull(),
+    /** Where the goods arrive. */
+    locationId: text("location_id").notNull(),
+    status: text("status", { enum: ["draft", "ordered", "partial", "received", "cancelled"] }).notNull().default("draft"),
+    expectedDate: text("expected_date"),
+    note: text("note"),
+    /** Net (before tax) and tax of the ordered lines, recomputed on every edit. */
+    subtotalCents: integer("subtotal_cents").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    /** Net value received so far, at the cost actually received. */
+    receivedCents: integer("received_cents").notNull().default(0),
+    createdBy: text("created_by"),
+    createdByName: text("created_by_name"),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+    orderedAt: text("ordered_at"),
+    closedAt: text("closed_at"),
+    cancelledAt: text("cancelled_at"),
+    cancelReason: text("cancel_reason"),
+  },
+  (t) => [
+    uniqueIndex("purchase_orders_tenant_number_uq").on(t.tenantId, t.number),
+    index("purchase_orders_tenant_status_idx").on(t.tenantId, t.status),
+    index("purchase_orders_supplier_idx").on(t.tenantId, t.supplierId),
+  ],
+);
+
+export const purchaseOrderItems = sqliteTable(
+  "purchase_order_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    orderId: text("order_id").notNull(),
+    variantId: text("variant_id").notNull(),
+    productId: text("product_id").notNull(),
+    name: text("name").notNull(),
+    options: text("options", { mode: "json" }).$type<string[]>().notNull(),
+    sku: text("sku").notNull(),
+    unit: text("unit").notNull(),
+    /** Thousandths of the unit. */
+    quantity: integer("quantity").notNull(),
+    receivedQuantity: integer("received_quantity").notNull().default(0),
+    /** Net unit cost agreed with the supplier (before tax). */
+    unitCostCents: integer("unit_cost_cents").notNull(),
+    taxRateBps: integer("tax_rate_bps").notNull().default(0),
+    position: integer("position").notNull(),
+  },
+  (t) => [
+    index("purchase_order_items_order_idx").on(t.orderId),
+    // Two concurrent receipts can never receive more than was ordered.
+    check("purchase_order_items_received_le_qty", sql`${t.receivedQuantity} <= ${t.quantity}`),
+  ],
+);
+
+export const purchaseReceipts = sqliteTable(
+  "purchase_receipts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    orderId: text("order_id").notNull(),
+    locationId: text("location_id").notNull(),
+    /** Supplier invoice or delivery note number. */
+    supplierReference: text("supplier_reference"),
+    note: text("note"),
+    totalCents: integer("total_cents").notNull(),
+    userId: text("user_id"),
+    userName: text("user_name"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("purchase_receipts_order_idx").on(t.orderId)],
+);
+
+export const purchaseReceiptItems = sqliteTable(
+  "purchase_receipt_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    receiptId: text("receipt_id").notNull(),
+    orderItemId: text("order_item_id").notNull(),
+    variantId: text("variant_id").notNull(),
+    quantity: integer("quantity").notNull(),
+    unitCostCents: integer("unit_cost_cents").notNull(),
+  },
+  (t) => [index("purchase_receipt_items_receipt_idx").on(t.receiptId)],
+);
+
+export const transfers = sqliteTable(
+  "transfers",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    number: integer("number").notNull(),
+    fromLocationId: text("from_location_id").notNull(),
+    toLocationId: text("to_location_id").notNull(),
+    status: text("status", { enum: ["draft", "in_transit", "received", "cancelled"] }).notNull().default("draft"),
+    note: text("note"),
+    createdBy: text("created_by"),
+    createdByName: text("created_by_name"),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+    sentAt: text("sent_at"),
+    sentByName: text("sent_by_name"),
+    receivedAt: text("received_at"),
+    receivedByName: text("received_by_name"),
+    cancelledAt: text("cancelled_at"),
+    cancelledByName: text("cancelled_by_name"),
+  },
+  (t) => [uniqueIndex("transfers_tenant_number_uq").on(t.tenantId, t.number), index("transfers_tenant_status_idx").on(t.tenantId, t.status)],
+);
+
+export const transferItems = sqliteTable(
+  "transfer_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    transferId: text("transfer_id").notNull(),
+    variantId: text("variant_id").notNull(),
+    productId: text("product_id").notNull(),
+    name: text("name").notNull(),
+    options: text("options", { mode: "json" }).$type<string[]>().notNull(),
+    sku: text("sku").notNull(),
+    unit: text("unit").notNull(),
+    quantity: integer("quantity").notNull(),
+    /** Set when received; may be lower than what was sent (lost or damaged in transit). */
+    receivedQuantity: integer("received_quantity"),
+    /** Average cost when it was sent, to value differences. */
+    unitCostCents: integer("unit_cost_cents"),
+    position: integer("position").notNull(),
+  },
+  (t) => [index("transfer_items_transfer_idx").on(t.transferId), check("transfer_items_received_le_qty", sql`${t.receivedQuantity} IS NULL OR ${t.receivedQuantity} <= ${t.quantity}`)],
+);
+
+export const stockCounts = sqliteTable(
+  "stock_counts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    number: integer("number").notNull(),
+    locationId: text("location_id").notNull(),
+    status: text("status", { enum: ["in_progress", "completed", "cancelled"] }).notNull().default("in_progress"),
+    /** What it covers: every tracked product, one category, or products added by hand. */
+    scope: text("scope", { enum: ["all", "category", "manual"] }).notNull(),
+    categoryId: text("category_id"),
+    note: text("note"),
+    createdBy: text("created_by"),
+    createdByName: text("created_by_name"),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+    completedAt: text("completed_at"),
+    completedByName: text("completed_by_name"),
+    /** Snapshot of the result: counted lines, adjusted lines, units and value of the differences. */
+    summary: text("summary", { mode: "json" }),
+  },
+  (t) => [uniqueIndex("stock_counts_tenant_number_uq").on(t.tenantId, t.number), index("stock_counts_tenant_status_idx").on(t.tenantId, t.status)],
+);
+
+export const stockCountItems = sqliteTable(
+  "stock_count_items",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    countId: text("count_id").notNull(),
+    variantId: text("variant_id").notNull(),
+    productId: text("product_id").notNull(),
+    name: text("name").notNull(),
+    options: text("options", { mode: "json" }).$type<string[]>().notNull(),
+    sku: text("sku").notNull(),
+    barcode: text("barcode"),
+    unit: text("unit").notNull(),
+    /** System stock when the line was added to the count. */
+    expectedQuantity: integer("expected_quantity").notNull(),
+    /** null = not counted yet. */
+    countedQuantity: integer("counted_quantity"),
+    countedByName: text("counted_by_name"),
+    countedAt: text("counted_at"),
+    /**
+     * System stock at the moment the line was counted. On completion the stock moves by
+     * (counted − stockAtCount), so sales or receipts made after counting are not lost.
+     */
+    stockAtCount: integer("stock_at_count"),
+    /** Filled when the count is completed: stock right before the adjustment and the applied difference. */
+    finalBefore: integer("final_before"),
+    finalDelta: integer("final_delta"),
+    unitCostCents: integer("unit_cost_cents"),
+  },
+  (t) => [uniqueIndex("stock_count_items_count_variant_uq").on(t.countId, t.variantId), index("stock_count_items_count_idx").on(t.countId)],
 );

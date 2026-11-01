@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, Boxes, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingCart, Tags, Users, Wallet } from "lucide-react";
+import { Activity, ArrowLeftRight, Boxes, ClipboardCheck, ClipboardList, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
 import { ROLE_LABELS, type Permission } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { useAuth } from "../lib/auth";
@@ -30,6 +30,15 @@ const NAV: Array<{ group?: string; items: NavItem[] }> = [
     ],
   },
   {
+    group: "Abastecimiento",
+    items: [
+      { to: "/compras", label: "Compras", icon: ClipboardList, permission: "purchases:read" },
+      { to: "/proveedores", label: "Proveedores", icon: Warehouse, permission: "suppliers:read" },
+      { to: "/traspasos", label: "Traspasos", icon: Truck, permission: "transfers:read" },
+      { to: "/conteos", label: "Conteos físicos", icon: ClipboardCheck, permission: "counts:read" },
+    ],
+  },
+  {
     group: "Negocio",
     items: [
       { to: "/usuarios", label: "Usuarios", icon: Users, permission: "users:read" },
@@ -51,6 +60,15 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/ventas$/, "Ventas"],
   [/^\/caja\/.+/, "Corte de caja"],
   [/^\/caja$/, "Cortes de caja"],
+  [/^\/compras\/nueva$/, "Nueva orden"],
+  [/^\/compras\/.+/, "Orden de compra"],
+  [/^\/compras$/, "Compras"],
+  [/^\/proveedores$/, "Proveedores"],
+  [/^\/traspasos\/nuevo$/, "Nuevo traspaso"],
+  [/^\/traspasos\/.+/, "Traspaso"],
+  [/^\/traspasos$/, "Traspasos"],
+  [/^\/conteos\/.+/, "Conteo físico"],
+  [/^\/conteos$/, "Conteos físicos"],
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],

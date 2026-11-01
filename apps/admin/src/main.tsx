@@ -23,6 +23,15 @@ const ReceiptPage = lazy(() => import("./pages/Receipt").then((m) => ({ default:
 import { SalesPage } from "./pages/Sales";
 import { SaleDetailPage } from "./pages/SaleDetail";
 import { CashSessionPage, CashSessionsPage } from "./pages/CashSessions";
+import { SuppliersPage } from "./pages/Suppliers";
+import { PurchasesPage } from "./pages/purchases/Purchases";
+import { TransfersPage } from "./pages/transfers/Transfers";
+import { CountsPage } from "./pages/counts/Counts";
+const PurchaseFormPage = lazy(() => import("./pages/purchases/PurchaseForm").then((m) => ({ default: m.PurchaseFormPage })));
+const PurchaseDetailPage = lazy(() => import("./pages/purchases/PurchaseDetail").then((m) => ({ default: m.PurchaseDetailPage })));
+const TransferFormPage = lazy(() => import("./pages/transfers/TransferForm").then((m) => ({ default: m.TransferFormPage })));
+const TransferDetailPage = lazy(() => import("./pages/transfers/TransferDetail").then((m) => ({ default: m.TransferDetailPage })));
+const CountDetailPage = lazy(() => import("./pages/counts/CountDetail").then((m) => ({ default: m.CountDetailPage })));
 import type { ReactNode } from "react";
 
 function Protected({ children }: { children: ReactNode }) {
@@ -65,6 +74,17 @@ createRoot(document.getElementById("root")!).render(
               <Route path="ventas/:id" element={<SaleDetailPage />} />
               <Route path="caja" element={<CashSessionsPage />} />
               <Route path="caja/:id" element={<CashSessionPage />} />
+              <Route path="compras" element={<PurchasesPage />} />
+              <Route path="compras/nueva" element={<PurchaseFormPage />} />
+              <Route path="compras/:id" element={<PurchaseDetailPage />} />
+              <Route path="compras/:id/editar" element={<PurchaseFormPage />} />
+              <Route path="proveedores" element={<SuppliersPage />} />
+              <Route path="traspasos" element={<TransfersPage />} />
+              <Route path="traspasos/nuevo" element={<TransferFormPage />} />
+              <Route path="traspasos/:id" element={<TransferDetailPage />} />
+              <Route path="traspasos/:id/editar" element={<TransferFormPage />} />
+              <Route path="conteos" element={<CountsPage />} />
+              <Route path="conteos/:id" element={<CountDetailPage />} />
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />

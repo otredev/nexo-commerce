@@ -244,3 +244,102 @@ export const closeCashSchema = z.object({
   note: z.string().trim().max(300).nullable().default(null),
 });
 export const emailReceiptSchema = z.object({ email: z.string().trim().toLowerCase().email("Correo no válido").max(254) });
+
+/* ---------- Phase 3: suppliers, purchases, transfers, counts ---------- */
+
+const optText = (max: number) => z.string().trim().max(max).nullable().default(null).transform((v) => (v ? v : null));
+const id = z.string().min(1).max(40);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida");
+const positiveQty = z.number().positive("La cantidad debe ser mayor a 0").max(1_000_000_000);
+
+export const supplierSchema = z.object({
+  name,
+  contactName: optText(120),
+  email: z.union([email, z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
+  phone: optText(32),
+  taxId: optText(32),
+  address: optText(300),
+  paymentTermsDays: z.number().int().min(0, "No puede ser negativo").max(365).default(0),
+  notes: optText(1000),
+  active: z.boolean().default(true),
+});
+export type SupplierInput = z.input<typeof supplierSchema>;
+
+export const purchaseOrderSchema = z.object({
+  supplierId: id,
+  locationId: id,
+  expectedDate: isoDate.nullable().default(null),
+  note: optText(1000),
+  items: z
+    .array(
+      z.object({
+        variantId: id,
+        quantity: positiveQty,
+        unitCostCents: cents,
+        taxRateBps: z.number().int().min(0).max(10_000).default(0),
+      }),
+    )
+    .min(1, "Agrega al menos un producto")
+    .max(300, "Máximo 300 líneas por orden"),
+});
+export type PurchaseOrderInput = z.input<typeof purchaseOrderSchema>;
+
+export const receivePurchaseSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        orderItemId: id,
+        quantity: qty,
+        /** Net cost actually invoiced; updates the weighted average cost. */
+        unitCostCents: cents,
+      }),
+    )
+    .min(1)
+    .max(300),
+  supplierReference: optText(60),
+  note: optText(500),
+});
+export type ReceivePurchaseInput = z.input<typeof receivePurchaseSchema>;
+
+export const reasonSchema = z.object({ reason: z.string().trim().min(1, "Escribe el motivo").max(300) });
+
+export const emailSupplierSchema = z.object({
+  email,
+  message: optText(1000),
+});
+
+export const transferSchema = z
+  .object({
+    fromLocationId: id,
+    toLocationId: id,
+    note: optText(500),
+    items: z.array(z.object({ variantId: id, quantity: positiveQty })).min(1, "Agrega al menos un producto").max(300),
+  })
+  .refine((t) => t.fromLocationId !== t.toLocationId, { path: ["toLocationId"], message: "Elige una ubicación distinta al origen" });
+export type TransferInput = z.input<typeof transferSchema>;
+
+export const receiveTransferSchema = z.object({
+  items: z.array(z.object({ itemId: id, receivedQuantity: qty })).min(1).max(300),
+  note: optText(500),
+});
+
+export const createCountSchema = z
+  .object({
+    locationId: id,
+    scope: z.enum(["all", "category", "manual"]),
+    categoryId: id.nullable().default(null),
+    note: optText(500),
+  })
+  .refine((c) => c.scope !== "category" || c.categoryId, { path: ["categoryId"], message: "Elige una categoría" });
+export type CreateCountInput = z.input<typeof createCountSchema>;
+
+export const countEntriesSchema = z.object({
+  entries: z.array(z.object({ itemId: id, countedQuantity: qty.nullable() })).min(1).max(500),
+});
+
+export const countAddItemsSchema = z.object({ variantIds: z.array(id).min(1).max(200) });
+
+export const completeCountSchema = z.object({
+  /** Lines nobody counted are set to 0 instead of being left as they are. */
+  zeroUncounted: z.boolean().default(false),
+});

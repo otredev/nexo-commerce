@@ -37,6 +37,21 @@ export const PERMISSIONS = {
   /** Discounts above the business's cashier limit. */
   "discount:unlimited": ["owner", "admin"],
   "reports:read": ["owner", "admin"],
+  "suppliers:read": ["owner", "admin"],
+  "suppliers:write": ["owner", "admin"],
+  /** Purchase orders show costs, so they stay with owners and admins. */
+  "purchases:read": ["owner", "admin"],
+  "purchases:write": ["owner", "admin"],
+  "purchases:receive": ["owner", "admin"],
+  "transfers:read": ["owner", "admin", "cashier"],
+  "transfers:write": ["owner", "admin"],
+  /** Staff at the destination confirm what arrived. */
+  "transfers:receive": ["owner", "admin", "cashier"],
+  "counts:read": ["owner", "admin", "cashier"],
+  /** Enter counted quantities. Without counts:write the expected stock stays hidden (blind count). */
+  "counts:count": ["owner", "admin", "cashier"],
+  /** Start, complete and cancel counts; see expected stock and differences. */
+  "counts:write": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

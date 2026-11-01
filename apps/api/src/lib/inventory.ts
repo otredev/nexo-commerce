@@ -30,8 +30,8 @@ export type Movement =
       reason: string;
       note?: string | null;
       reference?: string | null;
-      /** Type stored in the Kardex when it is not the kind itself ("return" for customer returns). */
-      type?: "return";
+      /** Type stored in the Kardex when it is not the kind itself. */
+      type?: "return" | "purchase" | "transfer_in";
     }
   | {
       kind: "out";
@@ -41,7 +41,7 @@ export type Movement =
       reason: string;
       note?: string | null;
       reference?: string | null;
-      type?: "sale";
+      type?: "sale" | "transfer_out";
     }
   | {
       /** Physical count: sets the stock to an absolute quantity. */
@@ -126,6 +126,76 @@ export function movementStatements(d1: D1Database, actor: MovementActor, m: Move
   );
   return statements;
 }
+
+/**
+ * Applies a physical count in a few set-based statements (a count can have thousands of lines).
+ * For every counted line: delta = counted − stock when it was counted; the new stock is
+ * current + delta (never below 0). Lines without a difference write no Kardex entry.
+ * Must run in the same batch as the count's status transition.
+ */
+export function countAdjustmentStatements(d1: D1Database, actor: MovementActor, countId: string, locationId: string, note: string): D1PreparedStatement[] {
+  const now = new Date().toISOString();
+  const { tenantId } = actor;
+  const counted = "count_id = ?1 AND tenant_id = ?2 AND counted_quantity IS NOT NULL";
+  return [
+    d1
+      .prepare(`INSERT INTO stock_levels (tenant_id, variant_id, location_id, quantity) SELECT ?2, variant_id, ?3, 0 FROM stock_count_items WHERE ${counted} ON CONFLICT(variant_id, location_id) DO NOTHING`)
+      .bind(countId, tenantId, locationId),
+    // Stock right before the adjustment and the resulting difference.
+    d1
+      .prepare(
+        `UPDATE stock_count_items SET
+           final_before = (SELECT quantity FROM stock_levels sl WHERE sl.variant_id = stock_count_items.variant_id AND sl.location_id = ?3),
+           unit_cost_cents = (SELECT cost_cents FROM variants v WHERE v.id = stock_count_items.variant_id)
+         WHERE ${counted}`,
+      )
+      .bind(countId, tenantId, locationId),
+    d1
+      .prepare(`UPDATE stock_count_items SET final_delta = MAX(final_before + counted_quantity - COALESCE(stock_at_count, final_before), 0) - final_before WHERE ${counted}`)
+      .bind(countId, tenantId),
+    d1
+      .prepare(
+        `INSERT INTO stock_movements (id, tenant_id, variant_id, location_id, type, reason, quantity_delta, balance_after, unit_cost_cents, note, reference, user_id, user_name, created_at)
+         SELECT lower(hex(randomblob(13))), ?2, variant_id, ?3, 'adjust', 'stock_count', final_delta, final_before + final_delta, unit_cost_cents, ?4, ?1, ?5, ?6, ?7
+         FROM stock_count_items WHERE ${counted} AND final_delta <> 0 ORDER BY name COLLATE NOCASE`,
+      )
+      .bind(countId, tenantId, locationId, note, actor.userId, actor.userName, now),
+    d1
+      .prepare(
+        `UPDATE stock_levels SET
+           quantity = quantity + (SELECT final_delta FROM stock_count_items i WHERE i.count_id = ?1 AND i.variant_id = stock_levels.variant_id),
+           updated_at = ?4
+         WHERE tenant_id = ?2 AND location_id = ?3
+           AND variant_id IN (SELECT variant_id FROM stock_count_items WHERE ${counted} AND final_delta <> 0)`,
+      )
+      .bind(countId, tenantId, locationId, now),
+  ];
+}
+
+/**
+ * State-machine guard for documents (orders, transfers, counts). Put it in the same batch as
+ * the change: if the row is no longer in one of `from`, the CASE yields NULL, the NOT NULL
+ * constraint on status fails and the whole batch rolls back. Extra SET columns go in `set`.
+ */
+export function transitionStatement(
+  d1: D1Database,
+  table: "purchase_orders" | "transfers" | "stock_counts",
+  where: { id: string; tenantId: string },
+  from: readonly string[],
+  to: string,
+  set: Record<string, string | number | null> = {},
+): D1PreparedStatement {
+  const cols = Object.keys(set);
+  const fromList = from.map((_, i) => `?${i + 4}`).join(", ");
+  const extra = cols.map((col, i) => `, ${col} = ?${from.length + 4 + i}`).join("");
+  return d1
+    .prepare(`UPDATE ${table} SET status = CASE WHEN status IN (${fromList}) THEN ?3 END${extra} WHERE id = ?1 AND tenant_id = ?2`)
+    .bind(where.id, where.tenantId, to, ...from, ...cols.map((c) => set[c]!));
+}
+export const isTransitionError = (err: unknown) => /NOT NULL constraint failed: \w+\.status/i.test(String((err as Error)?.message ?? err));
+
+/** True for the CHECK constraint with this name (e.g. "purchase_order_items_received_le_qty"). */
+export const isCheckError = (err: unknown, name: string) => String((err as Error)?.message ?? err).includes("CHECK constraint failed") && String((err as Error)?.message ?? err).includes(name);
 
 export const isStockCheckError = (err: unknown) => /CHECK constraint failed/i.test(String((err as Error)?.message ?? err));
 export const isUniqueError = (err: unknown) => /UNIQUE constraint failed/i.test(String((err as Error)?.message ?? err));
