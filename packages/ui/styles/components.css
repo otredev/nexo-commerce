@@ -157,7 +157,16 @@ body {
 
 /* ---------- App shell: sidebar + topbar ---------- */
 .nx-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
-.nx-sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: var(--space-6); }
+.nx-sidebar {
+  background: var(--surface); border-right: 1px solid var(--border); padding: var(--space-4) var(--space-3); display: flex; flex-direction: column; gap: var(--space-6);
+  /* Fixed to the window height with its own scroll, so long menus never push the page. */
+  position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; scrollbar-gutter: stable;
+}
+.nx-sidebar::-webkit-scrollbar { width: 8px; }
+.nx-sidebar::-webkit-scrollbar-track { background: transparent; }
+.nx-sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-full); border: 2px solid var(--surface); }
+.nx-sidebar::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }
 .nx-brand { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); font: 400 22px/28px var(--font-serif); color: var(--ink); text-decoration: none; }
 .nx-brand-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--primary); }
 .nx-nav { display: flex; flex-direction: column; gap: 2px; }
@@ -440,3 +449,38 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
   .nx-plan-usage, .nx-plan-grid { grid-template-columns: 1fr; }
 }
 .nx-grow { flex: 1 1 200px; min-width: 0; }
+
+/* ---------- Ctrl+K search ---------- */
+.nx-search-trigger { display: inline-flex; align-items: center; gap: var(--space-2); height: 32px; min-width: 220px; padding: 0 6px 0 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-muted); font: 400 13px/18px var(--font-sans); cursor: pointer; }
+.nx-search-trigger:hover { border-color: var(--border-strong); color: var(--ink); }
+.nx-search-trigger .nx-icon { width: 15px; height: 15px; }
+.nx-search-trigger__text { flex: 1; text-align: left; }
+@media (max-width: 900px) {
+  .nx-search-trigger { min-width: 0; width: 32px; padding: 0; justify-content: center; background: none; border-color: transparent; }
+  .nx-search-trigger__text, .nx-search-trigger__kbd { display: none; }
+}
+.nx-cmdk-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-start; padding: 12vh var(--space-4) var(--space-4); background: var(--overlay); }
+.nx-cmdk { width: 100%; max-width: 620px; max-height: min(560px, 76vh); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
+.nx-cmdk__input { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.nx-cmdk__input > .nx-icon { color: var(--ink-muted); flex: none; }
+.nx-cmdk__input input { flex: 1; min-width: 0; height: 52px; border: 0; outline: none; background: none; color: var(--ink); font: 400 15px/20px var(--font-sans); }
+.nx-cmdk__input input::placeholder { color: var(--ink-muted); }
+.nx-cmdk__list { flex: 1; overflow-y: auto; padding: var(--space-2); overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.nx-cmdk__group { padding: var(--space-3) var(--space-3) var(--space-1); font: 600 11px/16px var(--font-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+.nx-cmdk__item { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; padding: 6px var(--space-3); border-radius: var(--radius-md); color: var(--ink); font-size: 14px; cursor: pointer; }
+.nx-cmdk__item > .nx-icon { flex: none; width: 16px; height: 16px; color: var(--ink-muted); }
+.nx-cmdk__item[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.nx-cmdk__item[aria-selected="true"] > .nx-icon { color: var(--accent-text); }
+.nx-cmdk__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-cmdk__hint { margin-left: auto; padding-left: var(--space-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); font-size: 12px; max-width: 50%; }
+.nx-cmdk__enter { margin-left: var(--space-2); }
+.nx-cmdk__hint + .nx-cmdk__enter { margin-left: var(--space-2); }
+.nx-cmdk__label + .nx-cmdk__enter { margin-left: auto; }
+.nx-cmdk__empty { margin: 0; padding: var(--space-8) var(--space-4); text-align: center; color: var(--ink-muted); font-size: 13px; }
+.nx-cmdk__footer { display: flex; gap: var(--space-4); padding: var(--space-2) var(--space-4); border-top: 1px solid var(--border); color: var(--ink-muted); font-size: 12px; }
+.nx-cmdk__footer .nx-kbd { margin-right: 4px; }
+@media (max-width: 560px) {
+  .nx-cmdk-backdrop { padding-top: var(--space-4); }
+  .nx-cmdk__hint { display: none; }
+  .nx-cmdk__footer { display: none; }
+}

@@ -19,6 +19,15 @@ export function CustomersPage() {
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
   const [creating, setCreating] = useState(false);
+  // From the Ctrl+K search: "Nuevo cliente".
+  useEffect(() => {
+    if (params.get("nuevo") !== "1") return;
+    if (can("customers:write")) setCreating(true);
+    const next = new URLSearchParams(params);
+    next.delete("nuevo");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
   const query = useDebounced(q);
   const sort = (params.get("orden") ?? "recent") as Sort;
   const status = params.get("archivados") ? "archived" : "active";

@@ -301,6 +301,11 @@ Con GitHub: añade los secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`
 
 ---
 
+## Navegación del panel
+
+- **Buscador (`Ctrl + K` o `⌘K`, o la lupa de la barra superior)**: encuentra páginas y atajos por palabras clave y sinónimos sin importar acentos («iva», «corte», «kardex», «nuevo producto», «cambiar contraseña»), y busca en vivo productos, clientes, pedidos (por folio o nombre) y proveedores. Solo muestra lo que el rol puede abrir. `↑ ↓` para moverse, `Enter` para abrir, `Esc` para cerrar; recuerda los últimos cinco resultados abiertos. Las palabras clave viven en `apps/admin/src/layout/nav.ts`, junto al menú.
+- **Menú lateral**: tiene su propio scroll fijo a la altura de la ventana, así siempre llegas a todas las secciones y a «Cerrar sesión», y se desplaza solo hasta la página actual.
+
 ## Sistema de diseño
 
 Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Inter para la interfaz, Instrument Serif para los títulos de página y JetBrains Mono para SKU y folios. Fuentes alojadas en el propio proyecto, sin peticiones a terceros.

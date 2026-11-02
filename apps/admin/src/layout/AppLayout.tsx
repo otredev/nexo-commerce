@@ -1,68 +1,13 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Activity, ArrowLeftRight, Building2, BarChart3, Boxes, Contact, Landmark, Percent, ClipboardCheck, ClipboardList, Globe, Home, LogOut, Menu, Package, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, Users, Wallet, Warehouse } from "lucide-react";
-import { ROLE_LABELS, type Permission } from "@nexo/shared";
+import { LogOut, Menu, Search } from "lucide-react";
+import { NAV } from "./nav";
+import { CommandPalette, shortcutLabel } from "./CommandPalette";
+import { ROLE_LABELS } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
 import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
-type NavItem = { to: string; label: string; icon: typeof Home; permission?: Permission; end?: boolean; badge?: "orders"; platform?: boolean };
-const NAV: Array<{ group?: string; items: NavItem[] }> = [
-  {
-    items: [
-      { to: "/", label: "Inicio", icon: Home, end: true },
-      { to: "/pos", label: "Punto de venta", icon: ShoppingCart, permission: "pos:sell" },
-      { to: "/reportes", label: "Reportes", icon: BarChart3, permission: "reports:read" },
-    ],
-  },
-  {
-    group: "Ventas",
-    items: [
-      { to: "/ventas", label: "Ventas", icon: Receipt, permission: "sales:read" },
-      { to: "/caja", label: "Cortes de caja", icon: Wallet, permission: "cash:operate" },
-      { to: "/clientes", label: "Clientes", icon: Contact, permission: "customers:read" },
-      { to: "/promociones", label: "Promociones", icon: Percent, permission: "promotions:read" },
-    ],
-  },
-  {
-    group: "Tienda en línea",
-    items: [
-      { to: "/pedidos", label: "Pedidos", icon: ShoppingBag, permission: "orders:read", badge: "orders" },
-      { to: "/tienda", label: "Ajustes de la tienda", icon: Globe, permission: "store:write" },
-    ],
-  },
-  {
-    group: "Catálogo",
-    items: [
-      { to: "/productos", label: "Productos", icon: Package, permission: "catalog:read" },
-      { to: "/inventario", label: "Inventario", icon: Boxes, permission: "inventory:read", end: true },
-      { to: "/inventario/movimientos", label: "Movimientos", icon: ArrowLeftRight, permission: "inventory:read" },
-      { to: "/catalogo", label: "Categorías y marcas", icon: Tags, permission: "catalog:read" },
-    ],
-  },
-  {
-    group: "Abastecimiento",
-    items: [
-      { to: "/compras", label: "Compras", icon: ClipboardList, permission: "purchases:read" },
-      { to: "/proveedores", label: "Proveedores", icon: Warehouse, permission: "suppliers:read" },
-      { to: "/cuentas-por-pagar", label: "Cuentas por pagar", icon: Landmark, permission: "payables:read" },
-      { to: "/traspasos", label: "Traspasos", icon: Truck, permission: "transfers:read" },
-      { to: "/conteos", label: "Conteos físicos", icon: ClipboardCheck, permission: "counts:read" },
-    ],
-  },
-  {
-    group: "Negocio",
-    items: [
-      { to: "/usuarios", label: "Usuarios", icon: Users, permission: "users:read" },
-      { to: "/actividad", label: "Actividad", icon: Activity, permission: "audit:read" },
-      { to: "/configuracion", label: "Configuración", icon: Settings },
-    ],
-  },
-  {
-    group: "Plataforma",
-    items: [{ to: "/plataforma", label: "Negocios", icon: Building2, platform: true }],
-  },
-];
 
 const TITLES: Array<[RegExp, string]> = [
   [/^\/$/, "Inicio"],
@@ -103,7 +48,23 @@ const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? 
 export function AppLayout() {
   const { me, logout, can } = useAuth();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Ctrl+K / ⌘K opens the search from anywhere in the dashboard.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const location = useLocation();
+  // Keep the current page visible in a long sidebar.
+  useEffect(() => {
+    document.querySelector<HTMLElement>('.nx-sidebar .nx-nav__item[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+  }, [location.pathname]);
   const navigate = useNavigate();
   useEffect(() => setOpen(false), [location.pathname]);
   // New online orders, refreshed every minute and on every page change.
@@ -171,6 +132,11 @@ export function AppLayout() {
             </nav>
           </div>
           <div className="nx-topbar__right">
+            <button type="button" className="nx-search-trigger" onClick={() => setSearchOpen(true)} aria-label="Buscar" aria-keyshortcuts="Control+K Meta+K">
+              <Search className="nx-icon" aria-hidden="true" />
+              <span className="nx-search-trigger__text">Buscar…</span>
+              <kbd className="nx-kbd nx-search-trigger__kbd">{shortcutLabel()}</kbd>
+            </button>
             <div className="nx-topbar__who">
               <div style={{ fontSize: 13, fontWeight: 500 }}>{me.user.name}</div>
               <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{ROLE_LABELS[me.role]}</div>
@@ -181,6 +147,7 @@ export function AppLayout() {
         <main className="nx-content">
           <Outlet />
         </main>
+        {searchOpen && <CommandPalette open onClose={() => setSearchOpen(false)} />}
       </div>
     </div>
   );

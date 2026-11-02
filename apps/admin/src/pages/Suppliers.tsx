@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Truck } from "lucide-react";
 import type { Supplier } from "@nexo/shared";
 import { Alert, Badge, Button, Checkbox, EmptyState, Modal, PageHeader, SearchInput, Segmented, TextAreaField, TextField, useDebounced, useToast } from "@nexo/ui";
@@ -16,7 +16,8 @@ export function SuppliersPage() {
   const { can } = useAuth();
   const { money } = useBusiness();
   const navigate = useNavigate();
-  const [q, setQ] = useState("");
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [status, setStatus] = useState<Status>("active");
   const [editing, setEditing] = useState<Supplier | "new" | null>(null);
   const query = useDebounced(q);
