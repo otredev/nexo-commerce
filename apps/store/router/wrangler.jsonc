@@ -9,7 +9,7 @@
   "compatibility_date": "2026-10-01",
   "vars": { "STORE_ORIGIN": "http://localhost:8788" },
   "env": {
-    "staging": { "name": "nexo-store-router-staging", "vars": { "STORE_ORIGIN": "https://staging.nexo-store.pages.dev" } },
-    "production": { "name": "nexo-store-router-production", "vars": { "STORE_ORIGIN": "https://nexo-store.pages.dev" } }
+    "staging": { "name": "nexo-store-router-staging", "vars": { "STORE_ORIGIN": "https://staging.nexo-commerce.pages.dev" } },
+    "production": { "name": "nexo-store-router-production", "vars": { "STORE_ORIGIN": "https://nexo-commerce.pages.dev" } }
   }
 }

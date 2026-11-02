@@ -1,8 +1,8 @@
 # Cloudflare Pages project of the public store.
 # Pages Functions forward /api/store/* and /files/* to the API Worker through a service binding
 # (no public hop, same origin for the browser). Create the project once with:
-#   npx wrangler pages project create nexo-store --production-branch main
-name = "nexo-store"
+#   npx wrangler pages project create nexo-commerce --production-branch main
+name = "nexo-commerce"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-10-01"
 

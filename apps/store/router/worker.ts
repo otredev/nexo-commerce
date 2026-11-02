@@ -4,7 +4,7 @@
  * and tells it which hostname the customer typed (x-nexo-host); the store resolves the business from it.
  */
 interface Env {
-  /** Origin of the store's Pages project, e.g. https://nexo-store.pages.dev */
+  /** Origin of the store's Pages project, e.g. https://nexo-commerce.pages.dev */
   STORE_ORIGIN: string;
 }
 
