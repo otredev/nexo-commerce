@@ -12,6 +12,7 @@ Estado actual:
 - **Fase 5 — Crecimiento:** clientes con historial en caja y en línea, promociones automáticas y cupones (iguales en caja y tienda), cuentas por pagar a proveedores y reportes por periodo e inventario.
 - **Fase 6 — SaaS:** planes con límites y suscripción en Stripe, cobro con tarjeta en la tienda con Stripe Connect, dominios propios por negocio (Cloudflare for SaaS), panel de plataforma con suspensión y mover un negocio a otra D1.
 - **Fase 7 — Tienda confiable y fácil de encontrar:** aviso de privacidad, términos y devoluciones editables con plantillas y versiones (el cliente los acepta al pagar), SEO por tienda y producto, preguntas frecuentes, datos estructurados, robots.txt, sitemaps (por tienda y un índice general) y llms.txt para asistentes de IA, y registro de visitas sin cookies.
+- **Fase 8 — Operación diaria:** pantalla para el cliente en la caja (segundo monitor, o tablet/TV emparejada con un código de 6 dígitos) y notificaciones push en el celular o la computadora (panel instalable): pedidos nuevos, pagos con tarjeta, resumen de la mañana y avisos de la suscripción.
 
 ---
 
@@ -34,7 +35,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6 y 32 de la Fase 7) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7 y 51 de la Fase 8) |
 | `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
@@ -62,6 +63,8 @@ scripts/
   smoke-growth.mjs    Prueba de punta a punta de la Fase 5 (clientes, promociones, cupones, cuentas por pagar, reportes).
   smoke-seo.mjs       Prueba de punta a punta de la Fase 7 (políticas y su aceptación, SEO, sitemaps, visitas).
   smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
+  smoke-ops.mjs       Prueba de la Fase 8 con su propio wrangler dev (:8791) y un servicio de push falso que descifra cada aviso.
+  vapid-keys.mjs      Genera el par de llaves VAPID de las notificaciones push (una vez por entorno).
 apps/store/router/    Worker que recibe los dominios propios de los negocios (Cloudflare for SaaS) y los pasa a la tienda.
 ```
 
@@ -186,6 +189,16 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 - **Preguntas frecuentes**: se muestran en la portada y alimentan el `FAQPage` y el `llms.txt` (AEO/GEO).
 - **Visitas sin cookies**: la tienda manda eventos (`page_view`, `product_view`, `add_to_cart`, `checkout_start`; `order_placed` lo registra el servidor) a **Workers Analytics Engine** (binding `STORE_EVENTS`, configurado en staging y producción). El visitante es un hash diario de IP + navegador que nunca guarda la IP. Sin el binding (desarrollo local) no se registra nada. Los reportes llegan en la Fase 10.
 
+### Operación diaria: pantalla del cliente y notificaciones (Fase 8)
+
+- **Pantalla del cliente** (botón de monitor en la caja): muestra lo que se va escaneando con precio y ahorro, el total grande, lo recibido y **el cambio**, y al cobrar «¡Gracias por tu compra!» con el número de venta (12 s o hasta la siguiente venta).
+  - *Segundo monitor de la misma computadora*: `/pos/cliente` abre una ventana que recibe los datos por `BroadcastChannel`, sin pasar por el servidor.
+  - *Tablet o TV*: la caja genera un **código de 6 dígitos**; en el dispositivo se abre `<APP_URL>/pantalla` (sin iniciar sesión) y se escribe. La caja publica cada cambio (agrupado cada 250 ms) a un **Durable Object** `DisplayHub` por código, que lo reparte por **WebSocket** (con hibernación: no cobra mientras espera). El dispositivo recuerda el código, se reconecta solo y mantiene la pantalla encendida. El código vence tras 24 h sin uso; «Terminar emparejamiento» desconecta la pantalla al instante. Solo el negocio que creó el código puede escribir en él.
+- **Notificaciones push** (*Configuración → Notificaciones*): cada persona las activa en cada dispositivo y elige qué avisos recibir: *pedido nuevo*, *pago con tarjeta recibido* (urgencia alta), *resumen de la mañana* (8:00 hora del negocio: productos por resurtir y, para quien ve cuentas por pagar, facturas que vencen) y *avisos de la suscripción* (solo el propietario). Cada aviso respeta los permisos del rol y abre la pantalla correspondiente al tocarlo.
+  - Web Push estándar (RFC 8291 + VAPID RFC 8292) implementado con WebCrypto en el Worker, sin servicios de terceros. Las suscripciones viven en la base de control (`push_subscriptions`, `notification_prefs`); las que el navegador da de baja (404/410) se borran solas.
+  - El panel es **instalable** (manifest + service worker `sw.js` que solo muestra avisos, sin caché offline). En **iPhone/iPad** primero hay que agregarlo a la pantalla de inicio (iOS 16.4+).
+  - Sin `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` la pestaña dice «Aún no disponible» y todo lo demás sigue igual.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -269,6 +282,9 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET /api/platform/tenants`, `GET/PATCH /api/platform/tenants/:id`, `POST …/:id/move` | `PLATFORM_ADMINS` |
 | `GET /api/payables?status=&supplierId=`, `POST /api/payables/:receiptId/payments` | `payables:read` / `payables:write` |
 | `GET /api/reports/sales?from=&to=`, `GET /api/reports/inventory?days=` | `reports:read` |
+| `GET /api/notifications`, `POST /api/notifications/subscriptions`, `POST …/subscriptions/remove`, `DELETE …/subscriptions/:id`, `PUT …/prefs`, `POST …/test` | sesión (cada quien las suyas) |
+| `POST /api/pos/display`, `POST /api/pos/display/:code/state`, `DELETE /api/pos/display/:code` | `pos:sell` |
+| `GET /api/display/:code`, `GET /api/display/:code/ws` (WebSocket) | público: el código es la llave |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
@@ -296,6 +312,7 @@ npx wrangler r2 bucket create nexo-files-staging
 5. Crea el proyecto de Pages de la tienda (una sola vez): `cd apps/store && npx wrangler pages project create nexo-commerce --production-branch main`. El service binding hacia la API ya está en `apps/store/wrangler.toml` (rama `staging` → `nexo-api-staging`, `main` → `nexo-api-production`).
 6. Despliega desde la raíz: `npm run deploy:staging`. Esto compila, aplica las migraciones remotas, publica el Worker y sube la tienda a Pages.
 7. Plataforma: `npx wrangler secret put PLATFORM_ADMINS --env staging` con tu correo.
+8. Notificaciones push: `node scripts/vapid-keys.mjs` (una vez por entorno; **no las cambies después** o todos tendrán que reactivarlas) y guarda `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT` (`mailto:` con tu correo) con `npx wrangler secret put … --env staging`. La pantalla del cliente usa el Durable Object `DisplayHub`, que el primer despliegue crea solo (migración `v1` en `wrangler.jsonc`).
 
 **Stripe** (opcional; sin estas claves el panel dice que el cobro en línea aún no está disponible):
 

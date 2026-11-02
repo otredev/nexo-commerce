@@ -15,6 +15,13 @@
       "when": 1793565538440,
       "tag": "0001_saas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793592835088,
+      "tag": "0002_push",
+      "breakpoints": true
     }
   ]
 }

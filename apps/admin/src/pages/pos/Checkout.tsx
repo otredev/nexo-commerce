@@ -15,13 +15,15 @@ interface Payment { method: PaymentMethod; amountCents: number; reference: strin
  * Payment step. The clientId is created once per checkout and reused on every retry,
  * so a timeout followed by "Cobrar" again never charges twice.
  */
-export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewSale }: {
+export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewSale, onProgress }: {
   open: boolean;
   totalCents: number;
   build: () => Omit<SaleInput, "clientId" | "payments">;
   onClose: () => void;
   onPaid: (sale: SaleDetail) => void;
   onNewSale: () => void;
+  /** What has been received so far and the change, for the customer display. */
+  onProgress?: (paidCents: number, changeCents: number) => void;
 }) {
   const { money } = useBusiness();
   const toast = useToast();
@@ -57,6 +59,11 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
   const draft: Payment[] = useMemo(() => (typed > 0 ? [...payments, { method, amountCents: typed, reference: reference || null }] : payments), [payments, method, typed, reference]);
   const check = settle(totalCents, draft);
   const change = check.ok ? check.changeCents : 0;
+  const draftPaid = draft.reduce((a, p) => a + p.amountCents, 0);
+  useEffect(() => {
+    if (open && !sale) onProgress?.(draftPaid, change);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sale, draftPaid, change]);
 
   const pick = (m: PaymentMethod) => {
     setMethod(m);

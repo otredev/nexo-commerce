@@ -124,3 +124,34 @@ export const stripeEvents = sqliteTable("stripe_events", {
   type: text("type").notNull(),
   createdAt: text("created_at").notNull().default(now),
 });
+
+/** Browsers (phones, computers) that receive push notifications for a user in a business (Phase 8). */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Short device label shown in the list ("iPhone · Safari"). */
+    device: text("device"),
+    failures: integer("failures").notNull().default(0),
+    lastSentAt: text("last_sent_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("push_subscriptions_endpoint_uq").on(t.endpoint), index("push_subscriptions_tenant_idx").on(t.tenantId, t.userId)],
+);
+
+/** Which notifications each person wants, per business. Missing row / key = on. */
+export const notificationPrefs = sqliteTable(
+  "notification_prefs",
+  {
+    userId: text("user_id").notNull().references(() => users.id),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    prefs: text("prefs", { mode: "json" }).$type<Record<string, boolean>>().notNull().default(sql`'{}'`),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tenantId] })],
+);

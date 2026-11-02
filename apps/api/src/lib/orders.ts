@@ -19,6 +19,7 @@ import { newId } from "./crypto";
 import { sendEmail } from "./email";
 import { movementStatements, toStatement, transitionStatement, type MovementActor } from "./inventory";
 import { getTenantD1 } from "./tenant";
+import { notify } from "./notify";
 
 const { orders, orderItems, storeSettings, businessSettings, locations, auditLog } = tenant;
 
@@ -26,6 +27,19 @@ export type OrderRow = typeof orders.$inferSelect;
 export type OrderItemRow = typeof orderItems.$inferSelect;
 
 export const orderLabel = (n: number) => `#${String(n).padStart(6, "0")}`;
+
+/** Push notification to the team about an online order (new, or paid by card). */
+export async function notifyOrder(env: Env, db: TenantDb, tenantId: string, order: OrderRow, kind: "order_new" | "order_paid") {
+  const biz = await db.select({ currency: businessSettings.currency, locale: businessSettings.locale }).from(businessSettings).where(eq(businessSettings.tenantId, tenantId)).get();
+  const total = formatMoney(order.totalCents, biz?.currency ?? "MXN", biz?.locale ?? "es-MX");
+  const how = order.fulfillment === "pickup" ? "recoge en tienda" : "envío a domicilio";
+  await notify(env, tenantId, kind, {
+    title: kind === "order_paid" ? `Pedido ${orderLabel(order.number)} pagado con tarjeta` : `Pedido nuevo ${orderLabel(order.number)}`,
+    body: `${order.customerName} · ${total} · ${how}`,
+    url: `/pedidos/${order.id}`,
+    tag: `order-${order.id}`,
+  });
+}
 export const trackingUrl = (env: Env, slug: string, token: string) => `${env.STORE_URL.replace(/\/$/, "")}/${slug}/pedido/${token}`;
 
 export const toOrderItem = (i: OrderItemRow): OrderItem => ({

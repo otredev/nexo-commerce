@@ -19,6 +19,10 @@
   // online orders that were never confirmed (store setting "hold hours").
   "triggers": { "crons": ["0 7 * * *", "15 * * * *"] },
 
+  // Customer displays paired with a register (Phase 8): one SQLite-backed Durable Object per pairing code.
+  "durable_objects": { "bindings": [{ "name": "DISPLAY_HUB", "class_name": "DisplayHub" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DisplayHub"] }],
+
   // ---------- Local development (wrangler dev) ----------
   "vars": { "APP_ENV": "development", "APP_URL": "http://localhost:5173", "STORE_URL": "http://localhost:5174" },
   "d1_databases": [
@@ -44,7 +48,8 @@
       ],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-staging" }],
       // Store traffic without cookies (Workers Analytics Engine; the dataset is created on first write).
-      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_staging" }]
+      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_staging" }],
+      "durable_objects": { "bindings": [{ "name": "DISPLAY_HUB", "class_name": "DisplayHub" }] }
     },
     // ---------- Production ----------
     "production": {
@@ -55,7 +60,8 @@
         { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-production", "database_id": "REPLACE_WITH_PRODUCTION_TENANT_ID", "migrations_dir": "../../packages/db/migrations/tenant" }
       ],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-production" }],
-      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_production" }]
+      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_production" }],
+      "durable_objects": { "bindings": [{ "name": "DISPLAY_HUB", "class_name": "DisplayHub" }] }
     }
   }
 }

@@ -38,6 +38,12 @@ export interface Env {
   CF_API_BASE?: string;
   /** Hostname customers point their CNAME to (the fallback origin of the zone). */
   STORE_CNAME_TARGET?: string;
+  /** Web Push (Phase 8): VAPID key pair (base64url) and contact. Generate with `node scripts/vapid-keys.mjs`. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+  /** Live customer displays paired with a register (Phase 8). */
+  DISPLAY_HUB?: DurableObjectNamespace;
   /** Workers Analytics Engine dataset for store traffic (Phase 7). Optional: without it nothing is recorded. */
   STORE_EVENTS?: AnalyticsEngineDataset;
 }

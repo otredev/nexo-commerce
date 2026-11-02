@@ -35,7 +35,7 @@ import type { AppEnv, TenantRef } from "../env";
 import { newId, randomToken } from "../lib/crypto";
 import { AppError } from "../lib/errors";
 import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
-import { cancelStatements, loadOrderRows, sendOrderEmail, toPublicOrder } from "../lib/orders";
+import { cancelStatements, loadOrderRows, notifyOrder, sendOrderEmail, toPublicOrder } from "../lib/orders";
 import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
 import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
@@ -469,7 +469,8 @@ export const storeRoutes = new Hono<AppEnv>()
         Promise.all([
           sendOrderEmail(c.env, db, t.id, t.slug, "placed", created.order, created.items),
           sendOrderEmail(c.env, db, t.id, t.slug, "new_order", created.order, created.items),
-        ]).catch((e) => console.error("[orders] email", e)),
+          notifyOrder(c.env, db, t.id, created.order, "order_new"),
+        ]).catch((e) => console.error("[orders] email/push", e)),
       );
     }
     return c.json({ token, number: created?.order.number ?? 0, paymentUrl }, 201);

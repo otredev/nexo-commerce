@@ -1,5 +1,5 @@
 import {
-  Activity, ArrowLeftRight, BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, MapPin, Package,
+  Activity, ArrowLeftRight, BarChart3, Bell, Boxes, Building2, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, MapPin, Monitor, Package,
   PackagePlus, Percent, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, UserPlus, Users, Wallet, Warehouse,
 } from "lucide-react";
 import type { Permission } from "@nexo/shared";
@@ -85,5 +85,7 @@ export const ACTIONS: NavItem[] = [
   { to: "/configuracion?tab=impuestos", label: "Impuestos", icon: Percent, keywords: "iva tasas configuracion" },
   { to: "/configuracion?tab=ubicaciones", label: "Ubicaciones", icon: MapPin, keywords: "sucursales tiendas bodegas almacenes" },
   { to: "/configuracion?tab=plan", label: "Plan y facturación", icon: CreditCard, keywords: "suscripcion pagar plan pro negocio stripe" },
+  { to: "/configuracion?tab=notificaciones", label: "Notificaciones push", icon: Bell, keywords: "avisos alertas celular pedidos resumen diario dispositivo" },
+  { to: "/pantalla", label: "Pantalla del cliente (tablet o TV)", icon: Monitor, permission: "pos:sell", keywords: "monitor segunda pantalla cliente display emparejar codigo" },
   { to: "/configuracion?tab=seguridad", label: "Cambiar contraseña", icon: KeyRound, keywords: "seguridad password clave" },
 ];

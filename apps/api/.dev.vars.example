@@ -22,3 +22,9 @@ STRIPE_APPLICATION_FEE_BPS=
 CF_API_TOKEN=
 CF_ZONE_ID=
 STORE_CNAME_TARGET=tiendas.example.com
+
+# Notificaciones push (Web Push / VAPID). Genera el par UNA vez con: node scripts/vapid-keys.mjs
+# Sin ellas, la pestaña Configuración → Notificaciones dice "Aún no disponible".
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:tu@correo.com

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { ToastProvider } from "@nexo/ui";
 import "@nexo/ui/styles.css";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { PwaBridge, registerServiceWorker } from "./lib/pwa";
 import { AppLayout } from "./layout/AppLayout";
 import { LoginPage } from "./pages/Login";
 import { RegisterPage } from "./pages/Register";
@@ -42,6 +43,8 @@ const TransferDetailPage = lazy(() => import("./pages/transfers/TransferDetail")
 const CountDetailPage = lazy(() => import("./pages/counts/CountDetail").then((m) => ({ default: m.CountDetailPage })));
 import type { ReactNode } from "react";
 import { BlockedScreen } from "./pages/Blocked";
+const LocalDisplayPage = lazy(() => import("./pages/pos/Display").then((m) => ({ default: m.LocalDisplayPage })));
+const PairedDisplayPage = lazy(() => import("./pages/pos/Display").then((m) => ({ default: m.PairedDisplayPage })));
 const PlatformPage = lazy(() => import("./pages/Platform").then((m) => ({ default: m.PlatformPage })));
 
 function Protected({ children }: { children: ReactNode }) {
@@ -60,9 +63,12 @@ function PublicOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+registerServiceWorker();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
+      <PwaBridge />
       <AuthProvider>
         <ToastProvider>
           <Suspense fallback={<div className="nx-page-loading"><span className="nx-spinner" aria-label="Cargando" /></div>}>
@@ -72,6 +78,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/recuperar" element={<ForgotPasswordPage />} />
             <Route path="/restablecer" element={<ResetPasswordPage />} />
             <Route path="/pos" element={<Protected><BusinessProvider><PosPage /></BusinessProvider></Protected>} />
+            <Route path="/pos/cliente" element={<Protected><LocalDisplayPage /></Protected>} />
+            <Route path="/pantalla" element={<PairedDisplayPage />} />
             <Route path="/recibo/:id" element={<Protected><BusinessProvider><ReceiptPage /></BusinessProvider></Protected>} />
             <Route element={<Protected><BusinessProvider><AppLayout /></BusinessProvider></Protected>}>
               <Route index element={<HomePage />} />

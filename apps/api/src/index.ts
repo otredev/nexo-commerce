@@ -37,6 +37,10 @@ import { processStripeEvent, type StripeEvent } from "./lib/webhooks";
 import { verifyStripeSignature } from "./lib/stripe";
 import { refreshPendingDomains } from "./lib/domains";
 import { storeIndex } from "./lib/storeIndex";
+import { notificationRoutes } from "./routes/notifications";
+import { posDisplayRoutes, publicDisplayRoutes } from "./routes/display";
+export { DisplayHub } from "./display";
+import { dailyDigest } from "./lib/notify";
 import { AppError } from "./lib/errors";
 import { control, controlDb } from "@nexo/db";
 import { and, eq } from "drizzle-orm";
@@ -69,7 +73,9 @@ const protectedApi = new Hono<AppEnv>()
   .route("/promotions", promotionRoutes)
   .route("/payables", payableRoutes)
   .route("/billing", billingRoutes)
-  .route("/platform", platformRoutes);
+  .route("/platform", platformRoutes)
+  .route("/notifications", notificationRoutes)
+  .route("/pos/display", posDisplayRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)
@@ -86,6 +92,8 @@ const app = new Hono<AppEnv>()
     const applied = await processStripeEvent(c.env, event);
     return c.json({ received: true, duplicate: !applied });
   })
+  // Customer display on a tablet or TV, paired with a register by code (no sign-in).
+  .route("/api/display", publicDisplayRoutes)
   // Public, indexable stores of the platform: the store domain's /sitemap.xml lists them.
   .get("/api/store-index", async (c) => c.json(await storeIndex(c.env), 200, { "Cache-Control": "public, max-age=3600" }))
   // The store on a customer's own domain asks which store the hostname belongs to (active domains only).
@@ -111,6 +119,11 @@ const app = new Hono<AppEnv>()
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
     return c.json({ expired: await expireOrders(c.env), domains: await refreshPendingDomains(c.env) });
   })
+  // Development only: send the morning digest now (?tenantId= to limit it).
+  .post("/api/dev/digest", async (c) => {
+    if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
+    return c.json({ sent: await dailyDigest(c.env, new Date(), { force: true, tenantId: c.req.query("tenantId") }) });
+  })
   // Development only: set the plan of the signed-in business (the smoke tests need more than the free plan).
   .post("/api/dev/plan", requireAuth, async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
@@ -134,6 +147,8 @@ export default {
     if (event.cron === "15 * * * *") {
       ctx.waitUntil(expireOrders(env).then((n) => { if (n) console.log(`[orders] released ${n} expired orders`); }));
       ctx.waitUntil(refreshPendingDomains(env).catch((e) => console.error("[domains] cron", e)));
+      // 8:00 in each business's time zone: low stock and invoices due.
+      ctx.waitUntil(dailyDigest(env).then((n) => { if (n) console.log(`[push] digest sent ${n}`); }).catch((e) => console.error("[push] digest", e)));
       return;
     }
     ctx.waitUntil(

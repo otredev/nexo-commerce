@@ -9,6 +9,7 @@ import { expireCardOrder, markOrderPaid, notifyPaid, type CheckoutSession } from
 import { stripe } from "./stripe";
 import { getTenantDb } from "./tenant";
 import { planForPrice } from "../routes/billing";
+import { notify } from "./notify";
 
 export interface StripeEvent { id: string; type: string; account?: string; data: { object: Record<string, unknown> } }
 
@@ -50,6 +51,10 @@ export async function applySubscription(env: Env, sub: Subscription) {
       stripeSubscriptionId: status === "canceled" ? null : sub.id,
     })
     .where(eq(control.tenants.id, tenant.id));
+  // The card was declined: tell the owner right away (once, when it becomes past due).
+  if (status === "past_due" && tenant.planStatus !== "past_due") {
+    await notify(env, tenant.id, "billing", { title: "No pudimos cobrar tu plan", body: "Actualiza tu forma de pago para conservar las funciones de tu plan.", url: "/configuracion?tab=plan", tag: "billing" }).catch(() => 0);
+  }
 }
 
 async function handle(env: Env, event: StripeEvent) {

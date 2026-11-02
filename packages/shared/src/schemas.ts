@@ -525,3 +525,13 @@ export const policySchema = z.object({
   content: z.string().trim().min(20, "Escribe el texto de la página").max(30_000, "Máximo 30 000 caracteres"),
   published: z.boolean().default(true),
 });
+
+/* ---------- Phase 8: push notifications and customer display ---------- */
+
+export const pushSubscribeSchema = z.object({
+  // https only outside development (the API checks it; the local smoke test uses an http mock push service).
+  endpoint: z.string().url().max(1000).refine((u) => /^https?:\/\//.test(u), "Debe ser https"),
+  keys: z.object({ p256dh: z.string().min(40).max(200), auth: z.string().min(10).max(100) }),
+});
+
+export const notificationPrefsSchema = z.object({ prefs: z.record(z.string().max(40), z.boolean()) });

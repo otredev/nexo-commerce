@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Banknote, Lock, Minus, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserRound, X } from "lucide-react";
-import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { ArrowLeft, Banknote, Lock, Minus, Monitor, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserRound, X } from "lucide-react";
+import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type DisplayState, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { useDisplayPublisher } from "../../lib/customerDisplay";
 import { Alert, Badge, Button, EmptyState, Modal, Segmented, TextField, useDebounced, useToast } from "@nexo/ui";
 import { get, RequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -111,6 +112,53 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
     [cart, pricesIncludeTax, promos.data, money],
   );
   const totals = priced.totals;
+
+  /* ---------- Customer display ---------- */
+  const { settings } = useBusiness();
+  const display = useDisplayPublisher(tenantId, session.locationId);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const [after, setAfter] = useState<{ phase: "paying"; paid: number; change: number } | { phase: "paid"; sale: SaleDetail } | null>(null);
+  useEffect(() => {
+    if (after?.phase === "paid" && cart.lines.length) setAfter(null);
+  }, [cart.lines.length, after?.phase]);
+  useEffect(() => {
+    if (after?.phase !== "paid") return;
+    const t = setTimeout(() => setAfter(null), 12_000);
+    return () => clearTimeout(t);
+  }, [after]);
+  useEffect(() => {
+    if (!settings) return;
+    const paid = after?.phase === "paid" ? after.sale : null;
+    const state: DisplayState = {
+      v: 1,
+      business: { name: settings.tradeName, logoKey: settings.logoKey },
+      currency: settings.currency,
+      locale: settings.locale,
+      phase: paid ? "paid" : after?.phase === "paying" ? "paying" : cart.lines.length ? "cart" : "idle",
+      lines: cart.lines.map((l, i) => ({
+        key: l.key,
+        name: l.name,
+        detail: [l.options.join(" / "), `${money(l.priceCents)} c/u`].filter(Boolean).join(" · "),
+        quantity: formatQty(l.quantity, l.unit),
+        totalCents: totals.lines[i]?.totalCents ?? 0,
+        savingCents: (priced.lines[i]?.promoDiscountCents ?? 0) + l.discountCents,
+      })),
+      itemsCount: cart.lines.reduce((a, l) => a + (unitInfo(l.unit).decimals ? 1 : l.quantity), 0),
+      subtotalCents: paid ? paid.subtotalCents : totals.subtotalCents,
+      discountCents: paid ? paid.discountCents : totals.discountCents,
+      taxCents: paid ? paid.taxCents : totals.taxCents,
+      totalCents: paid ? paid.totalCents : totals.totalCents,
+      pricesIncludeTax,
+      paidCents: paid ? paid.payments.reduce((a, p) => a + p.amountCents, 0) : after?.phase === "paying" ? after.paid : 0,
+      changeCents: paid ? paid.changeCents : after?.phase === "paying" ? after.change : 0,
+      customerName: cart.customerName || null,
+      saleNumber: paid ? paid.number : null,
+      at: Date.now(),
+    };
+    display.publish(state);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, totals, priced, after, settings, display.publish, pricesIncludeTax]);
+
   // The cashier's limit only counts discounts given by hand.
   const overLimit = maxDiscountBps !== null && priced.manualDiscountCents * 10_000 > totals.subtotalCents * maxDiscountBps;
   const focusSearch = () => setTimeout(() => searchRef.current?.focus(), 0);
@@ -214,6 +262,10 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
         <div className="nx-row" style={{ justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
           <Button size="sm" variant="ghost" onClick={() => setCustomerOpen(true)}><UserRound className="nx-icon" aria-hidden="true" />{cart.customerName || "Cliente"}</Button>
           <div className="nx-row" style={{ gap: 4 }}>
+            <Button size="sm" variant="ghost" icon={!display.code} aria-label="Pantalla del cliente" title="Pantalla del cliente" onClick={() => setDisplayOpen(true)}>
+              <Monitor className="nx-icon" aria-hidden="true" />
+              {display.code && <span className="nx-dot" aria-hidden="true" />}
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setCashOpen(true)}><Banknote className="nx-icon" aria-hidden="true" />Efectivo</Button>
             <Button size="sm" variant="ghost" onClick={() => setCloseOpen(true)}><Lock className="nx-icon" aria-hidden="true" />Cerrar caja</Button>
           </div>
@@ -312,8 +364,9 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           customerId: cart.customerId ?? null,
           couponCode: cart.coupon?.code ?? null,
         })}
-        onClose={() => { setPaying(false); focusSearch(); }}
-        onPaid={(_sale: SaleDetail) => { setCart(EMPTY_CART); setSelected(null); setRefreshKey((k) => k + 1); }}
+        onClose={() => { setPaying(false); setAfter((a) => (a?.phase === "paying" ? null : a)); focusSearch(); }}
+        onProgress={(paid, change) => setAfter({ phase: "paying", paid, change })}
+        onPaid={(sale: SaleDetail) => { setAfter({ phase: "paid", sale }); setCart(EMPTY_CART); setSelected(null); setRefreshKey((k) => k + 1); }}
         onNewSale={() => { setPaying(false); focusSearch(); }}
       />
       <DiscountModal
@@ -336,6 +389,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
         onPick={(c) => { setCart({ ...cart, customerId: c?.id ?? null, customerName: c?.name ?? "", customerContact: c ? (c.email ?? c.phone ?? "") : "" }); setCustomerOpen(false); focusSearch(); }}
       />
       <CouponModal open={couponOpen} onClose={() => { setCouponOpen(false); focusSearch(); }} onApply={(coupon) => { setCart({ ...cart, coupon }); setCouponOpen(false); focusSearch(); }} />
+      <DisplayModal open={displayOpen} onClose={() => { setDisplayOpen(false); focusSearch(); }} locationId={session.locationId} display={display} />
       <CashMovementModal session={session} open={cashOpen} onClose={() => { setCashOpen(false); focusSearch(); }} onDone={onSessionChange} />
       <CloseCashModal session={session} open={closeOpen} onClose={() => setCloseOpen(false)} onClosed={() => { setCloseOpen(false); onClosed(); }} />
     </>
@@ -371,6 +425,45 @@ function DiscountModal({ target, baseCents, current, money, onClose, onApply }: 
         <Segmented label="Tipo de descuento" value={mode} onChange={(m) => { setMode(m); setValue(""); }} options={[{ id: "percent", label: "Porcentaje" }, { id: "amount", label: "Importe" }]} />
         <TextField label={mode === "percent" ? "Porcentaje" : "Importe"} inputMode="decimal" className="nx-num" value={value} onChange={(e) => setValue(e.target.value)} error={apply.fields.value} help={`Sobre ${money(baseCents)}`} autoFocus />
       </form>
+    </Modal>
+  );
+}
+
+function DisplayModal({ open, onClose, locationId, display }: { open: boolean; onClose: () => void; locationId: string; display: ReturnType<typeof useDisplayPublisher> }) {
+  const pair = useSubmit(async () => { await display.pair(); });
+  const unpair = useSubmit(async () => { await display.unpair(); });
+  const url = `${window.location.origin}/pantalla`;
+  return (
+    <Modal open={open} title="Pantalla del cliente" onClose={onClose} footer={<Button onClick={onClose}>Listo</Button>}>
+      <div className="nx-stack" style={{ gap: 20 }}>
+        <p style={{ margin: 0 }}>Tu cliente ve en otra pantalla lo que vas escaneando, el total y su cambio.</p>
+        <section className="nx-stack" style={{ gap: 8 }}>
+          <h3 className="nx-label" style={{ margin: 0 }}>Segundo monitor de esta computadora</h3>
+          <div>
+            <Button onClick={() => window.open(`/pos/cliente?ubicacion=${encodeURIComponent(locationId)}`, "nx-cliente", "popup,width=1024,height=700")}>
+              <Monitor className="nx-icon" aria-hidden="true" />Abrir pantalla del cliente
+            </Button>
+          </div>
+          <p className="nx-help" style={{ margin: 0 }}>Arrastra la ventana al monitor del cliente y toca el botón de pantalla completa (abajo a la derecha).</p>
+        </section>
+        <section className="nx-stack" style={{ gap: 8 }}>
+          <h3 className="nx-label" style={{ margin: 0 }}>Otro dispositivo (tablet o TV)</h3>
+          {(pair.message || unpair.message) && <Alert tone="danger">{pair.message ?? unpair.message}</Alert>}
+          {display.code ? (
+            <>
+              <p style={{ margin: 0 }}>En el dispositivo abre <a className="nx-link" href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\//, "")}</a> y escribe:</p>
+              <div className="nx-pair-code" aria-label={`Código ${display.code.split("").join(" ")}`}>{display.code}</div>
+              <p className="nx-help" style={{ margin: 0 }}>
+                {display.remote.error ? display.remote.error : display.remote.displays ? `${display.remote.displays} ${display.remote.displays === 1 ? "pantalla conectada" : "pantallas conectadas"}.` : "Sin pantallas conectadas todavía."}
+                {" "}El código vence si nadie lo usa en 24 horas.
+              </p>
+              <div><Button variant="ghost" loading={unpair.pending} onClick={() => void unpair.submit()}>Terminar emparejamiento</Button></div>
+            </>
+          ) : (
+            <div><Button loading={pair.pending} onClick={() => void pair.submit()}>Conectar otro dispositivo</Button></div>
+          )}
+        </section>
+      </div>
     </Modal>
   );
 }

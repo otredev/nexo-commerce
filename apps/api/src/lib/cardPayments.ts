@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { control, controlDb, tenant as tenantSchema, type TenantDb } from "@nexo/db";
 import type { Env, TenantRef } from "../env";
 import { newId } from "./crypto";
-import { cancelStatements, loadOrderRows, orderLabel, sendOrderEmail, type OrderRow } from "./orders";
+import { cancelStatements, loadOrderRows, notifyOrder, orderLabel, sendOrderEmail, type OrderRow } from "./orders";
 import { stripe } from "./stripe";
 import { getTenantDb } from "./tenant";
 import { toStatement } from "./inventory";
@@ -70,7 +70,8 @@ export async function notifyPaid(env: Env, db: TenantDb, ref: Pick<TenantRef, "i
   await Promise.all([
     sendOrderEmail(env, db, ref.id, ref.slug, "placed", rows.order, rows.items),
     sendOrderEmail(env, db, ref.id, ref.slug, "new_order", rows.order, rows.items),
-  ]).catch((e) => console.error("[orders] email", e));
+    notifyOrder(env, db, ref.id, rows.order, "order_paid"),
+  ]).catch((e) => console.error("[orders] email/push", e));
 }
 
 /** The checkout session expired without payment: cancel the order and return the stock. */
