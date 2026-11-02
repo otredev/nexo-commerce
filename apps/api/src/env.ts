@@ -46,6 +46,11 @@ export interface Env {
   DISPLAY_HUB?: DurableObjectNamespace;
   /** Workers Analytics Engine dataset for store traffic (Phase 7). Optional: without it nothing is recorded. */
   STORE_EVENTS?: AnalyticsEngineDataset;
+  /** Reading it back (Phase 10): Analytics Engine SQL API. Account id, a token with "Account Analytics: Read",
+   *  and the dataset name of this environment. Without them the traffic part of the store report says "not configured". */
+  CF_ACCOUNT_ID?: string;
+  CF_ANALYTICS_TOKEN?: string;
+  STORE_EVENTS_DATASET?: string;
 }
 
 export interface TenantRef {

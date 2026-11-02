@@ -633,3 +633,22 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-sp__name { margin-top: 6px; font-weight: 500; font-size: 11px; line-height: 1.3; }
 .nx-sp__price { color: var(--ink-muted); font-size: 10.5px; }
 .nx-sp__btn { display: flex; align-items: center; justify-content: center; height: 30px; margin-top: 14px; border-radius: var(--radius-md); background: var(--primary); color: var(--primary-ink); font-weight: 600; font-size: 11px; }
+
+/* ---------- Phase 10: purchase funnel ---------- */
+.nx-funnel { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.nx-funnel li { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 3fr) 220px; align-items: center; gap: var(--space-4); font-size: 13px; }
+.nx-funnel__label { color: var(--ink); }
+.nx-funnel__track { height: 22px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface-muted); }
+.nx-funnel__fill { height: 100%; min-width: 2px; background: var(--primary); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; opacity: .85; }
+.nx-funnel__value { font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; white-space: nowrap; }
+.nx-funnel__value small { display: block; font-size: 11px; font-weight: 400; color: var(--ink-muted); }
+@media (max-width: 760px) { .nx-funnel li { grid-template-columns: 1fr auto; } .nx-funnel__track { grid-column: 1 / -1; grid-row: 2; } }
+.nx-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); align-items: start; }
+@media (max-width: 900px) { .nx-halves { grid-template-columns: minmax(0, 1fr); } }
+.nx-bars__labels { overflow: hidden; }
+/* Bar tooltips: out of the layout until shown (they made phones scroll sideways), and kept inside the chart at the edges. */
+.nx-bars__tip { display: none; }
+.nx-bars__col:hover .nx-bars__tip, .nx-bars__col:focus-visible .nx-bars__tip { display: block; }
+.nx-bars__col:nth-child(-n+3) .nx-bars__tip { left: 0; transform: none; }
+.nx-bars__col:nth-last-child(-n+3) .nx-bars__tip { left: auto; right: 0; transform: none; }
+.nx-presets .nx-segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }

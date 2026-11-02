@@ -28,3 +28,9 @@ STORE_CNAME_TARGET=tiendas.example.com
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:tu@correo.com
+
+# Estadísticas de visitas (Fase 10): lectura de Workers Analytics Engine. En local normalmente se dejan vacías
+# (no hay eventos locales) y la pantalla muestra solo ventas.
+CF_ACCOUNT_ID=
+CF_ANALYTICS_TOKEN=
+STORE_EVENTS_DATASET=

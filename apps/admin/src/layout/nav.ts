@@ -40,6 +40,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
     items: [
       { to: "/pedidos", label: "Pedidos", icon: ShoppingBag, permission: "orders:read", badge: "orders", keywords: "ordenes en linea web ecommerce envios" },
       { to: "/tienda", end: true, label: "Ajustes de la tienda", icon: Globe, permission: "store:write", keywords: "tienda online web dominio stripe tarjeta envio publicar" },
+      { to: "/tienda/estadisticas", label: "Estadísticas", icon: BarChart3, permission: "reports:read", keywords: "analytics analiticas visitas trafico visitantes conversion embudo fuentes campañas utm dispositivos paises productos mas vendidos vistos" },
       { to: "/tienda/apariencia", label: "Apariencia", icon: Palette, permission: "store:write", keywords: "tema colores diseño banners avisos barra fuente letras pixel meta facebook google tiktok css html javascript codigo personalizar" },
     ],
   },

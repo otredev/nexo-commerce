@@ -14,6 +14,7 @@ Estado actual:
 - **Fase 7 — Tienda confiable y fácil de encontrar:** aviso de privacidad, términos y devoluciones editables con plantillas y versiones (el cliente los acepta al pagar), SEO por tienda y producto, preguntas frecuentes, datos estructurados, robots.txt, sitemaps (por tienda y un índice general) y llms.txt para asistentes de IA, y registro de visitas sin cookies.
 - **Fase 8 — Operación diaria:** pantalla para el cliente en la caja (segundo monitor, o tablet/TV emparejada con un código de 6 dígitos) y notificaciones push en el celular o la computadora (panel instalable): pedidos nuevos, pagos con tarjeta, resumen de la mañana y avisos de la suscripción.
 - **Fase 9 — Apariencia de la tienda:** 6 estilos (colores, tipografía y esquinas) con colores propios y vista previa en vivo, barra de avisos rotativa con fechas, banners en carrusel con imagen para celular, píxeles de Meta, Google y TikTok con aviso de cookies, y CSS, HTML y JavaScript propios (HTML/JS solo en dominio propio).
+- **Fase 10 — Estadísticas de la tienda:** visitantes, conversión y embudo de compra, de dónde llegan (sitios y campañas UTM), dispositivos, países, páginas, productos más vistos y más vendidos, formas de pago, entrega y clientes nuevos o recurrentes, comparados con el periodo anterior y exportables a CSV.
 
 ---
 
@@ -36,7 +37,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7, 51 de la Fase 8 y 37 de la Fase 9) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7, 51 de la Fase 8, 37 de la Fase 9 y 32 de la Fase 10) |
 | `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
@@ -66,6 +67,7 @@ scripts/
   smoke-theme.mjs     Prueba de punta a punta de la Fase 9 (apariencia; con la tienda en :8788 también revisa lo que inyecta el servidor).
   smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
   smoke-ops.mjs       Prueba de la Fase 8 con su propio wrangler dev (:8791) y un servicio de push falso que descifra cada aviso.
+  smoke-analytics.mjs Prueba de la Fase 10 con su propio wrangler dev (:8792) y un Analytics Engine falso.
   vapid-keys.mjs      Genera el par de llaves VAPID de las notificaciones push (una vez por entorno).
 apps/store/router/    Worker que recibe los dominios propios de los negocios (Cloudflare for SaaS) y los pasa a la tienda.
 ```
@@ -211,6 +213,15 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 - **Píxeles** de Meta, Google (GA4, Ads o Tag Manager) y TikTok: no se cargan hasta que el cliente acepta el aviso de cookies (la elección se guarda por tienda y se puede cambiar desde el pie de página). Registran visitas, productos vistos, agregar al carrito, inicio de pago y compra (con total), igual que las métricas propias.
 - **Código propio**: CSS (50 000 caracteres) en todas las páginas; HTML en `<head>`/`<body>` y JavaScript solo con plan Pro y **solo en el dominio propio** de la tienda. En el dominio compartido todas las tiendas comparten origen, así que ahí nunca se inyecta HTML/JS ajeno y el servidor envía `Content-Security-Policy: worker-src 'none'` para que nadie instale un service worker. Tampoco se inyecta en el pago ni en el seguimiento del pedido. El código no viaja en los datos de la tienda: el middleware de Pages lo pide aparte e inserta tema y CSS en el HTML (sin parpadeo), con escapes para que no pueda cerrar sus etiquetas.
 
+### Estadísticas de la tienda (Fase 10)
+
+*Tienda en línea → Estadísticas* (permiso `reports:read`), para periodos de hasta 90 días comparados con el periodo anterior del mismo largo, con exportación a CSV.
+
+- **Ventas** (exactas, de los pedidos en D1): pedidos, cancelados, valor sin cancelados, ticket promedio, ventas por día (hora del negocio), productos vendidos, formas de pago, entrega, estados, cupones y clientes nuevos o que ya habían comprado (por correo).
+- **Visitas** (de los eventos sin cookies de la Fase 7 en Workers Analytics Engine, leídos con su API SQL): visitantes únicos por día, vistas, **embudo** (visitaron → vieron producto → carrito → pago → pedido), **conversión** (pedidos / visitantes), fuentes (Google, Instagram, Facebook, WhatsApp, ChatGPT… o directo), campañas `utm_*`, dispositivos, países, páginas y vistas/carritos por producto. Las cuentas usan `_sample_interval` porque Analytics Engine muestrea con mucho tráfico; los datos se guardan 3 meses.
+- Cada consulta va limitada al negocio (`index1`), al dataset del entorno y al periodo; los valores se validan antes de armar el SQL.
+- Sin `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN` y `STORE_EVENTS_DATASET` (desarrollo local) la pantalla muestra ventas y avisa que las visitas no están configuradas; si la consulta falla, avisa y las ventas siguen.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -299,6 +310,7 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET /api/display/:code`, `GET /api/display/:code/ws` (WebSocket) | público: el código es la llave |
 | `GET/PUT /api/store-settings/appearance` | `settings:read` / `store:write` (HTML/JS: plan Pro) |
 | `GET /api/store/:slug/custom-code` | público (middleware de la tienda) |
+| `GET /api/reports/store?from=&to=` | `reports:read` |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.
@@ -327,6 +339,7 @@ npx wrangler r2 bucket create nexo-files-staging
 6. Despliega desde la raíz: `npm run deploy:staging`. Esto compila, aplica las migraciones remotas, publica el Worker y sube la tienda a Pages.
 7. Plataforma: `npx wrangler secret put PLATFORM_ADMINS --env staging` con tu correo.
 8. Notificaciones push: `node scripts/vapid-keys.mjs` (una vez por entorno; **no las cambies después** o todos tendrán que reactivarlas) y guarda `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y `VAPID_SUBJECT` (`mailto:` con tu correo) con `npx wrangler secret put … --env staging`. La pantalla del cliente usa el Durable Object `DisplayHub`, que el primer despliegue crea solo (migración `v1` en `wrangler.jsonc`).
+9. Estadísticas de visitas: en el dashboard de Cloudflare crea un token de API con permiso **Account → Account Analytics → Read** y guárdalo con `npx wrangler secret put CF_ANALYTICS_TOKEN --env staging`; guarda también tu Account ID (barra lateral de *Workers & Pages*) con `npx wrangler secret put CF_ACCOUNT_ID --env staging`. `STORE_EVENTS_DATASET` ya está en `wrangler.jsonc`. Las visitas se empiezan a registrar desde el primer despliegue con el binding `STORE_EVENTS`.
 
 **Stripe** (opcional; sin estas claves el panel dice que el cobro en línea aún no está disponible):
 

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { businessDate, can, fromMilli, paymentLabel, type DashboardData, type InventoryReport, type SalesReport, type UnitCode } from "@nexo/shared";
+import { ANALYTICS_MAX_DAYS, businessDate, can, daysBetween, fromMilli, paymentLabel, type DashboardData, type InventoryReport, type SalesReport, type StoreAnalytics, type UnitCode } from "@nexo/shared";
+import { storeSales, storeTraffic } from "../lib/storeAnalytics";
 import type { AppEnv } from "../env";
 import { getSettings } from "../lib/sales";
 import { requirePermission } from "../middleware/auth";
@@ -87,6 +88,69 @@ export const reportRoutes = new Hono<AppEnv>()
   };
   return c.json(body);
 })
+
+  /* ---------- Online store: traffic, conversion and sales (Phase 10) ---------- */
+  .get("/store", requirePermission("reports:read"), async (c) => {
+    const query = z.object({ from: z.string().regex(DATE), to: z.string().regex(DATE) }).safeParse(c.req.query());
+    if (!query.success) return c.json({ error: { code: "validation_error", message: "Fechas no válidas" } }, 400);
+    const { from, to } = query.data;
+    if (to < from) return c.json({ error: { code: "validation_error", message: "El periodo termina antes de empezar" } }, 400);
+    const length = daysBetween(from, to);
+    if (length > ANALYTICS_MAX_DAYS) return c.json({ error: { code: "validation_error", message: `Elige un periodo de hasta ${ANALYTICS_MAX_DAYS} días (las visitas se guardan 3 meses).` } }, 400);
+    const { d1, tenant: t } = c.var.auth;
+    const settings = await getSettings(c);
+    const sales = await storeSales(d1, t.id, settings.timezone, from, to);
+    const traffic = await storeTraffic(c.env, t.id, settings.timezone, sales.range, sales.previous);
+    const tr = traffic.traffic;
+
+    // Products: the best sellers plus the most viewed, with names for the ones that only have views.
+    const sold = new Map(sales.products.map((p) => [p.id, p]));
+    const ids = [...new Set([...sold.keys(), ...[...traffic.products.keys()].slice(0, 100)])];
+    const missing = ids.filter((id) => !sold.has(id));
+    const names = new Map<string, string>();
+    for (let i = 0; i < missing.length; i += 90) {
+      const part = missing.slice(i, i + 90);
+      const { results } = await d1.prepare(`SELECT id, name FROM products WHERE tenant_id = ?1 AND id IN (${part.map((_, k) => `?${k + 2}`).join(",")})`).bind(t.id, ...part).all<{ id: string; name: string }>();
+      results.forEach((r) => names.set(r.id, r.name));
+    }
+    const products: StoreAnalytics["products"] = ids
+      .filter((id) => sold.has(id) || names.has(id))
+      .map((id) => {
+        const s = sold.get(id);
+        const v = traffic.products.get(id);
+        return {
+          productId: id,
+          name: s?.name ?? names.get(id)!,
+          quantity: s ? fromMilli(s.qty) : 0,
+          orders: s?.n ?? 0,
+          salesCents: s?.total ?? 0,
+          views: tr.available ? (v?.views ?? 0) : null,
+          addToCart: tr.available ? (v?.addToCart ?? 0) : null,
+        };
+      })
+      .sort((a, b) => b.salesCents - a.salesCents || (b.views ?? 0) - (a.views ?? 0));
+
+    const liveOrders = sales.summary.orders - sales.summary.cancelled;
+    const prevOrders = sales.summary.previousOrders;
+    const body: StoreAnalytics = {
+      from,
+      to,
+      previousFrom: shiftDate(from, -length),
+      previousTo: shiftDate(from, -1),
+      traffic: tr,
+      sales: sales.summary,
+      conversionPct: tr.available && tr.visitors ? Math.min(100, (liveOrders / tr.visitors) * 100) : null,
+      previousConversionPct: tr.available && tr.previousVisitors ? Math.min(100, (prevOrders / tr.previousVisitors) * 100) : null,
+      days: Array.from({ length }, (_, i) => {
+        const date = shiftDate(from, i);
+        const s = sales.days.get(date);
+        const v = traffic.days.get(date);
+        return { date, visitors: tr.available ? (v?.visitors ?? 0) : null, views: tr.available ? (v?.views ?? 0) : null, orders: s?.orders ?? 0, salesCents: s?.salesCents ?? 0 };
+      }),
+      products,
+    };
+    return c.json(body);
+  })
 
   /* ---------- Sales for a period ---------- */
   .get("/sales", requirePermission("reports:read"), async (c) => {
