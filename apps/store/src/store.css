@@ -193,3 +193,31 @@ img { display: block; max-width: 100%; }
 .st-promo-tag { display: inline-flex; margin-top: 4px; padding: 3px 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-text); font-size: 12px; font-weight: 500; }
 .st-coupon { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 16px; }
 .st-coupon .nx-field { flex: 1; }
+
+/* ---------- Phase 7: legal pages, FAQ, pre-rendered copy ---------- */
+.st-policy { max-width: 720px; margin: 0 auto; padding: 40px 0 72px; }
+.st-policy__date { margin-top: 32px; color: var(--ink-muted); font-size: 13px; }
+.st-md { font-size: 15px; line-height: 1.7; color: var(--ink); }
+.st-md h2 { margin: 32px 0 8px; font: 600 18px/1.3 var(--font-sans); }
+.st-md h3 { margin: 24px 0 6px; font: 600 15px/1.3 var(--font-sans); }
+.st-md p, .st-md ul, .st-md ol { margin: 0 0 12px; }
+.st-md ul, .st-md ol { padding-left: 22px; }
+.st-md a { color: var(--accent-text); }
+.st-faq { margin: 64px 0 24px; padding-top: 32px; border-top: 1px solid var(--border); }
+.st-faq h2 { margin: 0 0 16px; font: 400 26px/1.2 var(--font-serif); }
+.st-faq details { border-bottom: 1px solid var(--border); padding: 14px 0; }
+.st-faq summary { cursor: pointer; font-weight: 500; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+.st-faq summary::-webkit-details-marker { display: none; }
+.st-faq summary::after { content: "+"; color: var(--ink-muted); font-size: 18px; line-height: 1; }
+.st-faq details[open] summary::after { content: "−"; }
+.st-faq details p { margin: 10px 0 0; color: var(--ink-muted); line-height: 1.6; white-space: pre-line; }
+.st-legal { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--ink-muted); margin: 0 0 12px; cursor: pointer; }
+.st-legal input { margin-top: 3px; accent-color: var(--primary); }
+.st-legal a { color: var(--ink); }
+.st-footer__legal { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; font-size: 13px; }
+.st-footer__legal a { color: var(--ink-muted); }
+/* Copy written by the server for crawlers; React replaces it in a moment. */
+.st-prerender { max-width: 1120px; margin: 0 auto; padding: 32px 20px; font-family: var(--font-sans); color: var(--ink); }
+.st-prerender h1 { font: 400 32px/1.15 var(--font-serif); margin: 0 0 12px; }
+.st-prerender ul { padding-left: 20px; line-height: 1.8; }
+.st-prerender a { color: var(--ink); }

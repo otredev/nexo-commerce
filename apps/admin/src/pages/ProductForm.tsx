@@ -18,6 +18,7 @@ import { Alert, Badge, Button, Card, Checkbox, Modal, PageHeader, SelectField, S
 import { del, get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { centsToInput, useBusiness } from "../lib/business";
+import { SeoFields } from "../components/SeoFields";
 import { useLoad, useSubmit } from "../lib/hooks";
 import { ProductInventoryTab, ProductMovementsTab } from "./ProductInventory";
 
@@ -44,6 +45,8 @@ interface Form {
   unit: UnitCode;
   trackInventory: boolean;
   online: boolean;
+  seoTitle: string;
+  seoDescription: string;
   images: string[];
   hasVariants: boolean;
   options: OptionRow[];
@@ -59,7 +62,7 @@ const emptyVariant = (options: string[] = [], base?: Partial<VariantRow>): Varia
 });
 
 const EMPTY: Form = {
-  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, online: false, images: [],
+  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, online: false, seoTitle: "", seoDescription: "", images: [],
   hasVariants: false, options: [{ name: "", values: "" }], variants: [emptyVariant()],
 };
 
@@ -73,6 +76,8 @@ function fromProduct(p: ProductDetail): Form {
     unit: p.unit,
     trackInventory: p.trackInventory,
     online: p.online,
+    seoTitle: p.seoTitle ?? "",
+    seoDescription: p.seoDescription ?? "",
     images: p.images,
     hasVariants: p.optionNames.length > 0,
     options: p.optionNames.length
@@ -140,6 +145,8 @@ function toInput(form: Form): ProductInput {
     unit: form.unit,
     trackInventory: form.trackInventory,
     online: form.online,
+    seoTitle: form.seoTitle.trim() || null,
+    seoDescription: form.seoDescription.trim() || null,
     optionNames,
     images: form.images,
     variants,
@@ -246,7 +253,7 @@ function ProductHeader({ product, onChange }: { product: ProductDetail; onChange
 }
 
 function ProductEditor({ product, onSaved }: { product: ProductDetail | null; onSaved: (p: ProductDetail) => void }) {
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const { taxes, defaultTax, taxFor, settings } = useBusiness();
   const toast = useToast();
   const navigate = useNavigate();
@@ -455,6 +462,24 @@ function ProductEditor({ product, onSaved }: { product: ProductDetail | null; on
                 checked={form.online}
                 onChange={(e) => set("online", e.target.checked)}
               />
+              {form.online && (
+                <details className="nx-details" style={{ marginTop: 12 }} open={Boolean(form.seoTitle || form.seoDescription)}>
+                  <summary>Cómo aparece en Google</summary>
+                  <div style={{ marginTop: 12 }}>
+                    <SeoFields
+                      title={form.seoTitle}
+                      description={form.seoDescription}
+                      onTitle={(v) => set("seoTitle", v)}
+                      onDescription={(v) => set("seoDescription", v)}
+                      fallbackTitle={`${form.name || "Nombre del producto"} · ${settings?.tradeName ?? ""}`}
+                      fallbackDescription={form.description || `${form.name || "Este producto"} en ${settings?.tradeName ?? "tu tienda"}.`}
+                      url={`…/${me?.tenant.slug ?? "tu-tienda"}/p/…`}
+                      disabled={!editable}
+                      errors={{ title: err("seoTitle"), description: err("seoDescription") }}
+                    />
+                  </div>
+                </details>
+              )}
             </Card>
           </div>
         </div>

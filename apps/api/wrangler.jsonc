@@ -42,7 +42,9 @@
         { "binding": "DB_CONTROL", "database_name": "nexo-control-staging", "database_id": "b5e67397-132b-4549-b65d-5bbc72ce1292", "migrations_dir": "../../packages/db/migrations/control" },
         { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-staging", "database_id": "68e071dd-31b3-428f-bbab-a1462f85675d", "migrations_dir": "../../packages/db/migrations/tenant" }
       ],
-      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-staging" }]
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-staging" }],
+      // Store traffic without cookies (Workers Analytics Engine; the dataset is created on first write).
+      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_staging" }]
     },
     // ---------- Production ----------
     "production": {
@@ -52,7 +54,8 @@
         { "binding": "DB_CONTROL", "database_name": "nexo-control-production", "database_id": "REPLACE_WITH_PRODUCTION_CONTROL_ID", "migrations_dir": "../../packages/db/migrations/control" },
         { "binding": "DB_TENANT_DEFAULT", "database_name": "nexo-tenant-production", "database_id": "REPLACE_WITH_PRODUCTION_TENANT_ID", "migrations_dir": "../../packages/db/migrations/tenant" }
       ],
-      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-production" }]
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "nexo-files-production" }],
+      "analytics_engine_datasets": [{ "binding": "STORE_EVENTS", "dataset": "nexo_store_events_production" }]
     }
   }
 }

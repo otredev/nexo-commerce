@@ -142,6 +142,8 @@ export interface ProductDetail {
   unit: UnitCode;
   trackInventory: boolean;
   online: boolean;
+  seoTitle: string | null;
+  seoDescription: string | null;
   optionNames: string[];
   images: string[];
   status: "active" | "archived";
@@ -578,6 +580,10 @@ export interface StoreSettings {
   whatsapp: string | null;
   notifyEmail: string | null;
   holdHours: number;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  indexable: boolean;
+  faq: Array<{ q: string; a: string }>;
   /** Read-only: public address of the store and how many products are published. */
   slug: string;
   url: string;
@@ -616,6 +622,29 @@ export interface StoreInfo {
   promotions: PromotionRule[];
   /** True when at least one coupon is active (shows the coupon field). */
   couponsEnabled: boolean;
+  faq: Array<{ q: string; a: string }>;
+  /** Published legal pages with their current version (the checkout asks to accept terms + privacy). */
+  policies: Array<{ kind: import("./legal").PolicyKind; version: number }>;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  indexable: boolean;
+  /** Active own domain, when the store has one (canonical URLs point there). */
+  domain: string | null;
+}
+
+export interface StorePolicy {
+  kind: import("./legal").PolicyKind;
+  content: string;
+  version: number;
+  published: boolean;
+  updatedAt: string;
+}
+
+/** One entry of the platform-wide sitemap index. */
+export interface StoreIndexEntry {
+  slug: string;
+  domain: string | null;
+  updatedAt: string;
 }
 
 export interface StoreVariant {
@@ -657,6 +686,9 @@ export interface StoreProduct {
   taxRateBps: number;
   /** Promotion that applies to this product, if any. */
   promotion: { id: string; name: string; percentBps: number } | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  updatedAt: string;
   variants: StoreVariant[];
 }
 
@@ -735,6 +767,8 @@ export interface OrderDetail extends Omit<PublicOrder, "canCancel" | "transferIn
   costCents: number | null;
   completedByName: string | null;
   cancelledBy: "customer" | "staff" | "system" | null;
+  /** When the customer accepted the terms and privacy notice, and which versions. */
+  legal: { acceptedAt: string; termsVersion: number | null; privacyVersion: number | null } | null;
 }
 
 /* ---------- Phase 5 ---------- */

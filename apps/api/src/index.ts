@@ -36,6 +36,7 @@ import { platformRoutes } from "./routes/platform";
 import { processStripeEvent, type StripeEvent } from "./lib/webhooks";
 import { verifyStripeSignature } from "./lib/stripe";
 import { refreshPendingDomains } from "./lib/domains";
+import { storeIndex } from "./lib/storeIndex";
 import { AppError } from "./lib/errors";
 import { control, controlDb } from "@nexo/db";
 import { and, eq } from "drizzle-orm";
@@ -85,6 +86,8 @@ const app = new Hono<AppEnv>()
     const applied = await processStripeEvent(c.env, event);
     return c.json({ received: true, duplicate: !applied });
   })
+  // Public, indexable stores of the platform: the store domain's /sitemap.xml lists them.
+  .get("/api/store-index", async (c) => c.json(await storeIndex(c.env), 200, { "Cache-Control": "public, max-age=3600" }))
   // The store on a customer's own domain asks which store the hostname belongs to (active domains only).
   .get("/api/store-host/:hostname", async (c) => {
     const hostname = c.req.param("hostname").toLowerCase();

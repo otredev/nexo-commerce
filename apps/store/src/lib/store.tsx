@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatMoney, priceCart, promotionFor, promoUnitPrice, shippingFor, unitInfo, type CouponRule, type Fulfillment, type StoreInfo, type UnitCode } from "@nexo/shared";
-import { api, RequestError } from "./api";
+import { api, RequestError, track } from "./api";
 
 export interface CartLine {
   variantId: string;
@@ -90,11 +90,11 @@ export function StoreProvider({ slug, base, children }: { slug: string; base: st
     money,
     cart,
     count: cart.reduce((a, l) => a + (unitInfo(l.unit).decimals ? 1 : l.quantity), 0),
-    add: (line) => setCart((all) => {
+    add: (line) => { track(slug, "add_to_cart", { productId: line.productId }); setCart((all) => {
       const found = all.find((l) => l.variantId === line.variantId);
       if (!found) return [...all, { ...line, quantity: clampQty(line, line.quantity) }];
       return all.map((l) => (l.variantId === line.variantId ? { ...line, quantity: clampQty(line, l.quantity + line.quantity) } : l));
-    }),
+    }); },
     setQuantity: (variantId, quantity) => setCart((all) => all.map((l) => (l.variantId === variantId ? { ...l, quantity: clampQty(l, quantity) } : l)).filter((l) => l.quantity > 0)),
     remove: (variantId) => setCart((all) => all.filter((l) => l.variantId !== variantId)),
     replace: setCart,

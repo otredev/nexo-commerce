@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { MessageCircle, ShoppingBag } from "lucide-react";
-import { whatsappLink } from "@nexo/shared";
+import { POLICY_INFO, whatsappLink } from "@nexo/shared";
 import { Button } from "@nexo/ui";
-import { imageUrl } from "../lib/api";
+import { imageUrl, track } from "../lib/api";
 import { useStore } from "../lib/store";
 import { CartDrawer } from "./CartDrawer";
 
@@ -14,6 +14,12 @@ export function StoreLayout() {
   const [params] = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
   useEffect(() => { window.scrollTo(0, 0); }, [location.pathname]);
+  // Traffic: one event per page the customer opens (product pages count as product views).
+  useEffect(() => {
+    if (!store) return;
+    const m = /\/p\/([^/]+)$/.exec(location.pathname);
+    track(slug, m ? "product_view" : "page_view", m ? { productId: m[1] } : {});
+  }, [location.pathname, slug, Boolean(store)]);
   useEffect(() => { setQ(params.get("q") ?? ""); }, [params]);
 
   if (error) {
@@ -75,6 +81,11 @@ export function StoreLayout() {
               {store.deliveryEnabled && <span>Envío a domicilio{store.deliveryArea ? ` · ${store.deliveryArea}` : ""}</span>}
             </div>
           </div>
+          {store.policies.length > 0 && (
+            <nav className="st-footer__legal" aria-label="Políticas">
+              {store.policies.map((p) => <Link key={p.kind} to={link(`/${POLICY_INFO[p.kind].path}`)}>{POLICY_INFO[p.kind].title}</Link>)}
+            </nav>
+          )}
           <div className="st-powered">Tienda creada con Nexo</div>
         </div>
       </footer>

@@ -38,6 +38,8 @@ export interface Env {
   CF_API_BASE?: string;
   /** Hostname customers point their CNAME to (the fallback origin of the zone). */
   STORE_CNAME_TARGET?: string;
+  /** Workers Analytics Engine dataset for store traffic (Phase 7). Optional: without it nothing is recorded. */
+  STORE_EVENTS?: AnalyticsEngineDataset;
 }
 
 export interface TenantRef {

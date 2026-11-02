@@ -50,6 +50,13 @@
       "when": 1793565539443,
       "tag": "0006_card_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793591461161,
+      "tag": "0007_seo_policies",
+      "breakpoints": true
     }
   ]
 }

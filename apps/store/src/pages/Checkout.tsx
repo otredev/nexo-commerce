@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FULFILLMENT_LABELS, type Fulfillment, type OnlinePaymentMethod, type StoreProduct } from "@nexo/shared";
+import { FULFILLMENT_LABELS, POLICY_INFO, type Fulfillment, type OnlinePaymentMethod, type StoreProduct } from "@nexo/shared";
 import { Alert, Button, TextAreaField, TextField } from "@nexo/ui";
-import { api, imageUrl, RequestError } from "../lib/api";
+import { api, imageUrl, RequestError, track } from "../lib/api";
 import { useStore, type CartLine } from "../lib/store";
 
 const newClientId = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -27,9 +27,11 @@ export function CheckoutPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   // One id per checkout: retrying after a network error never creates two orders.
   const clientId = useRef(newClientId());
 
+  useEffect(() => { track(slug, "checkout_start"); }, [slug]);
   useEffect(() => {
     if (!store) return;
     if (!store.pickupEnabled) setFulfillment("delivery");
@@ -77,6 +79,8 @@ export function CheckoutPage() {
     );
   }
   const t = totals(fulfillment);
+  /** Terms and privacy notice the customer must accept (when the store publishes them). */
+  const legal = (store?.policies ?? []).filter((p) => p.kind !== "returns");
   const below = t.itemsCents < store.minOrderCents;
   const applyCode = async () => {
     if (!code.trim()) return;
@@ -108,6 +112,8 @@ export function CheckoutPage() {
         paymentMethod: payment,
         couponCode: coupon?.code ?? null,
         expectedTotalCents: t.totalCents,
+        acceptLegal: accepted,
+        legalVersions: legal.length ? { terms: legal.find((p) => p.kind === "terms")?.version ?? null, privacy: legal.find((p) => p.kind === "privacy")?.version ?? null } : null,
       });
       try { localStorage.setItem(SAVED, JSON.stringify({ name, email, phone, address })); } catch { /* ignore */ }
       clear();
@@ -129,6 +135,11 @@ export function CheckoutPage() {
         await refresh();
         clientId.current = newClientId();
         setMessage(err.code === "price_changed" ? "Algunos precios cambiaron. Revisa el total y confirma de nuevo." : err.message);
+      } else if (err.code === "legal_changed" || err.code === "legal_required") {
+        // The store updated its terms: show the new ones and ask again.
+        if (err.code === "legal_changed") { await reload().catch(() => {}); setAccepted(false); }
+        clientId.current = newClientId();
+        setMessage(err.message);
       } else if (err.code === "validation_error") {
         setFields(err.fields);
         setMessage("Revisa los datos marcados.");
@@ -267,7 +278,17 @@ export function CheckoutPage() {
           </dl>
           {below && <p className="nx-help" style={{ color: "var(--warning)", marginTop: 12 }}>El pedido mínimo es de {money(store.minOrderCents)}.</p>}
           <div style={{ marginTop: 20 }}>
-            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError)}>{payment === "card" ? "Continuar al pago" : "Confirmar pedido"}</Button>
+            {legal.length > 0 && (
+              <label className="st-legal">
+                <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+                <span>
+                  Acepto {legal.map((p, i) => (
+                    <span key={p.kind}>{i > 0 && " y "}<Link to={link(`/${POLICY_INFO[p.kind].path}`)} target="_blank">{p.kind === "terms" ? "los términos y condiciones" : "el aviso de privacidad"}</Link></span>
+                  ))}.
+                </span>
+              </label>
+            )}
+            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError) || (legal.length > 0 && !accepted)}>{payment === "card" ? "Continuar al pago" : "Confirmar pedido"}</Button>
           </div>
           <p className="nx-help" style={{ marginTop: 12, textAlign: "center" }}>Apartamos tus productos al confirmar.</p>
         </aside>

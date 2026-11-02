@@ -71,6 +71,7 @@ async function loadDetail(c: Context<AppEnv>, id: string): Promise<OrderDetail> 
     cancelledAt: o.cancelledAt,
     cancelReason: o.cancelReason,
     cancelledBy: o.cancelledBy,
+    legal: o.legalAcceptedAt ? { acceptedAt: o.legalAcceptedAt, termsVersion: o.termsVersion, privacyVersion: o.privacyVersion } : null,
   };
 }
 

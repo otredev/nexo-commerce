@@ -6,7 +6,8 @@ import { get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { centsToInput, useBusiness } from "../lib/business";
 import { useLoad, useSubmit } from "../lib/hooks";
-import { CardPayments, DomainCard } from "./StoreExtras";
+import { CardPayments, DomainCard, FaqEditor, PoliciesCard } from "./StoreExtras";
+import { SeoFields } from "../components/SeoFields";
 
 interface Form {
   enabled: boolean;
@@ -26,6 +27,10 @@ interface Form {
   whatsapp: string;
   notifyEmail: string;
   holdHours: string;
+  seoTitle: string;
+  seoDescription: string;
+  indexable: boolean;
+  faq: Array<{ q: string; a: string }>;
 }
 
 const toForm = (s: StoreSettings): Form => ({
@@ -46,6 +51,10 @@ const toForm = (s: StoreSettings): Form => ({
   whatsapp: s.whatsapp ?? "",
   notifyEmail: s.notifyEmail ?? "",
   holdHours: String(s.holdHours),
+  seoTitle: s.seoTitle ?? "",
+  seoDescription: s.seoDescription ?? "",
+  indexable: s.indexable,
+  faq: s.faq,
 });
 
 export function StoreSettingsPage() {
@@ -87,6 +96,10 @@ export function StoreSettingsPage() {
       whatsapp: form.whatsapp || null,
       notifyEmail: form.notifyEmail || null,
       holdHours: Number(form.holdHours) || 0,
+      seoTitle: form.seoTitle.trim() || null,
+      seoDescription: form.seoDescription.trim() || null,
+      indexable: form.indexable,
+      faq: form.faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q || f.a),
     };
     if (Object.keys(fields).length) throw new RequestError(422, "validation_error", "Revisa los campos marcados", fields);
     const saved = await put<StoreSettings>("/store-settings", body);
@@ -157,6 +170,37 @@ export function StoreSettingsPage() {
               <CardPayments checked={form.cardEnabled} onChange={(v) => set("cardEnabled", v)} writable={writable} error={f.cardEnabled} />
             </div>
           </Card>
+
+          <Card title="Buscadores y asistentes de IA" description="Cómo aparece tu tienda en Google y qué leen ChatGPT, Gemini o Perplexity.">
+            <div className="nx-stack">
+              <SeoFields
+                title={form.seoTitle}
+                description={form.seoDescription}
+                onTitle={(v) => set("seoTitle", v)}
+                onDescription={(v) => set("seoDescription", v)}
+                fallbackTitle={form.tagline ? `${settings?.tradeName ?? ""} · ${form.tagline}` : (settings?.tradeName ?? "Tu tienda")}
+                fallbackDescription={form.tagline || `Compra en línea en ${settings?.tradeName ?? "tu tienda"}.`}
+                url={data.url}
+                disabled={!writable}
+                errors={{ title: f.seoTitle, description: f.seoDescription }}
+              />
+              <Checkbox
+                label="Permitir que los buscadores muestren la tienda"
+                help={form.indexable ? "Aparece en el mapa del sitio y Google puede indexarla." : "La tienda funciona, pero pide a los buscadores no mostrarla."}
+                checked={form.indexable}
+                onChange={(e) => set("indexable", e.target.checked)}
+                disabled={!writable}
+              />
+              <p className="nx-help" style={{ margin: 0 }}>
+                Se generan solos: <a className="nx-link" href={`${data.url}/sitemap.xml`} target="_blank" rel="noreferrer">mapa del sitio</a>, datos estructurados de productos y{" "}
+                <a className="nx-link" href={`${data.url}/llms.txt`} target="_blank" rel="noreferrer">llms.txt</a> para asistentes de IA.
+              </p>
+            </div>
+          </Card>
+
+          <Card title="Preguntas frecuentes" description="Responden dudas antes de comprar y ayudan a que Google y las IAs citen tu tienda.">
+            <FaqEditor value={form.faq} onChange={(v) => set("faq", v)} writable={writable} error={f.faq} />
+          </Card>
         </div>
 
         <div className="nx-stack" style={{ gap: 24 }}>
@@ -175,6 +219,7 @@ export function StoreSettingsPage() {
               )}
             </div>
           </Card>
+          <PoliciesCard writable={writable} />
           <DomainCard writable={writable} />
           <Card title="Contacto y avisos">
             <div className="nx-stack">

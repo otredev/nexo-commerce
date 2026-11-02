@@ -120,6 +120,11 @@ export function OrderDetailPage() {
                 <a className="nx-btn nx-btn--ghost nx-btn--sm" href={`mailto:${o.customerEmail}?subject=${encodeURIComponent(`Tu pedido ${orderLabel(o.number)}`)}`}><Mail className="nx-icon" aria-hidden="true" />Correo</a>
               </div>
               {o.notes && <Alert tone="info" title="Notas del cliente">{o.notes}</Alert>}
+              {o.legal && (
+                <p className="nx-help" style={{ margin: 0 }}>
+                  Aceptó {[o.legal.termsVersion !== null && `términos v${o.legal.termsVersion}`, o.legal.privacyVersion !== null && `aviso de privacidad v${o.legal.privacyVersion}`].filter(Boolean).join(" y ")} el {dateTimeFmt.format(new Date(o.legal.acceptedAt))}.
+                </p>
+              )}
             </div>
           </Card>
           <Card title={FULFILLMENT_LABELS[o.fulfillment]}>

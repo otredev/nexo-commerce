@@ -120,6 +120,8 @@ export const productInputSchema = z
     trackInventory: z.boolean().default(true),
     /** Published in the online store. */
     online: z.boolean().default(false),
+    seoTitle: z.string().trim().max(70).nullable().default(null).transform((v) => (v ? v : null)),
+    seoDescription: z.string().trim().max(160).nullable().default(null).transform((v) => (v ? v : null)),
     /** Option names, e.g. ["Talla", "Color"]. Empty → simple product with one variant. */
     optionNames: z.array(z.string().trim().min(1, "Requerido").max(30)).max(3).default([]),
     images: z.array(z.string().max(300)).max(8).default([]),
@@ -371,6 +373,13 @@ export const storeSettingsSchema = z
     whatsapp: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, "Solo números").nullable().default(null).transform((v) => (v ? v.replace(/[^\d+]/g, "") : null)),
     notifyEmail: z.union([email, z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
     holdHours: z.number().int().min(0).max(720).default(48),
+    seoTitle: optText(70),
+    seoDescription: optText(160),
+    indexable: z.boolean().default(true),
+    faq: z
+      .array(z.object({ q: z.string().trim().min(3, "Escribe la pregunta").max(200), a: z.string().trim().min(3, "Escribe la respuesta").max(1500) }))
+      .max(20, "Máximo 20 preguntas")
+      .default([]),
   })
   .superRefine((s, ctx) => {
     if (s.enabled && !s.locationId) ctx.addIssue({ code: "custom", path: ["locationId"], message: "Elige qué ubicación surte los pedidos" });
@@ -397,6 +406,9 @@ export const storeOrderSchema = z
     couponCode: optText(40),
     /** What the customer saw; the order is rejected if the server total differs (prices changed). */
     expectedTotalCents: cents,
+    /** The customer ticked "I accept the terms and the privacy notice", with the versions they saw. */
+    acceptLegal: z.boolean().default(false),
+    legalVersions: z.object({ terms: z.number().int().nullable(), privacy: z.number().int().nullable() }).nullable().default(null),
   })
   .superRefine((o, ctx) => {
     if (o.fulfillment === "delivery" && (!o.address || o.address.length < 10)) ctx.addIssue({ code: "custom", path: ["address"], message: "Escribe la dirección completa de entrega" });
@@ -506,3 +518,10 @@ export const platformTenantUpdateSchema = z.object({
 });
 
 export const moveTenantSchema = z.object({ binding: z.string().regex(/^DB_TENANT_[A-Z0-9_]+$/, "Binding no válido") });
+
+/* ---------- Phase 7: legal pages ---------- */
+
+export const policySchema = z.object({
+  content: z.string().trim().min(20, "Escribe el texto de la página").max(30_000, "Máximo 30 000 caracteres"),
+  published: z.boolean().default(true),
+});

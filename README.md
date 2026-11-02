@@ -11,6 +11,7 @@ Estado actual:
 - **Fase 4 — Tienda en línea:** catálogo público en Cloudflare Pages con existencias reales, variantes, carrito, pedidos con recogida o envío, pago al recibir o por transferencia, seguimiento para el cliente con correos, y atención de pedidos desde el panel.
 - **Fase 5 — Crecimiento:** clientes con historial en caja y en línea, promociones automáticas y cupones (iguales en caja y tienda), cuentas por pagar a proveedores y reportes por periodo e inventario.
 - **Fase 6 — SaaS:** planes con límites y suscripción en Stripe, cobro con tarjeta en la tienda con Stripe Connect, dominios propios por negocio (Cloudflare for SaaS), panel de plataforma con suspensión y mover un negocio a otra D1.
+- **Fase 7 — Tienda confiable y fácil de encontrar:** aviso de privacidad, términos y devoluciones editables con plantillas y versiones (el cliente los acepta al pagar), SEO por tienda y producto, preguntas frecuentes, datos estructurados, robots.txt, sitemaps (por tienda y un índice general) y llms.txt para asistentes de IA, y registro de visitas sin cookies.
 
 ---
 
@@ -33,7 +34,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5 y 94 de la Fase 6) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6 y 32 de la Fase 7) |
 | `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
@@ -59,6 +60,7 @@ scripts/
   smoke-purchasing.mjs Prueba de punta a punta de la Fase 3 (compras, traspasos, conteos, concurrencia).
   smoke-store.mjs     Prueba de punta a punta de la Fase 4 (catálogo público, pedidos, carrera por las últimas piezas).
   smoke-growth.mjs    Prueba de punta a punta de la Fase 5 (clientes, promociones, cupones, cuentas por pagar, reportes).
+  smoke-seo.mjs       Prueba de punta a punta de la Fase 7 (políticas y su aceptación, SEO, sitemaps, visitas).
   smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
 apps/store/router/    Worker que recibe los dominios propios de los negocios (Cloudflare for SaaS) y los pasa a la tienda.
 ```
@@ -173,6 +175,17 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 
 **Plataforma** (`/plataforma`, solo correos en `PLATFORM_ADMINS`; para el resto la ruta no existe): lista de negocios con propietario, plan, estado y base de datos; uso y ventas de 30 días; plan de cortesía a mano; **suspender** (el panel muestra una pantalla con el motivo y solo deja abrir el portal de pago; la tienda se oculta; no se borra nada) y **mover a otra D1**: estado `migrating` (el panel responde 503 y muestra «Estamos moviendo tus datos»), copia tabla por tabla, verifica conteos, cambia `db_binding` y borra lo viejo; si algo falla, deshace la copia y el negocio sigue donde estaba. Cualquier binding `DB_TENANT_*` del entorno aparece como destino. Para negocios muy grandes conviene `wrangler d1 export`.
 
+### Tienda: políticas, buscadores e IA (Fase 7)
+
+- **Políticas** (*Ajustes de la tienda → Políticas de la tienda*): aviso de privacidad, términos y condiciones, y cambios y devoluciones. Cada una parte de una plantilla para México con los datos del negocio (no es asesoría legal), se edita con un Markdown sencillo y se publica en `/privacidad`, `/terminos` y `/devoluciones`, con enlaces en el pie de la tienda. Cada cambio de texto es una **versión nueva** guardada en `store_policy_versions`.
+- **Aceptación al pagar**: si la tienda publica términos o aviso de privacidad, el cliente debe marcar la casilla. El pedido guarda la fecha y las versiones aceptadas (se ven en el detalle del pedido). Si la tienda cambió el texto mientras el cliente compraba, la API responde `legal_changed` y la tienda pide aceptar de nuevo.
+- **SEO**: título y descripción para buscadores por tienda y por producto, con vista previa de Google; casilla para no indexar la tienda.
+- **Lo que ven buscadores e IAs sin ejecutar JavaScript** (middleware de Pages): título, descripción, URL canónica (el dominio propio cuando hay uno), Open Graph, datos estructurados schema.org (`OnlineStore`, `WebSite`, `Product` con precio y existencias, `BreadcrumbList`, `FAQPage`) y una copia legible del contenido dentro de `#root`, que React reemplaza al cargar. Pago y pedidos llevan `noindex`.
+- **Archivos**: `/robots.txt`; `/sitemap.xml` en el dominio compartido es un **índice de todas las tiendas** (para Search Console); cada tienda tiene `/<negocio>/sitemap.xml` (o `/sitemap.xml` en su dominio propio, que se registra aparte en Search Console); `llms.txt` por tienda y uno general.
+- **Google Search Console**: agrega una propiedad de tipo *Prefijo de URL* con la dirección de la tienda (`STORE_URL`), verifícala con *Etiqueta HTML* poniendo el código en la variable `GOOGLE_SITE_VERIFICATION` del proyecto de Pages, y envía `<STORE_URL>/sitemap.xml`. Cada tienda con dominio propio se agrega como propiedad aparte, con su `/sitemap.xml`.
+- **Preguntas frecuentes**: se muestran en la portada y alimentan el `FAQPage` y el `llms.txt` (AEO/GEO).
+- **Visitas sin cookies**: la tienda manda eventos (`page_view`, `product_view`, `add_to_cart`, `checkout_start`; `order_placed` lo registra el servidor) a **Workers Analytics Engine** (binding `STORE_EVENTS`, configurado en staging y producción). El visitante es un hash diario de IP + navegador que nunca guarda la IP. Sin el binding (desarrollo local) no se registra nada. Los reportes llegan en la Fase 10.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -246,6 +259,9 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `POST /api/store/:slug/coupons/check` | público (tienda) |
 | `POST /api/store/:slug/orders/:token/pay` · `payment-status` | público (tienda) |
 | `GET /api/store-host/:hostname` | público (middleware de la tienda) |
+| `GET /api/store-index` | público: tiendas indexables para el índice de sitemaps |
+| `GET /api/store/:slug/policies/:kind` · `GET /api/store/:slug/sitemap` · `POST /api/store/:slug/events` | público (tienda) |
+| `GET /api/store-settings/policies`, `GET …/policies/:kind/template`, `PUT …/policies/:kind` | `settings:read` / `store:write` |
 | `POST /api/webhooks/stripe` | firma de Stripe |
 | `GET /api/billing`, `GET /api/billing/connect` | `settings:read` |
 | `POST /api/billing/checkout` · `portal` · `connect` | `billing:write` (propietario) |

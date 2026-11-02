@@ -101,6 +101,8 @@ async function loadProduct(c: { var: AppEnv["Variables"] }, id: string): Promise
     unit: p.unit as UnitCode,
     trackInventory: p.trackInventory,
     online: p.online,
+    seoTitle: p.seoTitle,
+    seoDescription: p.seoDescription,
     optionNames: p.optionNames,
     images: p.images,
     status: p.status,
@@ -315,6 +317,8 @@ export const productRoutes = new Hono<AppEnv>()
       unit: input.unit,
       trackInventory: input.trackInventory,
       online: input.online,
+      seoTitle: input.seoTitle ?? null,
+      seoDescription: input.seoDescription ?? null,
       optionNames: input.optionNames,
       images: input.images,
     };

@@ -10,6 +10,8 @@ import { CatalogPage } from "./pages/Catalog";
 import { ProductPage } from "./pages/Product";
 import { CheckoutPage } from "./pages/Checkout";
 import { OrderPage } from "./pages/Order";
+import { PolicyPage } from "./pages/Policy";
+import { POLICY_INFO, POLICY_KINDS } from "@nexo/shared";
 
 /** On a business's own domain the server injects its slug and the store lives at the root. */
 const ownDomainSlug = (window as { __NX_STORE__?: { slug: string } }).__NX_STORE__?.slug ?? null;
@@ -30,6 +32,7 @@ const storePages = (
     <Route path="p/:id" element={<ProductPage />} />
     <Route path="pagar" element={<CheckoutPage />} />
     <Route path="pedido/:token" element={<OrderPage />} />
+    {POLICY_KINDS.map((k) => <Route key={k} path={POLICY_INFO[k].path} element={<PolicyPage kind={k} />} />)}
     <Route path="*" element={<NotFound />} />
   </>
 );

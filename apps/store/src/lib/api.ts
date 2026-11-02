@@ -27,3 +27,27 @@ export async function api<T>(method: "GET" | "POST", path: string, body?: unknow
 }
 
 export const imageUrl = (key: string | null | undefined) => (key ? `/files/${key}` : null);
+
+/* ---------- Traffic (no cookies) ---------- */
+
+type TrackType = "page_view" | "product_view" | "add_to_cart" | "checkout_start";
+let utm: { source: string | null; medium: string | null; campaign: string | null } | null = null;
+let landingReferrer: string | null = typeof document !== "undefined" ? document.referrer || null : null;
+
+/** Fire-and-forget event for the store's traffic report. Never blocks or fails the page. */
+export function track(slug: string, type: TrackType, extra: { productId?: string } = {}) {
+  try {
+    if (utm === null) {
+      const p = new URLSearchParams(window.location.search);
+      utm = { source: p.get("utm_source"), medium: p.get("utm_medium"), campaign: p.get("utm_campaign") };
+    }
+    const body = JSON.stringify({ type, path: window.location.pathname, referrer: landingReferrer, productId: extra.productId ?? null, utm });
+    // Only the first page view carries the external referrer.
+    if (type === "page_view" || type === "product_view") landingReferrer = null;
+    const url = `/api/store/${encodeURIComponent(slug)}/events`;
+    const blob = new Blob([body], { type: "application/json" });
+    if (!navigator.sendBeacon?.(url, blob)) void fetch(url, { method: "POST", body, headers: { "content-type": "application/json" }, keepalive: true }).catch(() => {});
+  } catch {
+    /* analytics must never break the store */
+  }
+}

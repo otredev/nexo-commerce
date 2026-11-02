@@ -120,6 +120,9 @@ export const products = sqliteTable(
     status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
     /** Shown in the online store (when the product is also active). */
     online: integer("online", { mode: "boolean" }).notNull().default(false),
+    /** Search engines (Phase 7): null → the product name / description. */
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
     /** Normalized name + SKUs + barcodes, maintained on every write, for accent-insensitive search. */
     searchText: text("search_text").notNull().default(""),
     createdAt: text("created_at").notNull().default(now),
@@ -701,8 +704,47 @@ export const storeSettings = sqliteTable("store_settings", {
   notifyEmail: text("notify_email"),
   /** Unconfirmed, unpaid orders are cancelled after this many hours and their stock released. 0 = never. */
   holdHours: integer("hold_hours").notNull().default(48),
+  /* ---------- Phase 7: search engines and AI answers ---------- */
+  /** <title> of the store front (default: the business name + tagline). */
+  seoTitle: text("seo_title"),
+  /** Meta description of the store front (default: tagline / about). */
+  seoDescription: text("seo_description"),
+  /** false → noindex and left out of the sitemaps. */
+  indexable: integer("indexable", { mode: "boolean" }).notNull().default(true),
+  /** Frequently asked questions, shown in the store and marked up as FAQPage. */
+  faq: text("faq", { mode: "json" }).$type<Array<{ q: string; a: string }>>().notNull().default(sql`'[]'`),
   updatedAt: text("updated_at").notNull().default(now),
 });
+
+/**
+ * The store's legal pages (privacy notice, terms, returns). Each save that changes the text is a new
+ * version kept in store_policy_versions, so an order can prove exactly which text the customer accepted.
+ */
+export const storePolicies = sqliteTable(
+  "store_policies",
+  {
+    tenantId: text("tenant_id").notNull(),
+    kind: text("kind", { enum: ["privacy", "terms", "returns"] }).notNull(),
+    /** Markdown subset: headings, paragraphs, lists, bold, links. */
+    content: text("content").notNull(),
+    version: integer("version").notNull().default(1),
+    published: integer("published", { mode: "boolean" }).notNull().default(true),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.kind] })],
+);
+
+export const storePolicyVersions = sqliteTable(
+  "store_policy_versions",
+  {
+    tenantId: text("tenant_id").notNull(),
+    kind: text("kind").notNull(),
+    version: integer("version").notNull(),
+    content: text("content").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.kind, t.version] })],
+);
 
 export const orders = sqliteTable(
   "orders",
@@ -757,6 +799,10 @@ export const orders = sqliteTable(
     cancelledAt: text("cancelled_at"),
     cancelReason: text("cancel_reason"),
     cancelledBy: text("cancelled_by", { enum: ["customer", "staff", "system"] }),
+    /** The customer accepted the store's terms and privacy notice (versions at that moment). */
+    legalAcceptedAt: text("legal_accepted_at"),
+    termsVersion: integer("terms_version"),
+    privacyVersion: integer("privacy_version"),
   },
   (t) => [
     uniqueIndex("orders_tenant_number_uq").on(t.tenantId, t.number),

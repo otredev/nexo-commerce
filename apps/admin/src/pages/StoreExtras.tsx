@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { POLICY_INFO, type PolicyKind, type StorePolicy } from "@nexo/shared";
+import { Markdown } from "../components/Markdown";
 import { Link, useSearchParams } from "react-router-dom";
 import { Copy, CreditCard, ExternalLink } from "lucide-react";
 import type { StoreDomain, StripeConnectStatus } from "@nexo/shared";
-import { Alert, Badge, Button, Card, Checkbox, TextField, useToast } from "@nexo/ui";
+import { Alert, Badge, Button, Card, Checkbox, Modal, Segmented, TextAreaField, TextField, useToast } from "@nexo/ui";
 import { del, get, post, put } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useLoad, useSubmit } from "../lib/hooks";
@@ -154,5 +156,134 @@ export function DomainCard({ writable }: { writable: boolean }) {
         )}
       </div>
     </Card>
+  );
+}
+
+/* ---------------- Frequently asked questions ---------------- */
+
+export function FaqEditor({ value, onChange, writable, error }: { value: Array<{ q: string; a: string }>; onChange: (v: Array<{ q: string; a: string }>) => void; writable: boolean; error?: string }) {
+  const update = (i: number, patch: Partial<{ q: string; a: string }>) => onChange(value.map((f, n) => (n === i ? { ...f, ...patch } : f)));
+  return (
+    <div className="nx-stack">
+      {error && <Alert tone="danger">{error}</Alert>}
+      {value.length === 0 && <p className="nx-help" style={{ margin: 0 }}>Ejemplos: ¿Hacen envíos a toda la ciudad? ¿Puedo recoger hoy? ¿Aceptan tarjeta?</p>}
+      {value.map((f, i) => (
+        <div key={i} className="nx-stack" style={{ gap: 8, paddingTop: i ? 12 : 0, borderTop: i ? "1px solid var(--border)" : 0 }}>
+          <TextField label={`Pregunta ${i + 1}`} value={f.q} maxLength={200} onChange={(e) => update(i, { q: e.target.value })} disabled={!writable} />
+          <TextAreaField label="Respuesta" rows={2} value={f.a} maxLength={1500} onChange={(e) => update(i, { a: e.target.value })} disabled={!writable} />
+          {writable && <div><Button size="sm" variant="ghost" onClick={() => onChange(value.filter((_, n) => n !== i))}>Quitar pregunta</Button></div>}
+        </div>
+      ))}
+      {writable && value.length < 20 && <div><Button size="sm" onClick={() => onChange([...value, { q: "", a: "" }])}>Agregar pregunta</Button></div>}
+    </div>
+  );
+}
+
+/* ---------------- Legal pages ---------------- */
+
+type PolicyRow = StorePolicy | { kind: PolicyKind; content: null; version: 0; published: false; updatedAt: null };
+
+export function PoliciesCard({ writable }: { writable: boolean }) {
+  const { data, error, setData } = useLoad(() => get<PolicyRow[]>("/store-settings/policies"));
+  const [editing, setEditing] = useState<PolicyKind | null>(null);
+  const row = data?.find((r) => r.kind === editing) ?? null;
+  return (
+    <Card title="Políticas de la tienda" description="Se publican en tu tienda y, al pagar, el cliente acepta los términos y el aviso de privacidad.">
+      {error && <Alert tone="danger">{error.message}</Alert>}
+      <div>
+        {data?.map((r) => (
+          <div key={r.kind} className="nx-policy-row">
+            <div>
+              <div style={{ fontWeight: 500 }}>{POLICY_INFO[r.kind].title}</div>
+              <div className="nx-help" style={{ marginTop: 2 }}>
+                {r.content === null ? "Sin texto" : r.published ? `Publicada · versión ${r.version}` : `Borrador · versión ${r.version}`}
+              </div>
+            </div>
+            {writable ? (
+              <Button size="sm" onClick={() => setEditing(r.kind)}>{r.content === null ? "Crear" : "Editar"}</Button>
+            ) : r.content !== null && <Button size="sm" variant="ghost" onClick={() => setEditing(r.kind)}>Ver</Button>}
+          </div>
+        ))}
+      </div>
+      <PolicyModal
+        row={row}
+        writable={writable}
+        onClose={() => setEditing(null)}
+        onSaved={(p) => { setData((d) => d?.map((x) => (x.kind === p.kind ? p : x)) ?? d); setEditing(null); }}
+      />
+    </Card>
+  );
+}
+
+function PolicyModal({ row, writable, onClose, onSaved }: { row: PolicyRow | null; writable: boolean; onClose: () => void; onSaved: (p: StorePolicy) => void }) {
+  const toast = useToast();
+  const [content, setContent] = useState("");
+  const [published, setPublished] = useState(true);
+  const [view, setView] = useState<"edit" | "preview">("edit");
+  const [confirmTemplate, setConfirmTemplate] = useState(false);
+  useEffect(() => {
+    if (!row) return;
+    setConfirmTemplate(false);
+    setContent(row.content ?? "");
+    setPublished(row.content === null ? true : row.published);
+    setView(writable ? "edit" : "preview");
+  }, [row, writable]);
+  const template = useSubmit(async () => {
+    const res = await get<{ content: string }>(`/store-settings/policies/${row!.kind}/template`);
+    setContent(res.content);
+    setView("edit");
+  });
+  const save = useSubmit(async () => {
+    const saved = await put<StorePolicy>(`/store-settings/policies/${row!.kind}`, { content, published });
+    toast(saved.version !== row!.version && row!.content !== null ? `Guardada como versión ${saved.version}` : "Política guardada");
+    onSaved(saved);
+  });
+  if (!row) return null;
+  const info = POLICY_INFO[row.kind];
+  return (
+    <Modal
+      open
+      size="lg"
+      title={info.title}
+      onClose={onClose}
+      footer={writable ? <><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="primary" loading={save.pending} onClick={() => void save.submit()}>Guardar</Button></> : <Button onClick={onClose}>Cerrar</Button>}
+    >
+      <div className="nx-stack">
+        {(save.message || template.message) && <Alert tone="danger">{save.message ?? template.message}</Alert>}
+        {writable && (
+          <div className="nx-row" style={{ justifyContent: "space-between" }}>
+            <Segmented label="Vista" value={view} onChange={setView} options={[{ id: "edit", label: "Editar" }, { id: "preview", label: "Vista previa" }]} />
+            <Button
+              size="sm"
+              variant={confirmTemplate ? "secondary" : "ghost"}
+              loading={template.pending}
+              onClick={() => { if (content.trim() && !confirmTemplate) setConfirmTemplate(true); else { setConfirmTemplate(false); void template.submit(); } }}
+            >
+              {confirmTemplate ? "Reemplazar mi texto por la plantilla" : "Usar plantilla"}
+            </Button>
+          </div>
+        )}
+        {view === "edit" ? (
+          <TextAreaField
+            label="Texto"
+            rows={16}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            error={save.fields.content}
+            placeholder={"## Título de sección\nTexto del párrafo.\n\n- Un punto\n- Otro punto"}
+            help={<>Formato: <code>## Título</code>, <code>- lista</code>, <code>**negritas**</code>, <code>[texto](https://enlace)</code>. Los textos entre [corchetes] de las plantillas son para completar.</>}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
+          />
+        ) : (
+          <div style={{ maxHeight: 420, overflowY: "auto", padding: "4px 2px" }}>{content.trim() ? <Markdown text={content} /> : <p className="nx-muted">Sin texto todavía.</p>}</div>
+        )}
+        {writable && (
+          <>
+            <Checkbox label="Publicada en la tienda" checked={published} onChange={(e) => setPublished(e.target.checked)} help={row.kind === "returns" ? "Aparece en el pie de la tienda." : "Aparece en el pie de la tienda y el cliente la acepta al pagar."} />
+            <Alert tone="info">Las plantillas son un punto de partida, no asesoría legal. Revisa el texto con un abogado antes de publicarlo. Cada cambio queda guardado como una versión nueva y cada pedido registra cuál aceptó el cliente.</Alert>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }

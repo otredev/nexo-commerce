@@ -100,6 +100,17 @@ export function CatalogPage() {
           )}
         </>
       )}
+      {!q && !category && store && store.faq.length > 0 && (
+        <section className="st-faq" aria-labelledby="faq-title">
+          <h2 id="faq-title">Preguntas frecuentes</h2>
+          {store.faq.map((f, i) => (
+            <details key={i}>
+              <summary>{f.q}</summary>
+              <p>{f.a}</p>
+            </details>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

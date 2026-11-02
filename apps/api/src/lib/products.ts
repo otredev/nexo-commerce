@@ -109,6 +109,8 @@ export function createProductStatements(
         unit: input.unit,
         trackInventory: input.trackInventory,
         online: input.online ?? false,
+        seoTitle: input.seoTitle ?? null,
+        seoDescription: input.seoDescription ?? null,
         optionNames: input.optionNames,
         images: input.images,
         searchText: searchTextFor(input.name, vs),

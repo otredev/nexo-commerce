@@ -40,9 +40,28 @@ import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCou
 import { getTenantDb } from "../lib/tenant";
 import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
 import { stripe, stripeConfigured } from "../lib/stripe";
+import { recordStoreEvent, STORE_EVENT_TYPES } from "../lib/events";
 import { json } from "../lib/validate";
 
-const { storeSettings, businessSettings, products, variants, taxRates, categories, brands, orders, orderItems, stockLevels, auditLog } = tenant;
+const { storeSettings, businessSettings, products, variants, taxRates, categories, brands, orders, orderItems, stockLevels, auditLog, storePolicies } = tenant;
+
+/** Published legal pages and their current version. */
+async function publishedPolicies(db: Awaited<ReturnType<typeof resolveStore>>["db"], tenantId: string) {
+  return db
+    .select({ kind: storePolicies.kind, version: storePolicies.version, content: storePolicies.content, updatedAt: storePolicies.updatedAt })
+    .from(storePolicies)
+    .where(and(eq(storePolicies.tenantId, tenantId), eq(storePolicies.published, true)));
+}
+
+/** The store's own domain, when it has an active one. */
+async function activeDomain(c: Context<AppEnv>, tenantId: string) {
+  const row = await controlDb(c.env.DB_CONTROL)
+    .select({ hostname: control.tenantDomains.hostname })
+    .from(control.tenantDomains)
+    .where(and(eq(control.tenantDomains.tenantId, tenantId), eq(control.tenantDomains.status, "active")))
+    .get();
+  return row?.hostname ?? null;
+}
 
 /**
  * Public base URL of the store for links that leave it (Stripe return pages): the customer's own domain
@@ -110,6 +129,14 @@ const listQuery = z.object({
 
 const short = { "Cache-Control": "public, max-age=30" };
 
+const eventSchema = z.object({
+  type: z.enum(STORE_EVENT_TYPES).exclude(["order_placed"]),
+  path: z.string().max(300),
+  referrer: z.string().max(500).nullable().optional(),
+  productId: z.string().max(40).nullable().optional(),
+  utm: z.object({ source: z.string().max(100).nullable().optional(), medium: z.string().max(100).nullable().optional(), campaign: z.string().max(100).nullable().optional() }).nullable().optional(),
+});
+
 export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Store front: name, logo, rules, categories ---------- */
   .get("/:slug", async (c) => {
@@ -154,6 +181,12 @@ export const storeRoutes = new Hono<AppEnv>()
       categories: cats,
       promotions,
       couponsEnabled: Boolean(coupon),
+      faq: store.faq,
+      policies: (await publishedPolicies(db, t.id)).map((p) => ({ kind: p.kind, version: p.version })),
+      seoTitle: store.seoTitle,
+      seoDescription: store.seoDescription,
+      indexable: store.indexable,
+      domain: await activeDomain(c, t.id),
     };
     return c.json(body, 200, short);
   })
@@ -252,6 +285,9 @@ export const storeRoutes = new Hono<AppEnv>()
       optionNames: p.optionNames,
       taxRateBps: rate,
       promotion: promo ? { id: promo.id, name: promo.name, percentBps: promo.percentBps } : null,
+      seoTitle: p.seoTitle,
+      seoDescription: p.seoDescription,
+      updatedAt: p.updatedAt,
       variants: vs.map((v) => ({
         id: v.id,
         options: v.options,
@@ -284,6 +320,17 @@ export const storeRoutes = new Hono<AppEnv>()
     if (input.paymentMethod === "on_delivery" && !store.payOnDelivery) throw new AppError(422, "validation_error", "Revisa los campos marcados", { paymentMethod: "Elige otra forma de pago" });
     if (input.paymentMethod === "transfer" && !store.transferEnabled) throw new AppError(422, "validation_error", "Revisa los campos marcados", { paymentMethod: "Elige otra forma de pago" });
     if (input.paymentMethod === "card" && !cardAccount) throw new AppError(422, "validation_error", "El pago con tarjeta no está disponible ahora. Elige otra forma de pago.", { paymentMethod: "Elige otra forma de pago" });
+
+    // Terms and privacy notice: when the store publishes them, the customer must accept the current versions.
+    const legal = (await publishedPolicies(db, t.id)).filter((p) => p.kind !== "returns");
+    const termsVersion = legal.find((p) => p.kind === "terms")?.version ?? null;
+    const privacyVersion = legal.find((p) => p.kind === "privacy")?.version ?? null;
+    if (legal.length) {
+      if (!input.acceptLegal) throw new AppError(422, "legal_required", "Acepta los términos y el aviso de privacidad para continuar.", { acceptLegal: "Necesitamos tu aceptación" });
+      if (input.legalVersions && (input.legalVersions.terms !== termsVersion || input.legalVersions.privacy !== privacyVersion)) {
+        throw new AppError(409, "legal_changed", "La tienda actualizó sus términos o su aviso de privacidad. Revísalos y acepta de nuevo.", { acceptLegal: "Se actualizaron" });
+      }
+    }
 
     // Current prices, taxes and costs: the store only says what and how much.
     const ids = [...new Set(input.items.map((i) => i.variantId))];
@@ -349,14 +396,15 @@ export const storeRoutes = new Hono<AppEnv>()
         .prepare(
           `INSERT INTO orders (id, tenant_id, number, token, client_id, location_id, status, fulfillment, customer_name, customer_email, customer_phone, address, notes,
              payment_method, payment_status, prices_include_tax, subtotal_cents, tax_cents, shipping_cents, total_cents, cost_cents, ip, created_at, updated_at,
-             customer_id, coupon_code, discount_cents)
-           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20, ?21, ?22, ?23
+             customer_id, coupon_code, discount_cents, legal_accepted_at, terms_version, privacy_version)
+           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20, ?21, ?22, ?23, ?24, ?25, ?26
            FROM counters WHERE tenant_id = ?2 AND name = 'order'`,
         )
         .bind(
           orderId, t.id, token, input.clientId, store.locationId, input.fulfillment, input.customerName, input.customerEmail, input.customerPhone,
           input.fulfillment === "delivery" ? input.address : null, input.notes, input.paymentMethod, biz.pricesIncludeTax ? 1 : 0,
           totals.subtotalCents, totals.taxCents, shipping, total, cost, ip, now, customer.id, coupon?.code ?? null, totals.discountCents,
+          legal.length ? now : null, legal.length ? termsVersion : null, legal.length ? privacyVersion : null,
         ),
       ...customer.statements,
       ...(coupon ? [couponUseStatement(d1, coupon.id)] : []),
@@ -401,6 +449,7 @@ export const storeRoutes = new Hono<AppEnv>()
     }
 
     const created = await loadOrderRows(db, t.id, { id: orderId });
+    if (created) await recordStoreEvent(c, t.id, { type: "order_placed", path: "/pagar", amountCents: total }).catch(() => false);
     let paymentUrl: string | null = null;
     if (created && input.paymentMethod === "card") {
       // Stripe Checkout on the business's account. If Stripe fails, the order is cancelled and the stock returns.
@@ -434,6 +483,41 @@ export const storeRoutes = new Hono<AppEnv>()
     const problem = coupon ? couponProblem(toCouponRule(coupon), today, "online") : "Este cupón no existe.";
     if (problem) throw new AppError(422, "coupon_invalid", problem, { code: problem });
     return c.json(toCouponRule(coupon!));
+  })
+
+  /* ---------- Traffic (no cookies; see lib/events.ts) ---------- */
+  .post("/:slug/events", json(eventSchema), async (c) => {
+    const slug = c.req.param("slug").toLowerCase();
+    if (!c.env.STORE_EVENTS || !/^[a-z0-9-]{1,60}$/.test(slug)) return c.body(null, 204);
+    const t = await controlDb(c.env.DB_CONTROL)
+      .select({ id: control.tenants.id, status: control.tenants.status })
+      .from(control.tenants)
+      .where(eq(control.tenants.slug, slug))
+      .get();
+    if (t?.status === "active") {
+      const e = c.req.valid("json");
+      await recordStoreEvent(c, t.id, { type: e.type, path: e.path, referrer: e.referrer, productId: e.productId, utm: e.utm ?? undefined });
+    }
+    return c.body(null, 204);
+  })
+
+  /* ---------- Legal pages and sitemap data ---------- */
+  .get("/:slug/policies/:kind", async (c) => {
+    const { tenant: t, db } = await resolveStore(c);
+    const p = (await publishedPolicies(db, t.id)).find((x) => x.kind === c.req.param("kind"));
+    if (!p) throw new AppError(404, "not_found", "Esta página no existe.");
+    return c.json({ kind: p.kind, content: p.content, version: p.version, updatedAt: p.updatedAt }, 200, short);
+  })
+
+  /** What the store's sitemap lists: published products with their last change, and the legal pages. */
+  .get("/:slug/sitemap", async (c) => {
+    const { tenant: t, d1, db, store } = await resolveStore(c);
+    const { results } = await d1
+      .prepare(`SELECT p.id, p.updated_at AS updatedAt FROM products p WHERE ${PUBLISHED} ORDER BY p.updated_at DESC LIMIT 45000`)
+      .bind(t.id)
+      .all<{ id: string; updatedAt: string }>();
+    const policies = (await publishedPolicies(db, t.id)).map((p) => ({ kind: p.kind, updatedAt: p.updatedAt }));
+    return c.json({ indexable: store.indexable, updatedAt: store.updatedAt, products: results, policies }, 200, { "Cache-Control": "public, max-age=600" });
   })
 
   /* ---------- Tracking page ---------- */

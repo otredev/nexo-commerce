@@ -8,3 +8,5 @@ export * from "./purchasing";
 export * from "./store";
 export * from "./promotions";
 export * from "./plans";
+export * from "./legal";
+export * from "./seo";

@@ -1,7 +1,10 @@
 import { Hono, type Context } from "hono";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { tenant } from "@nexo/db";
-import { domainSchema, planOf, publishProductsSchema, storeSettingsSchema, type StoreDomain, type StoreSettings } from "@nexo/shared";
+import {
+  domainSchema, planOf, POLICY_INFO, POLICY_KINDS, policySchema, policyTemplate, publishProductsSchema, storeSettingsSchema,
+  type PolicyKind, type StoreDomain, type StorePolicy, type StoreSettings,
+} from "@nexo/shared";
 import { control, controlDb } from "@nexo/db";
 import { addDomain, domainsConfigured, refreshDomain, removeDomain, toStoreDomain } from "../lib/domains";
 import { assertFeature } from "../lib/plan";
@@ -12,7 +15,13 @@ import { chunk, toStatement } from "../lib/inventory";
 import { json } from "../lib/validate";
 import { requirePermission } from "../middleware/auth";
 
-const { storeSettings, locations, products } = tenant;
+const { storeSettings, locations, products, storePolicies, storePolicyVersions, businessSettings } = tenant;
+
+const kindParam = (c: Context<AppEnv>): PolicyKind => {
+  const k = c.req.param("kind") as PolicyKind;
+  if (!(POLICY_KINDS as readonly string[]).includes(k)) throw new AppError(404, "not_found", "Página no encontrada");
+  return k;
+};
 
 async function load(c: Context<AppEnv>): Promise<StoreSettings> {
   const { db, d1, tenant: t } = c.var.auth;
@@ -26,7 +35,7 @@ async function load(c: Context<AppEnv>): Promise<StoreSettings> {
   const base = row ?? {
     enabled: false, locationId: null, tagline: null, about: null, pickupEnabled: true, pickupInstructions: null, deliveryEnabled: false, deliveryFeeCents: 0,
     freeDeliveryFromCents: null, deliveryArea: null, minOrderCents: 0, payOnDelivery: true, transferEnabled: false, transferInstructions: null, cardEnabled: false, whatsapp: null,
-    notifyEmail: null, holdHours: 48,
+    notifyEmail: null, holdHours: 48, seoTitle: null, seoDescription: null, indexable: true, faq: [] as Array<{ q: string; a: string }>,
   };
   return {
     enabled: base.enabled,
@@ -47,6 +56,10 @@ async function load(c: Context<AppEnv>): Promise<StoreSettings> {
     whatsapp: base.whatsapp,
     notifyEmail: base.notifyEmail,
     holdHours: base.holdHours,
+    seoTitle: base.seoTitle,
+    seoDescription: base.seoDescription,
+    indexable: base.indexable,
+    faq: base.faq,
     slug: t.slug,
     url: `${c.env.STORE_URL.replace(/\/$/, "")}/${t.slug}`,
     publishedCount: counts?.published ?? 0,
@@ -133,4 +146,58 @@ export const storeAdminRoutes = new Hono<AppEnv>()
     await removeDomain(c.env, current.hostname);
     await db.batch([auditEntry(c, { action: "store.domain_remove", entity: "store_settings", entityId: t.id, before: { hostname: current.hostname } })]);
     return c.body(null, 204);
+  })
+
+  /* ---------- Legal pages: privacy notice, terms, returns ---------- */
+  .get("/policies", requirePermission("settings:read"), async (c) => {
+    const { db, tenant: t } = c.var.auth;
+    const rows = await db.select().from(storePolicies).where(eq(storePolicies.tenantId, t.id));
+    const body: Array<StorePolicy | { kind: PolicyKind; content: null; version: 0; published: false; updatedAt: null }> = POLICY_KINDS.map((kind) => {
+      const r = rows.find((x) => x.kind === kind);
+      return r ? { kind, content: r.content, version: r.version, published: r.published, updatedAt: r.updatedAt } : { kind, content: null, version: 0, published: false, updatedAt: null };
+    });
+    return c.json(body);
+  })
+
+  /** A starting text filled with the business's data (not saved). */
+  .get("/policies/:kind/template", requirePermission("settings:read"), async (c) => {
+    const kind = kindParam(c);
+    const { db, tenant: t } = c.var.auth;
+    const biz = await db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get();
+    const content = policyTemplate(kind, {
+      name: biz?.tradeName ?? t.name,
+      legalName: biz?.legalName ?? null,
+      email: biz?.email ?? null,
+      phone: biz?.phone ?? null,
+      address: biz?.address ?? null,
+      storeUrl: `${c.env.STORE_URL.replace(/\/$/, "")}/${t.slug}`,
+    });
+    return c.json({ kind, content });
+  })
+
+  /** Saves a page. A change of text is a new version (kept, so orders can show what was accepted). */
+  .put("/policies/:kind", requirePermission("store:write"), json(policySchema), async (c) => {
+    const kind = kindParam(c);
+    const { content, published } = c.req.valid("json");
+    const { db, d1, tenant: t } = c.var.auth;
+    const current = await db.select().from(storePolicies).where(and(eq(storePolicies.tenantId, t.id), eq(storePolicies.kind, kind))).get();
+    const changed = !current || current.content !== content;
+    const version = current ? current.version + (changed ? 1 : 0) : 1;
+    const now = new Date().toISOString();
+    const statements: D1PreparedStatement[] = [
+      toStatement(
+        d1,
+        db.insert(storePolicies).values({ tenantId: t.id, kind, content, version, published, updatedAt: now })
+          .onConflictDoUpdate({ target: [storePolicies.tenantId, storePolicies.kind], set: { content, version, published, updatedAt: now } }),
+      ),
+    ];
+    if (changed) {
+      statements.push(toStatement(d1, db.insert(storePolicyVersions).values({ tenantId: t.id, kind, version, content, createdAt: now }).onConflictDoNothing()));
+    }
+    if (changed || current?.published !== published) {
+      statements.push(toStatement(d1, auditEntry(c, { action: "store.policy", entity: "store_policy", entityId: kind, after: { title: POLICY_INFO[kind].title, version, published } })));
+    }
+    await d1.batch(statements);
+    const body: StorePolicy = { kind, content, version, published, updatedAt: now };
+    return c.json(body);
   });
