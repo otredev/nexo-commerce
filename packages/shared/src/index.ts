@@ -11,3 +11,4 @@ export * from "./plans";
 export * from "./legal";
 export * from "./seo";
 export * from "./notifications";
+export * from "./appearance";

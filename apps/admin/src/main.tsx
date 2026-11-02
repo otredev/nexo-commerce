@@ -35,6 +35,7 @@ const PromotionsPage = lazy(() => import("./pages/Promotions").then((m) => ({ de
 const PayablesPage = lazy(() => import("./pages/Payables").then((m) => ({ default: m.PayablesPage })));
 const ReportsPage = lazy(() => import("./pages/Reports").then((m) => ({ default: m.ReportsPage })));
 const OrderDetailPage = lazy(() => import("./pages/orders/OrderDetail").then((m) => ({ default: m.OrderDetailPage })));
+const StoreAppearancePage = lazy(() => import("./pages/StoreAppearance").then((m) => ({ default: m.StoreAppearancePage })));
 const StoreSettingsPage = lazy(() => import("./pages/StoreSettings").then((m) => ({ default: m.StoreSettingsPage })));
 const PurchaseFormPage = lazy(() => import("./pages/purchases/PurchaseForm").then((m) => ({ default: m.PurchaseFormPage })));
 const PurchaseDetailPage = lazy(() => import("./pages/purchases/PurchaseDetail").then((m) => ({ default: m.PurchaseDetailPage })));
@@ -112,6 +113,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="pedidos" element={<OrdersPage />} />
               <Route path="pedidos/:id" element={<OrderDetailPage />} />
               <Route path="tienda" element={<StoreSettingsPage />} />
+              <Route path="tienda/apariencia" element={<StoreAppearancePage />} />
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />

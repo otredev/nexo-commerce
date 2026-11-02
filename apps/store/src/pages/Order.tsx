@@ -5,6 +5,7 @@ import { whatsappLink, customerStatusLabel, FULFILLMENT_LABELS, formatQty, ONLIN
 import { Alert, Button, Modal, useToast } from "@nexo/ui";
 import { api, imageUrl, RequestError } from "../lib/api";
 import { useStore } from "../lib/store";
+import { pixelEvent } from "../lib/pixels";
 
 const timeFmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const label = (n: number) => `#${String(n).padStart(6, "0")}`;
@@ -36,6 +37,15 @@ export function OrderPage() {
     return () => { alive = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, token]);
+
+  // Ad pixels: one "purchase" per order, when the customer lands here right after buying.
+  const purchased = Boolean(order && (fresh || (back === "ok" && order.paymentStatus === "paid")));
+  useEffect(() => {
+    if (!order || !purchased) return;
+    const key = `nx-px-purchase:${token}`;
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch { /* ignore */ }
+    pixelEvent("purchase", { id: String(order.number), valueCents: order.totalCents });
+  }, [purchased, order, token]);
 
   if (error) {
     return (

@@ -1,0 +1,4 @@
+/* Extra self-hosted fonts for store themes (Phase 9). Browsers only download a font when a theme uses it. */
+@import "@fontsource-variable/fraunces/index.css";
+@import "@fontsource-variable/space-grotesk/index.css";
+@import "@fontsource-variable/nunito/index.css";

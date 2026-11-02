@@ -1,5 +1,5 @@
 import {
-  Activity, ArrowLeftRight, BarChart3, Bell, Boxes, Building2, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, MapPin, Monitor, Package,
+  Activity, ArrowLeftRight, BarChart3, Bell, Boxes, Building2, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, MapPin, Monitor, Package, Palette,
   PackagePlus, Percent, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, UserPlus, Users, Wallet, Warehouse,
 } from "lucide-react";
 import type { Permission } from "@nexo/shared";
@@ -39,7 +39,8 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
     group: "Tienda en línea",
     items: [
       { to: "/pedidos", label: "Pedidos", icon: ShoppingBag, permission: "orders:read", badge: "orders", keywords: "ordenes en linea web ecommerce envios" },
-      { to: "/tienda", label: "Ajustes de la tienda", icon: Globe, permission: "store:write", keywords: "tienda online web dominio stripe tarjeta envio publicar" },
+      { to: "/tienda", end: true, label: "Ajustes de la tienda", icon: Globe, permission: "store:write", keywords: "tienda online web dominio stripe tarjeta envio publicar" },
+      { to: "/tienda/apariencia", label: "Apariencia", icon: Palette, permission: "store:write", keywords: "tema colores diseño banners avisos barra fuente letras pixel meta facebook google tiktok css html javascript codigo personalizar" },
     ],
   },
   {

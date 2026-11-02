@@ -6,6 +6,7 @@ import { Button } from "@nexo/ui";
 import { imageUrl, track } from "../lib/api";
 import { useStore } from "../lib/store";
 import { CartDrawer } from "./CartDrawer";
+import { AnnouncementBar, ConsentBanner, useConsent, useThemeStyle } from "./Appearance";
 
 export function StoreLayout() {
   const { store, error, slug, link, count, setCartOpen } = useStore();
@@ -21,6 +22,8 @@ export function StoreLayout() {
     track(slug, m ? "product_view" : "page_view", m ? { productId: m[1] } : {});
   }, [location.pathname, slug, Boolean(store)]);
   useEffect(() => { setQ(params.get("q") ?? ""); }, [params]);
+  useThemeStyle(store?.appearance);
+  const consent = useConsent();
 
   if (error) {
     return (
@@ -38,6 +41,7 @@ export function StoreLayout() {
   return (
     <>
       <a className="nx-sr-only" href="#contenido">Ir al contenido</a>
+      {!checkout && <AnnouncementBar />}
       <header className="st-header">
         <div className="st-wrap st-header__row">
           <Link to={link()} className="st-brand" aria-label={`${store.name}, inicio`}>
@@ -86,13 +90,17 @@ export function StoreLayout() {
               {store.policies.map((p) => <Link key={p.kind} to={link(`/${POLICY_INFO[p.kind].path}`)}>{POLICY_INFO[p.kind].title}</Link>)}
             </nav>
           )}
-          <div className="st-powered">Tienda creada con Nexo</div>
+          <div className="st-powered">
+            Tienda creada con Nexo
+            {consent.needed && <> · <button type="button" className="st-linklike" onClick={consent.reopen}>Cookies</button></>}
+          </div>
         </div>
       </footer>
       {whatsapp && !checkout && (
         <a className="st-wa" href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={18} strokeWidth={1.6} aria-hidden="true" /><span className="st-wa__label">¿Dudas? Escríbenos</span></a>
       )}
       <CartDrawer />
+      <ConsentBanner c={consent} />
     </>
   );
 }

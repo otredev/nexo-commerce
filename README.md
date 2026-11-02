@@ -13,6 +13,7 @@ Estado actual:
 - **Fase 6 — SaaS:** planes con límites y suscripción en Stripe, cobro con tarjeta en la tienda con Stripe Connect, dominios propios por negocio (Cloudflare for SaaS), panel de plataforma con suspensión y mover un negocio a otra D1.
 - **Fase 7 — Tienda confiable y fácil de encontrar:** aviso de privacidad, términos y devoluciones editables con plantillas y versiones (el cliente los acepta al pagar), SEO por tienda y producto, preguntas frecuentes, datos estructurados, robots.txt, sitemaps (por tienda y un índice general) y llms.txt para asistentes de IA, y registro de visitas sin cookies.
 - **Fase 8 — Operación diaria:** pantalla para el cliente en la caja (segundo monitor, o tablet/TV emparejada con un código de 6 dígitos) y notificaciones push en el celular o la computadora (panel instalable): pedidos nuevos, pagos con tarjeta, resumen de la mañana y avisos de la suscripción.
+- **Fase 9 — Apariencia de la tienda:** 6 estilos (colores, tipografía y esquinas) con colores propios y vista previa en vivo, barra de avisos rotativa con fechas, banners en carrusel con imagen para celular, píxeles de Meta, Google y TikTok con aviso de cookies, y CSS, HTML y JavaScript propios (HTML/JS solo en dominio propio).
 
 ---
 
@@ -35,7 +36,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7 y 51 de la Fase 8) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7, 51 de la Fase 8 y 37 de la Fase 9) |
 | `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
@@ -62,6 +63,7 @@ scripts/
   smoke-store.mjs     Prueba de punta a punta de la Fase 4 (catálogo público, pedidos, carrera por las últimas piezas).
   smoke-growth.mjs    Prueba de punta a punta de la Fase 5 (clientes, promociones, cupones, cuentas por pagar, reportes).
   smoke-seo.mjs       Prueba de punta a punta de la Fase 7 (políticas y su aceptación, SEO, sitemaps, visitas).
+  smoke-theme.mjs     Prueba de punta a punta de la Fase 9 (apariencia; con la tienda en :8788 también revisa lo que inyecta el servidor).
   smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
   smoke-ops.mjs       Prueba de la Fase 8 con su propio wrangler dev (:8791) y un servicio de push falso que descifra cada aviso.
   vapid-keys.mjs      Genera el par de llaves VAPID de las notificaciones push (una vez por entorno).
@@ -199,6 +201,16 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
   - El panel es **instalable** (manifest + service worker `sw.js` que solo muestra avisos, sin caché offline). En **iPhone/iPad** primero hay que agregarlo a la pantalla de inicio (iOS 16.4+).
   - Sin `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` la pestaña dice «Aún no disponible» y todo lo demás sigue igual.
 
+### Apariencia de la tienda (Fase 9)
+
+*Tienda en línea → Apariencia*, con vista previa en computadora y celular que usa exactamente los mismos colores que la tienda.
+
+- **Tema**: 6 estilos (Nexo, Boutique, Fresco, Minimal, Mercado, Nocturno). Sobre cualquiera se puede cambiar el color principal, el fondo y el texto, la tipografía de los títulos (5 opciones, autoalojadas: Instrument Serif, Fraunces, Inter, Space Grotesk, Nunito) y las esquinas. El tema se convierte en variables CSS sobre los mismos *tokens* de la tienda (`themeCss` en `@nexo/shared`): el resto de los tonos (bordes, textos secundarios, fondos suaves) se calculan y se ajustan hasta tener contraste legible (WCAG AA). El estilo Nexo sin cambios sigue el modo oscuro del cliente; con colores propios la tienda se ve siempre así. El editor avisa si el texto o los botones casi no se distinguen.
+- **Barra de avisos**: hasta 3 mensajes que rotan cada 5 s (se detiene al pasar el cursor y con *movimiento reducido*), con enlace, 4 colores, fechas de inicio y fin, y opción de cerrarla (se recuerda hasta que cambie el texto).
+- **Banners**: hasta 6 en carrusel arriba del catálogo, con imagen ancha (2100 × 800) y opcional para celular (1080 × 1350), título, texto, botón, enlace, color de texto, alineación, fechas y orden. Solo se aceptan imágenes subidas por el propio negocio. Los enlaces solo pueden ser rutas de la tienda (`/p/…`, `?categoria=…`) o `https://`.
+- **Píxeles** de Meta, Google (GA4, Ads o Tag Manager) y TikTok: no se cargan hasta que el cliente acepta el aviso de cookies (la elección se guarda por tienda y se puede cambiar desde el pie de página). Registran visitas, productos vistos, agregar al carrito, inicio de pago y compra (con total), igual que las métricas propias.
+- **Código propio**: CSS (50 000 caracteres) en todas las páginas; HTML en `<head>`/`<body>` y JavaScript solo con plan Pro y **solo en el dominio propio** de la tienda. En el dominio compartido todas las tiendas comparten origen, así que ahí nunca se inyecta HTML/JS ajeno y el servidor envía `Content-Security-Policy: worker-src 'none'` para que nadie instale un service worker. Tampoco se inyecta en el pago ni en el seguimiento del pedido. El código no viaja en los datos de la tienda: el middleware de Pages lo pide aparte e inserta tema y CSS en el HTML (sin parpadeo), con escapes para que no pueda cerrar sus etiquetas.
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -285,6 +297,8 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET /api/notifications`, `POST /api/notifications/subscriptions`, `POST …/subscriptions/remove`, `DELETE …/subscriptions/:id`, `PUT …/prefs`, `POST …/test` | sesión (cada quien las suyas) |
 | `POST /api/pos/display`, `POST /api/pos/display/:code/state`, `DELETE /api/pos/display/:code` | `pos:sell` |
 | `GET /api/display/:code`, `GET /api/display/:code/ws` (WebSocket) | público: el código es la llave |
+| `GET/PUT /api/store-settings/appearance` | `settings:read` / `store:write` (HTML/JS: plan Pro) |
+| `GET /api/store/:slug/custom-code` | público (middleware de la tienda) |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.

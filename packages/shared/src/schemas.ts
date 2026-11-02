@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ROLES } from "./roles";
 import { REASON_CODES, UNIT_CODES } from "./catalog";
 import { PAYMENT_CODES } from "./sales";
+import { CODE_LIMITS, MAX_BANNERS, PIXEL_PATTERNS, STORE_LINK, THEME_FONT_IDS, THEME_PRESET_IDS, THEME_RADIUS_IDS, type ThemeFont, type ThemePreset, type ThemeRadius } from "./appearance";
 
 const email = z.string().trim().toLowerCase().email("Correo no válido").max(254);
 const password = z
@@ -535,3 +536,76 @@ export const pushSubscribeSchema = z.object({
 });
 
 export const notificationPrefsSchema = z.object({ prefs: z.record(z.string().max(40), z.boolean()) });
+
+/* ---------- Phase 9: store appearance ---------- */
+
+const hexColor = z.string().trim().toLowerCase().regex(/^#[0-9a-f]{6}$/, "Color no válido (usa #RRGGBB)").nullable().default(null);
+const storeLink = z
+  .string()
+  .trim()
+  .max(500)
+  .nullable()
+  .default(null)
+  .transform((v) => (v ? v : null))
+  .refine((v) => v === null || STORE_LINK.test(v), "Usa una ruta de tu tienda (/p/…, ?categoria=…) o una dirección https://");
+const scheduleRange = {
+  startsOn: isoDate.nullable().default(null),
+  endsOn: isoDate.nullable().default(null),
+};
+const rangeOk = (v: { startsOn: string | null; endsOn: string | null }) => !v.startsOn || !v.endsOn || v.startsOn <= v.endsOn;
+const imageKey = z.string().min(1).max(200).regex(/^t\/[A-Za-z0-9_-]+\/[A-Za-z0-9._/-]+$/, "Imagen no válida");
+const pixelId = (re: RegExp, message: string) =>
+  z.string().trim().max(40).nullable().default(null).transform((v) => (v ? v.toUpperCase() : null)).refine((v) => v === null || re.test(v), message);
+
+export const storeAppearanceSchema = z.object({
+  theme: z.object({
+    preset: z.enum(THEME_PRESET_IDS as [ThemePreset, ...ThemePreset[]]),
+    primary: hexColor,
+    background: hexColor,
+    text: hexColor,
+    font: z.enum(THEME_FONT_IDS as [ThemeFont, ...ThemeFont[]]).nullable().default(null),
+    radius: z.enum(THEME_RADIUS_IDS as [ThemeRadius, ...ThemeRadius[]]).nullable().default(null),
+  }),
+  announcement: z
+    .object({
+      enabled: z.boolean(),
+      messages: z.array(z.object({ text: z.string().trim().max(140, "Máximo 140 caracteres"), link: storeLink })).min(1).max(3, "Hasta 3 mensajes"),
+      tone: z.enum(["primary", "ink", "accent", "warning"]),
+      dismissible: z.boolean(),
+      ...scheduleRange,
+    })
+    .refine(rangeOk, { message: "La fecha final es antes de la inicial", path: ["endsOn"] })
+    .refine((a) => !a.enabled || a.messages.some((m) => m.text), { message: "Escribe el mensaje", path: ["messages"] }),
+  banners: z
+    .array(
+      z
+        .object({
+          id: z.string().min(1).max(40),
+          enabled: z.boolean(),
+          image: imageKey,
+          imageMobile: imageKey.nullable().default(null),
+          heading: optText(80),
+          text: optText(160),
+          cta: optText(30),
+          link: storeLink,
+          textColor: z.enum(["light", "dark"]),
+          align: z.enum(["left", "center"]),
+          ...scheduleRange,
+        })
+        .refine(rangeOk, { message: "La fecha final es antes de la inicial", path: ["endsOn"] })
+        .refine((b) => !b.cta || b.link, { message: "El botón necesita un enlace", path: ["link"] }),
+    )
+    .max(MAX_BANNERS, `Hasta ${MAX_BANNERS} banners`),
+  pixels: z.object({
+    metaPixelId: pixelId(PIXEL_PATTERNS.metaPixelId, "El ID del píxel de Meta son solo números (10 a 20)"),
+    googleTagId: pixelId(PIXEL_PATTERNS.googleTagId, "Usa el ID de Google: G-…, AW-… o GTM-…"),
+    tiktokPixelId: pixelId(PIXEL_PATTERNS.tiktokPixelId, "El ID del píxel de TikTok son 15 a 25 letras y números"),
+  }),
+  code: z.object({
+    css: z.string().max(CODE_LIMITS.css, `Máximo ${CODE_LIMITS.css.toLocaleString("es-MX")} caracteres`).default(""),
+    headHtml: z.string().max(CODE_LIMITS.headHtml, `Máximo ${CODE_LIMITS.headHtml.toLocaleString("es-MX")} caracteres`).default(""),
+    bodyHtml: z.string().max(CODE_LIMITS.bodyHtml, `Máximo ${CODE_LIMITS.bodyHtml.toLocaleString("es-MX")} caracteres`).default(""),
+    js: z.string().max(CODE_LIMITS.js, `Máximo ${CODE_LIMITS.js.toLocaleString("es-MX")} caracteres`).default(""),
+  }),
+});
+export type StoreAppearanceInput = z.infer<typeof storeAppearanceSchema>;

@@ -1,4 +1,5 @@
 import type { ApiError } from "@nexo/shared";
+import { pixelEvent } from "./pixels";
 
 export class RequestError extends Error {
   constructor(public status: number, public code: string, message: string, public fields: Record<string, string> = {}) {
@@ -35,7 +36,8 @@ let utm: { source: string | null; medium: string | null; campaign: string | null
 let landingReferrer: string | null = typeof document !== "undefined" ? document.referrer || null : null;
 
 /** Fire-and-forget event for the store's traffic report. Never blocks or fails the page. */
-export function track(slug: string, type: TrackType, extra: { productId?: string } = {}) {
+export function track(slug: string, type: TrackType, extra: { productId?: string; name?: string; valueCents?: number } = {}) {
+  pixelEvent(type, { id: extra.productId, name: extra.name, valueCents: extra.valueCents });
   try {
     if (utm === null) {
       const p = new URLSearchParams(window.location.search);

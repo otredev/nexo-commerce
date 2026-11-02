@@ -90,7 +90,7 @@ export function StoreProvider({ slug, base, children }: { slug: string; base: st
     money,
     cart,
     count: cart.reduce((a, l) => a + (unitInfo(l.unit).decimals ? 1 : l.quantity), 0),
-    add: (line) => { track(slug, "add_to_cart", { productId: line.productId }); setCart((all) => {
+    add: (line) => { track(slug, "add_to_cart", { productId: line.productId, name: line.name, valueCents: line.displayPriceCents * line.quantity }); setCart((all) => {
       const found = all.find((l) => l.variantId === line.variantId);
       if (!found) return [...all, { ...line, quantity: clampQty(line, line.quantity) }];
       return all.map((l) => (l.variantId === line.variantId ? { ...line, quantity: clampQty(line, l.quantity + line.quantity) } : l));

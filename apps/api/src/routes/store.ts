@@ -21,6 +21,7 @@ import {
   fromMilli,
   LOW_STOCK_BADGE,
   normalizeSearch,
+  publicAppearance,
   quantityFitsUnit,
   shippingFor,
   storeOrderSchema,
@@ -38,6 +39,7 @@ import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatemen
 import { cancelStatements, loadOrderRows, notifyOrder, sendOrderEmail, toPublicOrder } from "../lib/orders";
 import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
+import { loadAppearance } from "../lib/appearance";
 import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
 import { stripe, stripeConfigured } from "../lib/stripe";
 import { recordStoreEvent, STORE_EVENT_TYPES } from "../lib/events";
@@ -149,7 +151,7 @@ export const storeRoutes = new Hono<AppEnv>()
       .bind(t.id)
       .all<{ id: string; name: string; count: number }>();
     const location = await d1.prepare("SELECT name, address FROM locations WHERE id = ?1").bind(store.locationId).first<{ name: string; address: string | null }>();
-    const promotions = await livePromotions(db, t.id, today, "online");
+    const [promotions, appearance] = await Promise.all([livePromotions(db, t.id, today, "online"), loadAppearance(db, t.id)]);
     const coupon = await d1
       .prepare("SELECT 1 AS ok FROM coupons WHERE tenant_id = ?1 AND active = 1 AND channel IN ('all', 'online') AND (ends_on IS NULL OR ends_on >= ?2) LIMIT 1")
       .bind(t.id, today)
@@ -187,6 +189,7 @@ export const storeRoutes = new Hono<AppEnv>()
       seoDescription: store.seoDescription,
       indexable: store.indexable,
       domain: await activeDomain(c, t.id),
+      appearance: publicAppearance(appearance, today),
     };
     return c.json(body, 200, short);
   })
@@ -500,6 +503,16 @@ export const storeRoutes = new Hono<AppEnv>()
       await recordStoreEvent(c, t.id, { type: e.type, path: e.path, referrer: e.referrer, productId: e.productId, utm: e.utm ?? undefined });
     }
     return c.body(null, 204);
+  })
+
+  /**
+   * Custom CSS/HTML/JS of the store, for the Pages middleware that injects it into the HTML.
+   * Public on purpose: it is exactly what every visitor's browser receives anyway.
+   */
+  .get("/:slug/custom-code", async (c) => {
+    const { tenant: t, db } = await resolveStore(c);
+    const a = await loadAppearance(db, t.id);
+    return c.json(a.code, 200, short);
   })
 
   /* ---------- Legal pages and sitemap data ---------- */

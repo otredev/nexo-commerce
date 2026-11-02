@@ -717,6 +717,24 @@ export const storeSettings = sqliteTable("store_settings", {
 });
 
 /**
+ * Phase 9: how the store looks. One row per business; the editor saves it whole.
+ * Custom HTML and JavaScript are only injected on the store's own domain (its own browser origin).
+ * JSON shapes: StoreTheme, StoreAnnouncement, StoreBanner[] and StorePixels in @nexo/shared (appearance.ts).
+ */
+export const storeAppearance = sqliteTable("store_appearance", {
+  tenantId: text("tenant_id").primaryKey(),
+  theme: text("theme", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  announcement: text("announcement", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  banners: text("banners", { mode: "json" }).$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'`),
+  pixels: text("pixels", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  customCss: text("custom_css").notNull().default(""),
+  headHtml: text("head_html").notNull().default(""),
+  bodyHtml: text("body_html").notNull().default(""),
+  customJs: text("custom_js").notNull().default(""),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
+/**
  * The store's legal pages (privacy notice, terms, returns). Each save that changes the text is a new
  * version kept in store_policy_versions, so an order can prove exactly which text the customer accepted.
  */

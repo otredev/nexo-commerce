@@ -630,6 +630,8 @@ export interface StoreInfo {
   indexable: boolean;
   /** Active own domain, when the store has one (canonical URLs point there). */
   domain: string | null;
+  /** Theme, announcement bar, banners and pixels (Phase 9). */
+  appearance: import("./appearance").PublicAppearance;
 }
 
 export interface StorePolicy {

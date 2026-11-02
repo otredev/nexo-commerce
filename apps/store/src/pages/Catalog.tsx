@@ -6,6 +6,7 @@ import { Button } from "@nexo/ui";
 import { api, RequestError } from "../lib/api";
 import { useStore } from "../lib/store";
 import { ProductCard } from "../components/ProductCard";
+import { BannerCarousel } from "../components/Appearance";
 
 type Sort = "featured" | "new" | "price_asc" | "price_desc" | "name";
 
@@ -43,10 +44,11 @@ export function CatalogPage() {
 
   return (
     <div className="st-wrap">
+      {!q && !category && store.appearance.banners.length > 0 && <BannerCarousel />}
       {!q && (
-        <section className="st-hero">
-          <h1 className="st-hero__title">{store.name}</h1>
-          {store.tagline && <p className="st-hero__tagline">{store.tagline}</p>}
+        <section className="st-hero" data-compact={store.appearance.banners.length > 0 || undefined}>
+          <h1 className={store.appearance.banners.length > 0 ? "nx-sr-only" : "st-hero__title"}>{store.name}</h1>
+          {store.tagline && store.appearance.banners.length === 0 && <p className="st-hero__tagline">{store.tagline}</p>}
           <div className="st-hero__facts">
             {store.pickupEnabled && <span><Store size={15} strokeWidth={1.6} aria-hidden="true" />Recoge en tienda sin costo</span>}
             {store.deliveryEnabled && (
