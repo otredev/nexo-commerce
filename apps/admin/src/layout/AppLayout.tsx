@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LogOut, Menu, Search } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Search } from "lucide-react";
 import { NAV } from "./nav";
 import { CommandPalette, shortcutLabel } from "./CommandPalette";
 import { ROLE_LABELS } from "@nexo/shared";
@@ -8,6 +8,8 @@ import { Avatar, Button } from "@nexo/ui";
 import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
+
+const NAV_COLLAPSED_KEY = "nx.nav.collapsed";
 
 const TITLES: Array<[RegExp, string]> = [
   [/^\/$/, "Inicio"],
@@ -50,6 +52,16 @@ const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? 
 export function AppLayout() {
   const { me, logout, can } = useAuth();
   const [open, setOpen] = useState(false);
+  // Sidebar sections the person folded, remembered in this browser.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(NAV_COLLAPSED_KEY) ?? "{}") as Record<string, boolean>; } catch { return {}; }
+  });
+  const toggleGroup = (group: string) =>
+    setCollapsed((all) => {
+      const next = { ...all, [group]: !all[group] };
+      try { localStorage.setItem(NAV_COLLAPSED_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
   const [searchOpen, setSearchOpen] = useState(false);
   // Ctrl+K / ⌘K opens the search from anywhere in the dashboard.
   useEffect(() => {
@@ -81,6 +93,11 @@ export function AppLayout() {
     return () => { alive = false; clearInterval(id); };
   }, [canOrders, location.pathname]);
   if (!me) return null;
+  const isActive = (to: string, end?: boolean) => {
+    const [path, query] = to.split("?");
+    if (query) return location.pathname === path && location.search.includes(query);
+    return end || path === "/" ? location.pathname === path : location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
 
   return (
     <div className="nx-shell">
@@ -91,11 +108,24 @@ export function AppLayout() {
           Nexo
         </a>
         {NAV.map((section, i) => {
-          const items = section.items.filter((item) => (!item.permission || can(item.permission)) && (!item.platform || me.platformAdmin));
-          if (!items.length) return null;
+          const all = section.items.filter((item) => (!item.permission || can(item.permission)) && (!item.platform || me.platformAdmin));
+          if (!all.length) return null;
+          const group = section.group;
+          const isCollapsed = Boolean(group && collapsed[group]);
+          // A collapsed group still shows the page you are on, so you never lose where you are.
+          const items = isCollapsed ? all.filter((item) => isActive(item.to, item.end)) : all;
+          const hiddenBadge = isCollapsed && newOrders > 0 && all.some((item) => item.badge === "orders" && !items.includes(item));
+          const listId = `nx-nav-${i}`;
           return (
-            <nav className="nx-nav" key={i}>
-              {section.group && <div className="nx-nav__group">{section.group}</div>}
+            <nav className="nx-nav" key={i} aria-label={group ?? "Principal"}>
+              {group && (
+                <button type="button" className="nx-nav__group" aria-expanded={!isCollapsed} aria-controls={listId} onClick={() => toggleGroup(group)}>
+                  <span>{group}</span>
+                  {hiddenBadge && <span className="nx-nav__badge" aria-label={`${newOrders} pedidos nuevos`}>{newOrders}</span>}
+                  <ChevronDown className="nx-nav__chevron" aria-hidden="true" />
+                </button>
+              )}
+              <div id={listId} className="nx-nav__list">
               {items.map(({ to, label, icon: Icon, end, badge }) => (
                 <NavLink key={to} to={to} end={end} className="nx-nav__item">
                   <Icon className="nx-icon" aria-hidden="true" />
@@ -103,6 +133,7 @@ export function AppLayout() {
                   {badge === "orders" && newOrders > 0 && <span className="nx-nav__badge" aria-label={`${newOrders} nuevos`}>{newOrders}</span>}
                 </NavLink>
               ))}
+              </div>
             </nav>
           );
         })}
