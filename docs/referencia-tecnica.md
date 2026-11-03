@@ -271,6 +271,8 @@ Roles: **Propietario** y **Administrador** (todo), **Cajero** (vende, opera su c
 - **Buscador (`Ctrl + K` o `⌘K`, o la lupa de la barra superior)**: encuentra páginas y atajos por palabras clave y sinónimos sin importar acentos («iva», «corte», «kardex», «nuevo producto», «cambiar contraseña»), y busca en vivo productos, clientes, pedidos (por folio o nombre) y proveedores. Solo muestra lo que el rol puede abrir. `↑ ↓` para moverse, `Enter` para abrir, `Esc` para cerrar; recuerda los últimos cinco resultados abiertos. Las palabras clave viven en `apps/admin/src/layout/nav.ts`, junto al menú.
 - **Menú lateral**: tiene su propio scroll fijo a la altura de la ventana y se desplaza solo hasta la página actual. Cada sección se pliega con su título (se recuerda por navegador en `localStorage` `nx.nav.collapsed`); una sección plegada sigue mostrando la página actual y pasa el contador de pedidos nuevos a su título.
 
+- **Ayuda** (`/ayuda`): el manual de usuario (`docs/manual-de-usuario.md` y `docs/img/`) empaquetado en el panel al compilar (Vite `?raw` + `import.meta.glob`), renderizado con `marked`, con índice, buscador sin acentos y enlaces por página: el ícono **?** de la barra superior lleva a la sección del manual de la pantalla actual (`apps/admin/src/lib/helpLinks.ts`). Editar el manual actualiza la ayuda en el siguiente despliegue.
+
 ## Sistema de diseño
 
 Elegante, minimalista y limpio: neutros cálidos con un único acento verde, Inter para la interfaz, Instrument Serif para los títulos de página y JetBrains Mono para SKU y folios. Fuentes alojadas en el propio proyecto, sin peticiones a terceros.

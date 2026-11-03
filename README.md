@@ -38,7 +38,7 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 | **Abastecimiento** | Proveedores, órdenes de compra con recepciones parciales, sugerencias de reorden y cuentas por pagar. |
 | **Tienda en línea** | Catálogo público con existencias reales, carrito, recoger en tienda o envío, pago al recibir, transferencia o tarjeta (Stripe), seguimiento del pedido, políticas con aceptación, SEO, sitemaps y `llms.txt`, dominio propio, temas, banners, barra de avisos y píxeles de anuncios. |
 | **Clientes y reportes** | Clientes con historial en caja y en línea, ventas y utilidad por periodo, inventario valorizado y estadísticas de la tienda con fuentes, campañas y embudo. |
-| **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K` y respaldos diarios. |
+| **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
 | **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect), suspensión de cuentas y traslado de un negocio a otra base de datos. |
 | **Integraciones** | API REST con llaves por negocio, webhooks firmados con reintentos y servidor **MCP** para que Claude u otros asistentes consulten y operen el negocio. |
 
@@ -139,6 +139,6 @@ Pendiente antes de producción: activar el correo (Resend), Stripe y los dominio
 
 | Documento | Para quién |
 |---|---|
-| [Manual de usuario](docs/manual-de-usuario.md) | Dueños, administradores y cajeros: cómo usar el panel, paso a paso |
+| [Manual de usuario](docs/manual-de-usuario.md) | Dueños, administradores y cajeros: cómo usar el panel, paso a paso. También está dentro del panel, en **Ayuda**. |
 | [Referencia técnica](docs/referencia-tecnica.md) | Desarrolladores: arquitectura, reglas de datos, módulos, seguridad y API |
 | [Guía de despliegue](docs/despliegue.md) | Quien publica y opera la plataforma en Cloudflare |

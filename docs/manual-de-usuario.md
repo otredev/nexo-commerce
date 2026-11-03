@@ -44,6 +44,7 @@ Guía para dueños, administradores y cajeros. Explica cómo hacer cada tarea en
 - **Inicio** muestra lo que vendiste hoy, la comparación con ayer, la gráfica de la semana, lo más vendido, las cajas abiertas y los pedidos en línea por atender.
 - **Menú lateral**: agrupa las secciones (Ventas, Tienda en línea, Catálogo, Abastecimiento, Negocio). Haz clic en el título de una sección para plegarla o desplegarla. Si pliegas la sección donde estás, la página actual sigue visible. Si pliegas *Tienda en línea* y hay pedidos nuevos, el contador aparece junto al título.
 - **Barra superior**: el nombre de la página, el buscador y tu usuario.
+- **Ayuda** (abajo en el menú) abre este manual dentro del panel, con buscador. El ícono **?** de la barra superior te lleva directo a la parte del manual de la página donde estás.
 
 ### El buscador (Ctrl + K)
 

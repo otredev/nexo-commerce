@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, LogOut, Menu, Search } from "lucide-react";
+import { ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, Search } from "lucide-react";
+import { helpLinkFor } from "../lib/helpLinks";
 import { NAV } from "./nav";
 import { CommandPalette, shortcutLabel } from "./CommandPalette";
 import { ROLE_LABELS } from "@nexo/shared";
@@ -42,6 +43,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/tienda$/, "Tienda en línea"],
   [/^\/tienda\/apariencia$/, "Apariencia de la tienda"],
   [/^\/tienda\/estadisticas$/, "Estadísticas de la tienda"],
+  [/^\/ayuda$/, "Ayuda"],
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],
@@ -138,6 +140,10 @@ export function AppLayout() {
           );
         })}
         <div className="nx-sidebar__footer nx-nav">
+          <NavLink to="/ayuda" className="nx-nav__item">
+            <LifeBuoy className="nx-icon" aria-hidden="true" />
+            Ayuda
+          </NavLink>
           <button
             type="button"
             className="nx-nav__item"
@@ -170,6 +176,9 @@ export function AppLayout() {
               <span className="nx-search-trigger__text">Buscar…</span>
               <kbd className="nx-kbd nx-search-trigger__kbd">{shortcutLabel()}</kbd>
             </button>
+            <NavLink to={helpLinkFor(location.pathname, location.search)} className="nx-help-trigger" aria-label="Ayuda de esta página" title="Ayuda de esta página">
+              <CircleHelp className="nx-icon" aria-hidden="true" />
+            </NavLink>
             <div className="nx-topbar__who">
               <div style={{ fontSize: 13, fontWeight: 500 }}>{me.user.name}</div>
               <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{ROLE_LABELS[me.role]}</div>
