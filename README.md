@@ -40,7 +40,7 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 | **Clientes y reportes** | Clientes con historial en caja y en línea, ventas y utilidad por periodo, inventario valorizado y estadísticas de la tienda con fuentes, campañas y embudo. |
 | **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
 | **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect), suspensión de cuentas y traslado de un negocio a otra base de datos. |
-| **Integraciones** | API REST con llaves por negocio, webhooks firmados con reintentos y servidor **MCP** para que Claude u otros asistentes consulten y operen el negocio. |
+| **Integraciones** | API REST con llaves por negocio, webhooks firmados con reintentos y servidor **MCP** para que Claude u otros asistentes consulten y operen el negocio, incluida la apariencia y el código de la tienda. |
 
 ## Cómo está hecho
 
@@ -121,8 +121,8 @@ docs/         Manual de usuario, referencia técnica y guía de despliegue.
 
 ## Calidad
 
-- **134 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
-- **12 suites de punta a punta** con **669 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma y el servidor MCP probado con el SDK oficial.
+- **135 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
+- **12 suites de punta a punta** con **698 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma y el servidor MCP probado con el SDK oficial.
 - GitHub Actions revisa tipos, ejecuta las pruebas y compila en cada pull request, y despliega a staging en cada push a `main`.
 
 ## Despliegue

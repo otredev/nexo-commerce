@@ -157,7 +157,7 @@ function McpCard({ s }: { s: IntegrationsSettings }) {
   const code = `claude mcp add --transport http nexo ${s.mcpUrl} \\\n  --header "Authorization: Bearer TU_LLAVE"`;
   const desktop = JSON.stringify({ mcpServers: { nexo: { command: "npx", args: ["-y", "mcp-remote", s.mcpUrl, "--header", "Authorization:Bearer ${NEXO_KEY}"], env: { NEXO_KEY: "TU_LLAVE" } } } }, null, 2);
   return (
-    <Card title="Asistentes de IA (MCP)" description="Conecta Claude u otro asistente compatible con MCP para preguntarle por tus ventas, existencias o pedidos, y pedirle que actualice pedidos o inventario.">
+    <Card title="Asistentes de IA (MCP)" description="Conecta Claude u otro asistente compatible con MCP para preguntarle por tus ventas, existencias o pedidos, y pedirle que actualice pedidos, inventario o la apariencia de tu tienda.">
       <div className="nx-stack">
         <div className="nx-field">
           <span className="nx-label">Dirección del servidor MCP</span>
@@ -172,10 +172,10 @@ function McpCard({ s }: { s: IntegrationsSettings }) {
           </>
         )}
         {client === "other" && <p style={{ margin: 0 }}>Transporte <strong>HTTP (Streamable)</strong> en la dirección de arriba, con la cabecera <code>Authorization: Bearer TU_LLAVE</code>.</p>}
-        <Alert tone="info">Cambia <code>TU_LLAVE</code> por una llave de arriba. Para empezar, usa una de <strong>Solo lectura</strong>: el asistente podrá consultar pero no cambiar nada. Con una de lectura y escritura también podrá aceptar y entregar pedidos o ajustar existencias (te pedirá confirmación).</Alert>
+        <Alert tone="info">Cambia <code>TU_LLAVE</code> por una llave de arriba. Para empezar, usa una de <strong>Solo lectura</strong>: el asistente podrá consultar pero no cambiar nada. Con una de lectura y escritura también podrá aceptar y entregar pedidos, ajustar existencias o cambiar la apariencia y el código de la tienda (te pedirá confirmación).</Alert>
         <details className="nx-details">
           <summary>Qué puede hacer el asistente</summary>
-          <p className="nx-muted" style={{ margin: "8px 0 0" }}>Resumen de hoy, buscar productos y ver su detalle, existencias (y qué resurtir), ubicaciones, reporte de ventas de cualquier periodo, estadísticas de la tienda en línea, pedidos y su detalle, buscar clientes; con permiso de escritura: avanzar pedidos y ajustar existencias.</p>
+          <p className="nx-muted" style={{ margin: "8px 0 0" }}>Resumen de hoy, buscar productos y ver su detalle, existencias (y qué resurtir), ubicaciones, reporte de ventas de cualquier periodo, estadísticas de la tienda en línea, pedidos y su detalle, buscar clientes, la apariencia de la tienda y su código personalizado; con permiso de escritura: avanzar pedidos, ajustar existencias, cambiar el tema, la barra de avisos y los banners, y editar el CSS, HTML y JavaScript de la tienda.</p>
         </details>
       </div>
     </Card>

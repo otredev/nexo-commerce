@@ -23,4 +23,15 @@ describe("MCP tools", () => {
     expect(names).not.toContain("ajustar_existencias");
     expect(names).toContain("avanzar_pedido");
   });
+  it("appearance: read tools for read-only keys, changes only with a full key, code marked destructive", () => {
+    const ro = toolsFor(key("admin", true)).map((t) => t.name);
+    expect(ro).toEqual(expect.arrayContaining(["ver_apariencia", "ver_codigo_tienda"]));
+    expect(ro).not.toContain("editar_codigo_tienda");
+    const full = toolsFor(key("admin", false)).map((t) => t.name);
+    expect(full).toEqual(expect.arrayContaining(["cambiar_tema", "barra_de_avisos", "editar_banner", "ordenar_banners", "editar_codigo_tienda"]));
+    expect(MCP_TOOLS.find((t) => t.name === "editar_codigo_tienda")?.destructive).toBe(true);
+    const cashier = toolsFor(key("cashier", false)).map((t) => t.name);
+    expect(cashier).not.toContain("editar_codigo_tienda");
+    expect(cashier).not.toContain("cambiar_tema");
+  });
 });

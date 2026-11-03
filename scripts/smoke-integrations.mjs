@@ -238,6 +238,89 @@ check("Origin ajeno → 403 (protección DNS rebinding)", r.status === 403, r.da
 r = await fetch(`${BASE}/mcp`, { headers: { authorization: `Bearer ${readKey}` } });
 check("GET /mcp → 405", r.status === 405, r.status);
 
+/* ---------------- MCP: store appearance and custom code ---------------- */
+console.log("MCP: apariencia de la tienda");
+const tool = async (key, name, args = {}) => {
+  const res = await rpc(key, { jsonrpc: "2.0", id: 100, method: "tools/call", params: { name, arguments: args } });
+  const result = res.data.result;
+  let json = null;
+  try { json = JSON.parse(result?.content?.[0]?.text ?? ""); } catch { /* error text */ }
+  return { error: res.data.error, isError: result?.isError, text: result?.content?.[0]?.text ?? "", json };
+};
+const PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), (ch) => ch.charCodeAt(0));
+const fd = new FormData();
+fd.append("file", new Blob([PNG], { type: "image/png" }), "banner.png");
+const img = (await (await fetch(`${BASE}/api/uploads`, { method: "POST", headers: { authorization: `Bearer ${fullKey}` }, body: fd })).json()).key;
+const bannerOf = (id, heading) => ({ id, enabled: true, image: img, imageMobile: null, heading, text: null, cta: null, link: null, textColor: "light", align: "left", startsOn: null, endsOn: null });
+const base = (await owner("GET", "/api/store-settings/appearance")).data;
+r = await owner("PUT", "/api/store-settings/appearance", { theme: base.theme, announcement: base.announcement, pixels: base.pixels, code: base.code, banners: [bannerOf("b1", "Otoño"), bannerOf("b2", "Herramientas")] });
+check("preparación: dos banners", r.status === 200 && r.data.banners.length === 2, r.data);
+
+r = await rpc(readKey, { jsonrpc: "2.0", id: 20, method: "tools/list" });
+const roNames = r.data.result.tools.map((t) => t.name);
+check("llave de lectura: ve la apariencia y el código, no los cambia", roNames.includes("ver_apariencia") && roNames.includes("ver_codigo_tienda") && !roNames.includes("cambiar_tema") && !roNames.includes("editar_codigo_tienda"), roNames);
+r = await rpc(fullKey, { jsonrpc: "2.0", id: 21, method: "tools/list" });
+const codeTool = r.data.result.tools.find((t) => t.name === "editar_codigo_tienda");
+check("editar_codigo_tienda marcada como destructiva", codeTool?.annotations.destructiveHint === true && r.data.result.tools.find((t) => t.name === "cambiar_tema")?.annotations.destructiveHint === false, codeTool?.annotations);
+let t = await tool(readKey, "ver_apariencia");
+check("ver_apariencia: tema, avisos, banners y opciones", t.isError === false && t.json.tema.estilo === "nexo" && t.json.banners.length === 2 && t.json.estilos_disponibles.length === 6 && t.json.letras_disponibles.some((l) => l.id === "clasica"), t.json ?? t.text);
+t = await tool(readKey, "cambiar_tema", { estilo: "boutique" });
+check("cambiar_tema con llave de lectura → error JSON-RPC", t.error?.code === -32602, t);
+
+t = await tool(fullKey, "cambiar_tema", { estilo: "mercado", letra: "moderna" });
+check("cambiar_tema: estilo y letra", t.isError === false && t.json.estilo === "mercado" && t.json.letra === "moderna" && t.json.colores.principal === "#b83d0b", t.json ?? t.text);
+t = await tool(fullKey, "cambiar_tema", { color_texto: "#fff8ec" });
+check("un color ilegible guarda pero avisa", t.isError === false && t.json.avisos.length > 0, t.json ?? t.text);
+t = await tool(fullKey, "cambiar_tema", { color_texto: null, color_principal: "rojo" });
+check("color inválido → isError, no guarda", t.isError === true, t.text);
+r = await owner("GET", "/api/store-settings/appearance");
+check("el panel ve el tema guardado por el asistente", r.data.theme.preset === "mercado" && r.data.theme.font === "moderna" && r.data.theme.text === "#fff8ec", r.data.theme);
+t = await tool(fullKey, "cambiar_tema", { estilo: "mercado" });
+check("volver a elegir el estilo quita los ajustes", t.isError === false && t.json.letra === "geometrica" && t.json.avisos.length === 0, t.json ?? t.text);
+
+t = await tool(fullKey, "barra_de_avisos", { activa: true, mensajes: [{ texto: "Envío gratis desde $999", enlace: "?orden=new" }, { texto: "Abrimos el domingo" }], color: "ink", hasta: "2099-12-31" });
+check("barra_de_avisos: activa con dos mensajes", t.isError === false && t.json.enabled && t.json.messages.length === 2 && t.json.tone === "ink" && t.json.endsOn === "2099-12-31", t.json ?? t.text);
+r = await fetch(`${BASE}/api/store/${slug}`).then((x) => x.json()).catch(() => null);
+check("y la tienda pública la muestra", r?.appearance?.announcement?.messages?.[0]?.text === "Envío gratis desde $999", r?.appearance);
+t = await tool(fullKey, "barra_de_avisos", { mensajes: [{ texto: "x".repeat(141) }] });
+check("mensaje de más de 140 caracteres → isError", t.isError === true, t.text);
+t = await tool(fullKey, "barra_de_avisos", { activa: false });
+check("desactivar conserva los mensajes", t.isError === false && !t.json.enabled && t.json.messages.length === 2, t.json ?? t.text);
+
+t = await tool(fullKey, "editar_banner", { banner: 2, titulo: "Herramientas pro", boton: "Ver", enlace: `/p/${martillo.id}`, color_texto: "dark", alineacion: "center" });
+check("editar_banner por posición", t.isError === false && t.json[1].titulo === "Herramientas pro" && t.json[1].boton === "Ver" && t.json[1].alineacion === "center" && t.json[1].imagen === img, t.json ?? t.text);
+t = await tool(fullKey, "editar_banner", { banner: "b1", visible: false });
+check("ocultar un banner por id", t.isError === false && t.json[0].visible === false, t.json ?? t.text);
+t = await tool(fullKey, "editar_banner", { banner: "b1", boton: "Comprar", enlace: null });
+check("botón sin enlace → isError de la API", t.isError === true && /enlace|link|422/i.test(t.text), t.text);
+t = await tool(fullKey, "editar_banner", { banner: 9 });
+check("banner que no existe → isError claro", t.isError === true && t.text.includes("2 banners"), t.text);
+t = await tool(fullKey, "ordenar_banners", { orden: ["b2", "b1"] });
+check("ordenar_banners", t.isError === false && t.json.map((b) => b.id).join() === "b2,b1", t.json ?? t.text);
+t = await tool(fullKey, "ordenar_banners", { orden: ["b2", "nada"] });
+check("id desconocido al ordenar → isError", t.isError === true && t.text.includes("nada"), t.text);
+t = await tool(fullKey, "ordenar_banners", { orden: ["b2"] });
+check("quitar un banner dejándolo fuera", t.isError === false && t.json.length === 1 && t.json[0].id === "b2", t.json ?? t.text);
+
+t = await tool(readKey, "ver_codigo_tienda");
+check("ver_codigo_tienda: vacío, con límites y sin dominio propio", t.isError === false && t.json.css === "" && t.json.limites.javascript === 50000 && t.json.html_y_js_permitidos === false && /dominio propio/.test(t.json.donde_se_ejecutan_html_y_js), t.json ?? t.text);
+t = await tool(fullKey, "editar_codigo_tienda", {});
+check("editar_codigo_tienda sin campos → isError", t.isError === true, t.text);
+t = await tool(fullKey, "editar_codigo_tienda", { css: ".st-card { border-width: 2px; }" });
+check("el CSS se puede editar en el plan Gratis", t.isError === false && t.json.css.includes("border-width"), t.json ?? t.text);
+t = await tool(fullKey, "editar_codigo_tienda", { javascript: "console.log('hola')" });
+check("JavaScript en plan Gratis → isError (requiere Pro)", t.isError === true && /402|plan/i.test(t.text), t.text);
+await owner("POST", "/api/dev/plan", { plan: "pro" });
+t = await tool(fullKey, "editar_codigo_tienda", { html_head: '<meta name="x-smoke" content="1">', html_body: "<div id=chat></div>", javascript: "window.smoke = 1;" });
+check("plan Pro: HTML y JavaScript", t.isError === false && t.json.html_y_js_permitidos === true && t.json.javascript === "window.smoke = 1;" && t.json.css.includes("border-width"), t.json ?? t.text);
+t = await tool(fullKey, "editar_codigo_tienda", { javascript: "" });
+check("\"\" borra solo ese campo", t.isError === false && t.json.javascript === "" && t.json.html_body === "<div id=chat></div>", t.json ?? t.text);
+t = await tool(fullKey, "editar_codigo_tienda", { css: "a".repeat(50001) });
+check("CSS más largo que el límite → rechazado", Boolean(t.error) || t.isError === true, t.error ?? t.text.slice(0, 200));
+r = await owner("GET", "/api/audit?entity=store_appearance");
+const appearanceAudit = ((r.data.items ?? r.data) ?? []).filter?.((a) => a.action === "store.appearance" && a.userName === "API · Inventario externo") ?? [];
+check("cada cambio del asistente queda en la actividad con la llave", appearanceAudit.length >= 8, (r.data.items ?? r.data)?.slice?.(0, 2));
+
 /* ---------------- Revoke ---------------- */
 console.log("Revocar");
 r = await owner("DELETE", `/api/integrations/api-keys/${fullId}`);

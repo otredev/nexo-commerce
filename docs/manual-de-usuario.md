@@ -362,7 +362,7 @@ En **Ajustes de la tienda → Formas de pago → Conectar con Stripe**, el propi
 - **Píxeles**: Meta (Facebook e Instagram), Google y TikTok para medir tus anuncios. La tienda pide permiso de cookies al cliente antes de activarlos.
 - **Código**: CSS propio; HTML y JavaScript con plan Pro en tu dominio propio.
 
-Al terminar, presiona **Guardar cambios**.
+Al terminar, presiona **Guardar cambios**. También puedes pedirle estos cambios a un asistente de IA (ver [Asistentes de IA](#asistentes-de-ia-mcp)).
 
 ![Apariencia de la tienda](img/apariencia.png)
 
@@ -463,6 +463,18 @@ Ninguna llave puede ver usuarios, tu plan ni las integraciones. Lo que haga una 
 ### Asistentes de IA (MCP)
 
 Conecta Claude u otro asistente compatible con MCP para preguntarle, por ejemplo, «¿cuánto vendí esta semana?», «¿qué tengo que resurtir?» o «¿qué pedidos están pendientes?». Con una llave de escritura también puede aceptar o entregar pedidos y ajustar existencias, y te pedirá confirmación antes de hacerlo. El panel te da el comando para Claude Code y la configuración para Claude Desktop, listos para copiar.
+
+**Apariencia de la tienda.** El asistente también puede ver y cambiar lo mismo que la pantalla **Tienda en línea → Apariencia**:
+
+| Puedes pedirle | Ejemplo |
+|---|---|
+| Ver la apariencia actual | «¿Qué tema y banners tiene mi tienda?» |
+| Cambiar el tema | «Pon el estilo Boutique con la letra Moderna y esquinas redondas.» Si un color se lee mal, te avisa. |
+| La barra de avisos | «Activa un aviso de "Envío gratis desde $999" hasta el 31 de diciembre.» |
+| Los banners que ya subiste | «Oculta el segundo banner», «cambia el título del banner de otoño», «pon el de herramientas primero». Las imágenes nuevas se suben desde el panel. |
+| El código personalizado | «Muéstrame el CSS de la tienda», «haz los botones más redondos con CSS», «agrega este script de chat antes de `</body>`». |
+
+El CSS se puede editar en cualquier plan. El HTML y el JavaScript necesitan el plan **Pro** y solo corren en tu dominio propio, igual que en el panel. Como un error en el código puede romper la tienda, el asistente te muestra el código y te pide confirmación antes de guardarlo. Cada cambio queda en **Actividad** con el nombre de la llave.
 
 > Para empezar, usa una llave de **Solo lectura**.
 
