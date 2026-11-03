@@ -13,3 +13,4 @@ export * from "./seo";
 export * from "./notifications";
 export * from "./appearance";
 export * from "./analytics";
+export * from "./integrations";

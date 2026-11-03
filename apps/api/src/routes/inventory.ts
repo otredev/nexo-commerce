@@ -21,6 +21,7 @@ import {
   type UnitCode,
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
+import { emitFrom } from "../lib/outbound";
 import { AppError, notFound } from "../lib/errors";
 import { isStockCheckError, movementStatements } from "../lib/inventory";
 import { lookupVariants } from "../lib/lookup";
@@ -180,7 +181,9 @@ export const inventoryRoutes = new Hono<AppEnv>()
       });
     }
     const level = await db.select({ q: stockLevels.quantity }).from(stockLevels).where(and(eq(stockLevels.variantId, m.variantId), eq(stockLevels.locationId, m.locationId))).get();
-    return c.json({ variantId: m.variantId, locationId: m.locationId, quantity: fromMilli(level?.q ?? 0) }, 201);
+    const result = { variantId: m.variantId, locationId: m.locationId, quantity: fromMilli(level?.q ?? 0) };
+    emitFrom(c, "stock.changed", { ...result, sku: target.sku, productName: target.productName, movement: { type: m.type, quantity: m.quantity, reason: m.reason, note: m.note } });
+    return c.json(result, 201);
   })
 
   /* ---------- Kardex ---------- */

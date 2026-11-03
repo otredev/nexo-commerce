@@ -16,6 +16,7 @@ import {
   type Paginated,
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
+import { emitEvent, emitFrom, orderData } from "../lib/outbound";
 import { auditEntry } from "../lib/audit";
 import { newId } from "../lib/crypto";
 import { AppError, notFound } from "../lib/errors";
@@ -82,13 +83,21 @@ async function getOrder(c: Context<AppEnv>, id: string) {
   return rows;
 }
 
-function notify(c: Context<AppEnv>, kind: OrderEmail, id: string) {
+/** After a status change: email to the customer and webhooks (status changed, and paid when it just got paid). */
+function notify(c: Context<AppEnv>, kind: OrderEmail, id: string, opts: { paidNow?: boolean } = {}) {
   const { db, tenant: t } = c.var.auth;
   c.executionCtx.waitUntil(
     (async () => {
       const rows = await loadOrderRows(db, t.id, { id });
-      if (rows) await sendOrderEmail(c.env, db, t.id, t.slug, kind, rows.order, rows.items);
-    })().catch((e) => console.error("[orders] email", e)),
+      if (!rows) return;
+      await Promise.all([
+        sendOrderEmail(c.env, db, t.id, t.slug, kind, rows.order, rows.items).catch((e) => console.error("[orders] email", e)),
+        (async () => {
+          await emitEvent(c.env, t, "order.status_changed", orderData(rows.order, rows.items));
+          if (opts.paidNow) await emitEvent(c.env, t, "order.paid", orderData(rows.order, rows.items));
+        })().catch((e) => console.error("[orders] webhooks", e)),
+      ]);
+    })(),
   );
 }
 
@@ -238,7 +247,10 @@ export const orderRoutes = new Hono<AppEnv>()
       if (isPaymentRace(err)) throw new AppError(409, "already_paid", "Este pedido ya está pagado.");
       throw err;
     }
-    return c.json(await loadDetail(c, order.id));
+    const detail = await loadDetail(c, order.id);
+    const rows = await loadOrderRows(c.var.auth.db, c.var.auth.tenant.id, { id: order.id });
+    if (rows) emitFrom(c, "order.paid", orderData(rows.order, rows.items));
+    return c.json(detail);
   })
 
   /**
@@ -283,7 +295,7 @@ export const orderRoutes = new Hono<AppEnv>()
       if (isPaymentRace(err)) throw new AppError(409, "already_paid", "Otra persona registró el pago al mismo tiempo. Recarga e intenta de nuevo.");
       throw err;
     }
-    notify(c, "completed", order.id);
+    notify(c, "completed", order.id, { paidNow: order.paymentStatus === "pending" });
     return c.json(await loadDetail(c, order.id));
   })
 

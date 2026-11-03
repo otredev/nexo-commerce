@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ROLES } from "./roles";
 import { REASON_CODES, UNIT_CODES } from "./catalog";
 import { PAYMENT_CODES } from "./sales";
+import { API_KEY_ACCESS_IDS, WEBHOOK_EVENT_TYPES, type ApiKeyAccess, type WebhookEventType } from "./integrations";
 import { CODE_LIMITS, MAX_BANNERS, PIXEL_PATTERNS, STORE_LINK, THEME_FONT_IDS, THEME_PRESET_IDS, THEME_RADIUS_IDS, type ThemeFont, type ThemePreset, type ThemeRadius } from "./appearance";
 
 const email = z.string().trim().toLowerCase().email("Correo no válido").max(254);
@@ -609,3 +610,19 @@ export const storeAppearanceSchema = z.object({
   }),
 });
 export type StoreAppearanceInput = z.infer<typeof storeAppearanceSchema>;
+
+/* ---------- Phase 11: integrations ---------- */
+
+export const apiKeyCreateSchema = z.object({
+  name: z.string().trim().min(1, "Ponle un nombre").max(60),
+  access: z.enum(API_KEY_ACCESS_IDS as [ApiKeyAccess, ...ApiKeyAccess[]]),
+  /** Days until it stops working; null = never. */
+  expiresInDays: z.number().int().min(1).max(730).nullable().default(null),
+});
+
+export const webhookEndpointSchema = z.object({
+  url: z.string().trim().min(1, "Escribe la dirección").max(500),
+  description: optText(120),
+  events: z.array(z.enum(WEBHOOK_EVENT_TYPES as [WebhookEventType, ...WebhookEventType[]])).max(WEBHOOK_EVENT_TYPES.length).default([]),
+  active: z.boolean().default(true),
+});

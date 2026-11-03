@@ -10,29 +10,34 @@ import { CURRENCIES, TIMEZONES } from "../lib/options";
 import { useBusiness } from "../lib/business";
 import { PlanTab } from "./Plan";
 import { NotificationsTab } from "./NotificationsTab";
+import { IntegrationsTab } from "./IntegrationsTab";
 
-type Tab = "negocio" | "impuestos" | "ubicaciones" | "plan" | "notificaciones" | "seguridad";
+type Tab = "negocio" | "impuestos" | "ubicaciones" | "plan" | "notificaciones" | "integraciones" | "seguridad";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "negocio", label: "Negocio" },
   { id: "impuestos", label: "Impuestos" },
   { id: "ubicaciones", label: "Ubicaciones" },
   { id: "plan", label: "Plan" },
   { id: "notificaciones", label: "Notificaciones" },
+  { id: "integraciones", label: "Integraciones" },
   { id: "seguridad", label: "Seguridad" },
 ];
 
 export function SettingsPage() {
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((t) => t.id === params.get("tab"))?.id ?? "negocio") as Tab;
+  const { can } = useAuth();
+  const tabs = TABS.filter((t) => t.id !== "integraciones" || can("integrations:manage"));
+  const tab = (tabs.find((t) => t.id === params.get("tab"))?.id ?? "negocio") as Tab;
   return (
     <>
-      <PageHeader title="Configuración" description="Datos del negocio, impuestos, ubicaciones, tu plan, notificaciones y la seguridad de tu cuenta." />
-      <Tabs label="Secciones de configuración" tabs={TABS} value={tab} onChange={(id) => setParams(id === "negocio" ? {} : { tab: id })} />
+      <PageHeader title="Configuración" description="Datos del negocio, impuestos, ubicaciones, tu plan, notificaciones, integraciones y la seguridad de tu cuenta." />
+      <Tabs label="Secciones de configuración" tabs={tabs} value={tab} onChange={(id) => setParams(id === "negocio" ? {} : { tab: id })} />
       {tab === "negocio" && <BusinessTab />}
       {tab === "impuestos" && <TaxesTab />}
       {tab === "ubicaciones" && <LocationsTab />}
       {tab === "plan" && <PlanTab />}
       {tab === "notificaciones" && <NotificationsTab />}
+      {tab === "integraciones" && <IntegrationsTab />}
       {tab === "seguridad" && <SecurityTab />}
     </>
   );

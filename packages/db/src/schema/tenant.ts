@@ -962,3 +962,50 @@ export const supplierPayments = sqliteTable(
   },
   (t) => [index("supplier_payments_receipt_idx").on(t.receiptId), index("supplier_payments_supplier_idx").on(t.tenantId, t.supplierId)],
 );
+
+/* ---------- Phase 11: outgoing webhooks ---------- */
+
+/** Where the business wants its events POSTed, signed with HMAC-SHA256 of the secret. */
+export const webhookEndpoints = sqliteTable(
+  "webhook_endpoints",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    url: text("url").notNull(),
+    description: text("description"),
+    /** Subscribed event types; empty = all. */
+    events: text("events", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    secret: text("secret").notNull(),
+    /** Consecutive failed deliveries (reset on success). */
+    failures: integer("failures").notNull().default(0),
+    lastSuccessAt: text("last_success_at"),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [index("webhook_endpoints_tenant_idx").on(t.tenantId)],
+);
+
+/** One event for one endpoint, retried with backoff by the hourly job until it succeeds or gives up. */
+export const webhookDeliveries = sqliteTable(
+  "webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    endpointId: text("endpoint_id").notNull(),
+    eventId: text("event_id").notNull(),
+    type: text("type").notNull(),
+    payload: text("payload").notNull(),
+    status: text("status", { enum: ["pending", "succeeded", "failed"] }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastStatus: integer("last_status"),
+    lastError: text("last_error"),
+    nextAttemptAt: text("next_attempt_at"),
+    createdAt: text("created_at").notNull().default(now),
+    deliveredAt: text("delivered_at"),
+  },
+  (t) => [
+    index("webhook_deliveries_endpoint_idx").on(t.tenantId, t.endpointId, t.createdAt),
+    index("webhook_deliveries_due_idx").on(t.status, t.nextAttemptAt),
+  ],
+);

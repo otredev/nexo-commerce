@@ -15,6 +15,7 @@ Estado actual:
 - **Fase 8 — Operación diaria:** pantalla para el cliente en la caja (segundo monitor, o tablet/TV emparejada con un código de 6 dígitos) y notificaciones push en el celular o la computadora (panel instalable): pedidos nuevos, pagos con tarjeta, resumen de la mañana y avisos de la suscripción.
 - **Fase 9 — Apariencia de la tienda:** 6 estilos (colores, tipografía y esquinas) con colores propios y vista previa en vivo, barra de avisos rotativa con fechas, banners en carrusel con imagen para celular, píxeles de Meta, Google y TikTok con aviso de cookies, y CSS, HTML y JavaScript propios (HTML/JS solo en dominio propio).
 - **Fase 10 — Estadísticas de la tienda:** visitantes, conversión y embudo de compra, de dónde llegan (sitios y campañas UTM), dispositivos, países, páginas, productos más vistos y más vendidos, formas de pago, entrega y clientes nuevos o recurrentes, comparados con el periodo anterior y exportables a CSV.
+- **Fase 11 — Integraciones:** llaves de API con acceso de solo lectura, completo o de caja; webhooks firmados con reintentos para pedidos, ventas, productos y existencias; y un servidor MCP para que Claude u otros asistentes de IA consulten y operen el negocio.
 
 ---
 
@@ -37,7 +38,7 @@ Los correos (recuperar contraseña) se imprimen en la consola de la API. En desa
 | `npm run dev` | Migra la D1 local y levanta API, dashboard y tienda |
 | `npm run typecheck` | Revisa tipos de todos los paquetes |
 | `npm test` | Pruebas unitarias (Vitest) |
-| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7, 51 de la Fase 8, 37 de la Fase 9 y 32 de la Fase 10) |
+| `npm run smoke` | Pruebas de punta a punta contra la API en marcha (39 de la Fase 0, 60 de la Fase 1, 56 de la Fase 2, 84 de la Fase 3, 60 de la Fase 4, 63 de la Fase 5, 94 de la Fase 6, 32 de la Fase 7, 51 de la Fase 8, 37 de la Fase 9, 32 de la Fase 10 y 61 de la Fase 11) |
 | `node scripts/smoke-saas.mjs --keep` | Levanta un entorno de prueba con Stripe y Cloudflare simulados en :8790 para probar planes, tarjeta, dominios y la plataforma en el navegador |
 | `npm run db:generate` | Genera migraciones SQL a partir del esquema Drizzle |
 | `npm run build` | Compila tokens, dashboard y tienda |
@@ -67,6 +68,7 @@ scripts/
   smoke-theme.mjs     Prueba de punta a punta de la Fase 9 (apariencia; con la tienda en :8788 también revisa lo que inyecta el servidor).
   smoke-saas.mjs      Prueba de la Fase 6 con su propio wrangler dev (:8790) y servidores falsos de Stripe y Cloudflare.
   smoke-ops.mjs       Prueba de la Fase 8 con su propio wrangler dev (:8791) y un servicio de push falso que descifra cada aviso.
+  smoke-integrations.mjs Prueba de punta a punta de la Fase 11 (llaves, webhooks con receptor que verifica firmas, MCP).
   smoke-analytics.mjs Prueba de la Fase 10 con su propio wrangler dev (:8792) y un Analytics Engine falso.
   vapid-keys.mjs      Genera el par de llaves VAPID de las notificaciones push (una vez por entorno).
 apps/store/router/    Worker que recibe los dominios propios de los negocios (Cloudflare for SaaS) y los pasa a la tienda.
@@ -222,6 +224,16 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 - Cada consulta va limitada al negocio (`index1`), al dataset del entorno y al periodo; los valores se validan antes de armar el SQL.
 - Sin `CF_ACCOUNT_ID`, `CF_ANALYTICS_TOKEN` y `STORE_EVENTS_DATASET` (desarrollo local) la pantalla muestra ventas y avisa que las visitas no están configuradas; si la consulta falla, avisa y las ventas siguen.
 
+### Integraciones: API, webhooks y asistentes de IA (Fase 11)
+
+*Configuración → Integraciones* (propietario y administradores).
+
+- **Llaves de API** (`Authorization: Bearer nx_…`): se muestran una sola vez; se guarda solo su SHA-256 en la base de control (`api_keys`). Cada llave actúa como un miembro del equipo: **Solo lectura** (administrador, solo `GET`), **Lectura y escritura** (administrador) o **Caja** (cajero); nunca como propietario. Ninguna llave entra a usuarios, plan, notificaciones, pantalla del cliente ni a las propias integraciones. Pueden vencer (30/90/365 días) y se revocan al instante. Lo que hacen queda en la actividad como «API · nombre». Límites: Gratis 2 llaves, Pro 10, Negocio sin límite.
+- **Webhooks**: el negocio registra direcciones `https://` públicas (se rechazan localhost, IPs privadas y redirecciones) y elige eventos: `order.created`, `order.paid`, `order.status_changed`, `sale.completed`, `sale.voided`, `sale.returned`, `product.created/updated/deleted` y `stock.changed` (la importación CSV no genera eventos). Cada envío lleva `Nexo-Event`, `Nexo-Delivery` y `Nexo-Signature: t=…,v1=…` (HMAC-SHA256 del secreto `whsec_…` sobre `t.cuerpo`). Se intenta al momento; si no responde 2xx en 10 s, se reintenta en el trabajo de cada hora (hasta 6 intentos, ~1 día). El panel muestra la salud, las entregas de 30 días con su contenido, permite reenviar, probar (`ping`) y rotar el secreto. Límites: Gratis 1, Pro 10, Negocio sin límite.
+- **Servidor MCP** en `<APP_URL>/mcp` (Streamable HTTP sin estado, JSON-RPC; versiones de protocolo 2025-06-18, 2025-03-26 y 2024-11-05) con la misma llave de API. 12 herramientas en español: resumen de hoy, buscar y ver productos, ubicaciones, existencias, reporte de ventas, estadísticas de la tienda, listar y ver pedidos, buscar clientes y, con llave de escritura, `avanzar_pedido` y `ajustar_existencias`. Cada herramienta llama a esta misma API con la llave, así que permisos, validación y actividad son los mismos. Valida `Origin` (DNS rebinding). Probado con el SDK oficial de MCP.
+  - Claude Code: `claude mcp add --transport http nexo <APP_URL>/mcp --header "Authorization: Bearer nx_…"`.
+  - Claude Desktop: con `npx mcp-remote <APP_URL>/mcp --header "Authorization:Bearer …"` (el panel da la configuración lista para copiar).
+
 ### Seguridad
 
 - Contraseñas con PBKDF2-SHA256 (100 000 iteraciones, el máximo de Workers), sal por usuario y comparación en tiempo constante.
@@ -311,6 +323,9 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET/PUT /api/store-settings/appearance` | `settings:read` / `store:write` (HTML/JS: plan Pro) |
 | `GET /api/store/:slug/custom-code` | público (middleware de la tienda) |
 | `GET /api/reports/store?from=&to=` | `reports:read` |
+| `GET /api/integrations`, `POST/DELETE /api/integrations/api-keys[/:id]`, `POST/PUT/DELETE /api/integrations/webhooks[/:id]`, `POST …/webhooks/:id/test` · `rotate-secret`, `GET …/webhooks/:id/deliveries`, `GET …/webhooks/deliveries/:id`, `POST …/deliveries/:id/resend` | `integrations:manage` (nunca con llave de API) |
+| `POST /mcp` | llave de API (`Authorization: Bearer nx_…`) |
+| Cualquier ruta de `/api` | sesión o llave de API (excepto usuarios, plan, notificaciones e integraciones) |
 | `GET /files/<key>` | público |
 
 Los errores siempre tienen la forma `{ "error": { "code", "message", "fields"? } }`, con mensajes en español listos para mostrar.

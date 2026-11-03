@@ -87,6 +87,7 @@ export const ACTIONS: NavItem[] = [
   { to: "/configuracion?tab=impuestos", label: "Impuestos", icon: Percent, keywords: "iva tasas configuracion" },
   { to: "/configuracion?tab=ubicaciones", label: "Ubicaciones", icon: MapPin, keywords: "sucursales tiendas bodegas almacenes" },
   { to: "/configuracion?tab=plan", label: "Plan y facturación", icon: CreditCard, keywords: "suscripcion pagar plan pro negocio stripe" },
+  { to: "/configuracion?tab=integraciones", label: "Integraciones: API, webhooks e IA", icon: KeyRound, permission: "integrations:manage", keywords: "api llave key token webhook mcp claude chatgpt ia inteligencia artificial zapier make n8n erp conectar integrar" },
   { to: "/configuracion?tab=notificaciones", label: "Notificaciones push", icon: Bell, keywords: "avisos alertas celular pedidos resumen diario dispositivo" },
   { to: "/pantalla", label: "Pantalla del cliente (tablet o TV)", icon: Monitor, permission: "pos:sell", keywords: "monitor segunda pantalla cliente display emparejar codigo" },
   { to: "/configuracion?tab=seguridad", label: "Cambiar contraseña", icon: KeyRound, keywords: "seguridad password clave" },

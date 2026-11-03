@@ -652,3 +652,21 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-bars__col:nth-child(-n+3) .nx-bars__tip { left: 0; transform: none; }
 .nx-bars__col:nth-last-child(-n+3) .nx-bars__tip { left: auto; right: 0; transform: none; }
 .nx-presets .nx-segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+
+/* ---------- Phase 11: integrations ---------- */
+.nx-copy { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border: 1px solid var(--border-control); border-radius: var(--radius-md); background: var(--surface-muted); }
+.nx-copy__value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink); background: none; }
+.nx-copy__btn { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-muted); cursor: pointer; }
+.nx-copy__btn:hover { background: var(--surface); color: var(--ink); }
+.nx-codeblock { position: relative; }
+.nx-codeblock pre { margin: 0; padding: 12px 44px 12px 14px; border-radius: var(--radius-md); background: var(--surface-muted); border: 1px solid var(--border); overflow-x: auto; font: 12.5px/1.55 var(--font-mono); color: var(--ink); }
+.nx-codeblock .nx-copy__btn { position: absolute; top: 6px; right: 6px; }
+.nx-choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
+.nx-choice:has(input:checked) { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.nx-choice input { margin-top: 3px; accent-color: var(--primary); }
+.nx-choice > span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.nx-hook { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.nx-hook__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.nx-hook__url { font-size: 13px; overflow-wrap: anywhere; }
+.nx-events { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 16px; margin-top: 6px; }
+.nx-details > summary { cursor: pointer; font-weight: 500; font-size: 13px; }

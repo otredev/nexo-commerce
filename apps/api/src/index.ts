@@ -38,6 +38,9 @@ import { verifyStripeSignature } from "./lib/stripe";
 import { refreshPendingDomains } from "./lib/domains";
 import { storeIndex } from "./lib/storeIndex";
 import { notificationRoutes } from "./routes/notifications";
+import { integrationRoutes } from "./routes/integrations";
+import { retryWebhooks } from "./lib/outbound";
+import { handleMcp } from "./lib/mcp";
 import { posDisplayRoutes, publicDisplayRoutes } from "./routes/display";
 export { DisplayHub } from "./display";
 import { dailyDigest } from "./lib/notify";
@@ -75,6 +78,7 @@ const protectedApi = new Hono<AppEnv>()
   .route("/billing", billingRoutes)
   .route("/platform", platformRoutes)
   .route("/notifications", notificationRoutes)
+  .route("/integrations", integrationRoutes)
   .route("/pos/display", posDisplayRoutes);
 
 const app = new Hono<AppEnv>()
@@ -124,6 +128,12 @@ const app = new Hono<AppEnv>()
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
     return c.json({ sent: await dailyDigest(c.env, new Date(), { force: true, tenantId: c.req.query("tenantId") }) });
   })
+  // Development only: run the webhook retry job now (?at= ISO time to pretend it is later).
+  .post("/api/dev/webhooks-retry", async (c) => {
+    if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
+    const at = c.req.query("at");
+    return c.json({ retried: await retryWebhooks(c.env, at ? new Date(at) : new Date()) });
+  })
   // Development only: set the plan of the signed-in business (the smoke tests need more than the free plan).
   .post("/api/dev/plan", requireAuth, async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
@@ -133,10 +143,29 @@ const app = new Hono<AppEnv>()
     return c.json({ plan });
   })
   .route("/api", protectedApi)
+  // MCP server for AI assistants (Phase 11). Each tool calls this same API with the caller's key.
+  .all("/mcp", (c) =>
+    handleMcp(c, (token) => (method, path, body) =>
+      internalFetch(
+        new Request(new URL(path, c.req.url), {
+          method,
+          headers: { authorization: `Bearer ${token}`, ...(body !== undefined ? { "content-type": "application/json" } : {}), "user-agent": "Nexo-MCP/1.0" },
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+        }),
+        c.env,
+        c.executionCtx as unknown as ExecutionContext<unknown>,
+      ),
+    ),
+  )
   .route("/files", fileRoutes)
   .all("/api/*", (c) => c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404));
 
 app.onError((err, c) => errorResponse(c, err));
+
+/** The API calling itself (MCP tools): same routes, auth and validation, no network hop. */
+function internalFetch(req: Request, env: Env, ctx: ExecutionContext<unknown>): Promise<Response> {
+  return Promise.resolve(app.fetch(req, env, ctx));
+}
 app.notFound((c) => c.env.ASSETS.fetch(c.req.raw));
 
 export type AppType = typeof app;
@@ -148,6 +177,8 @@ export default {
       ctx.waitUntil(expireOrders(env).then((n) => { if (n) console.log(`[orders] released ${n} expired orders`); }));
       ctx.waitUntil(refreshPendingDomains(env).catch((e) => console.error("[domains] cron", e)));
       // 8:00 in each business's time zone: low stock and invoices due.
+      // Outgoing webhooks that failed: next attempt (Phase 11).
+      ctx.waitUntil(retryWebhooks(env).then((n) => { if (n) console.log(`[webhooks] retried ${n}`); }).catch((e) => console.error("[webhooks] retry", e)));
       ctx.waitUntil(dailyDigest(env).then((n) => { if (n) console.log(`[push] digest sent ${n}`); }).catch((e) => console.error("[push] digest", e)));
       return;
     }

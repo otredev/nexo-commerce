@@ -9,6 +9,7 @@ import { control, controlDb, tenant as tenantSchema, type TenantDb } from "@nexo
 import type { Env, TenantRef } from "../env";
 import { newId } from "./crypto";
 import { cancelStatements, loadOrderRows, notifyOrder, orderLabel, sendOrderEmail, type OrderRow } from "./orders";
+import { emitEvent, orderData } from "./outbound";
 import { stripe } from "./stripe";
 import { getTenantDb } from "./tenant";
 import { toStatement } from "./inventory";
@@ -64,10 +65,12 @@ export async function markOrderPaid(db: TenantDb, d1: D1Database, tenantId: stri
 }
 
 /** Order emails of a card order go out once it is paid. */
-export async function notifyPaid(env: Env, db: TenantDb, ref: Pick<TenantRef, "id" | "slug">, orderId: string) {
+export async function notifyPaid(env: Env, db: TenantDb, ref: Pick<TenantRef, "id" | "slug" | "dbBinding">, orderId: string) {
   const rows = await loadOrderRows(db, ref.id, { id: orderId });
   if (!rows) return;
   await Promise.all([
+    // Card orders reach the integrations once paid: created + paid.
+    emitEvent(env, ref, "order.created", orderData(rows.order, rows.items)).then(() => emitEvent(env, ref, "order.paid", orderData(rows.order, rows.items))),
     sendOrderEmail(env, db, ref.id, ref.slug, "placed", rows.order, rows.items),
     sendOrderEmail(env, db, ref.id, ref.slug, "new_order", rows.order, rows.items),
     notifyOrder(env, db, ref.id, rows.order, "order_paid"),

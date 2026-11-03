@@ -67,6 +67,8 @@ export const PERMISSIONS = {
   /** Supplier invoices and payments. */
   "payables:read": ["owner", "admin"],
   "payables:write": ["owner", "admin"],
+  /** API keys, webhooks and AI assistants (Phase 11). */
+  "integrations:manage": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

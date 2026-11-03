@@ -13,6 +13,9 @@ export interface PlanLimits {
   cardPayments: boolean;
   /** The store on the business's own domain. */
   customDomain: boolean;
+  /** Integrations (Phase 11): API keys (also used by AI assistants over MCP) and webhook endpoints. */
+  apiKeys: number | null;
+  webhooks: number | null;
 }
 
 export interface PlanInfo {
@@ -31,7 +34,7 @@ export const PLANS: Record<PlanId, PlanInfo> = {
     name: "Gratis",
     priceCents: 0,
     description: "Para empezar a vender.",
-    limits: { users: 2, locations: 1, products: 100, cardPayments: false, customDomain: false },
+    limits: { users: 2, locations: 1, products: 100, cardPayments: false, customDomain: false, apiKeys: 2, webhooks: 1 },
     features: ["Punto de venta y caja", "Inventario y compras", "Tienda en línea en nexo", "Hasta 100 productos y 2 usuarios"],
   },
   pro: {
@@ -39,7 +42,7 @@ export const PLANS: Record<PlanId, PlanInfo> = {
     name: "Pro",
     priceCents: 49900,
     description: "Para el negocio que ya crece.",
-    limits: { users: 10, locations: 3, products: 5000, cardPayments: true, customDomain: true },
+    limits: { users: 10, locations: 3, products: 5000, cardPayments: true, customDomain: true, apiKeys: 10, webhooks: 10 },
     features: ["Todo lo del plan Gratis", "Cobro con tarjeta en la tienda", "Tu propio dominio", "Hasta 3 ubicaciones y 10 usuarios"],
   },
   business: {
@@ -47,7 +50,7 @@ export const PLANS: Record<PlanId, PlanInfo> = {
     name: "Negocio",
     priceCents: 129900,
     description: "Varias sucursales y mucho catálogo.",
-    limits: { users: null, locations: 20, products: null, cardPayments: true, customDomain: true },
+    limits: { users: null, locations: 20, products: null, cardPayments: true, customDomain: true, apiKeys: null, webhooks: null },
     features: ["Todo lo del plan Pro", "Productos y usuarios ilimitados", "Hasta 20 ubicaciones", "Base de datos propia a solicitud"],
   },
 };

@@ -25,6 +25,7 @@ import {
   type SaleListItem,
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
+import { emitFrom } from "../lib/outbound";
 import { auditEntry } from "../lib/audit";
 import { newId } from "../lib/crypto";
 import { sendEmail } from "../lib/email";
@@ -211,7 +212,9 @@ export const saleRoutes = new Hono<AppEnv>()
       }
       throw new AppError(409, "insufficient_stock", "No hay suficiente existencia para completar la venta.");
     }
-    return c.json(await loadSale(c, saleId), 201);
+    const sale = await loadSale(c, saleId);
+    emitFrom(c, "sale.completed", sale);
+    return c.json(sale, 201);
   })
 
   /* ---------- History ---------- */
@@ -294,7 +297,9 @@ export const saleRoutes = new Hono<AppEnv>()
     statements.push(dailySalesUpsert(d1, { tenantId: t.id, date: sale.businessDate, locationId: sale.locationId, count: -1, total: -sale.totalCents, discount: -sale.discountCents, tax: -sale.taxCents, cost: -(saleRow?.costCents ?? 0), returns: 0, voided: 1 }));
     statements.push(toStatement(d1, auditEntry(c, { action: "sale.void", entity: "sale", entityId: id, after: { number: sale.number, totalCents: sale.totalCents, reason } })));
     await d1.batch(statements);
-    return c.json(await loadSale(c, id));
+    const voided = await loadSale(c, id);
+    emitFrom(c, "sale.voided", voided);
+    return c.json(voided);
   })
 
   /* ---------- Return (partial or total) ---------- */
@@ -366,7 +371,9 @@ export const saleRoutes = new Hono<AppEnv>()
       if (isStockCheckError(err)) throw new AppError(409, "already_returned", "Otra devolución de esta venta se registró al mismo tiempo. Recarga e intenta de nuevo.");
       throw err;
     }
-    return c.json(await loadSale(c, id), 201);
+    const returned = await loadSale(c, id);
+    emitFrom(c, "sale.returned", returned);
+    return c.json(returned, 201);
   })
 
   /* ---------- Email receipt ---------- */

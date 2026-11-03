@@ -76,6 +76,8 @@ export interface AuthContext {
   db: TenantDb;
   /** Raw D1 handle of the same database, for batch(). */
   d1: D1Database;
+  /** Set when the request authenticated with an API key instead of a session (Phase 11). */
+  apiKey?: { id: string; name: string; access: "read" | "full" | "pos"; readOnly: boolean };
 }
 
 export type AppEnv = {

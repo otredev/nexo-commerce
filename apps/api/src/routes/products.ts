@@ -19,6 +19,7 @@ import {
   type UnitCode,
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
+import { emitFrom } from "../lib/outbound";
 import { auditEntry, diff } from "../lib/audit";
 import { newId } from "../lib/crypto";
 import { assertWithinLimit, remaining } from "../lib/plan";
@@ -225,7 +226,9 @@ export const productRoutes = new Hono<AppEnv>()
     } catch (err) {
       uniqueToFieldError(err);
     }
-    return c.json(await loadProduct(c, productId), 201);
+    const created = await loadProduct(c, productId);
+    emitFrom(c, "product.created", created);
+    return c.json(created, 201);
   })
 
   /* ---------- Update (product fields + variants) ---------- */
@@ -356,7 +359,9 @@ export const productRoutes = new Hono<AppEnv>()
     } catch (err) {
       uniqueToFieldError(err);
     }
-    return c.json(await loadProduct(c, id));
+    const updated = await loadProduct(c, id);
+    emitFrom(c, "product.updated", updated);
+    return c.json(updated);
   })
 
   /* ---------- Archive / restore / delete ---------- */
@@ -377,6 +382,7 @@ export const productRoutes = new Hono<AppEnv>()
       toStatement(d1, db.update(variants).set({ deletedAt: now }).where(and(eq(variants.productId, id), eq(variants.tenantId, t.id)))),
       toStatement(d1, auditEntry(c, { action: "product.delete", entity: "product", entityId: id, before: { name: product.name } })),
     ]);
+    emitFrom(c, "product.deleted", { id, name: product.name, skus: product.variants.map((v) => v.sku) });
     return c.body(null, 204);
   })
 
@@ -511,6 +517,7 @@ async function setStatus(c: Context<AppEnv, any>, status: "active" | "archived")
       toStatement(d1, db.update(products).set({ status, updatedAt: new Date().toISOString() }).where(and(eq(products.id, id), eq(products.tenantId, t.id)))),
       toStatement(d1, auditEntry(c, { action: status === "archived" ? "product.archive" : "product.restore", entity: "product", entityId: id, after: { name: p.name } })),
     ]);
+    emitFrom(c, "product.updated", await loadProduct(c, id));
   }
   return c.json({ id, status });
 }

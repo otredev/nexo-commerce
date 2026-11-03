@@ -40,6 +40,7 @@ import { cancelStatements, loadOrderRows, notifyOrder, sendOrderEmail, toPublicO
 import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
 import { loadAppearance } from "../lib/appearance";
+import { emitEvent, orderData } from "../lib/outbound";
 import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
 import { stripe, stripeConfigured } from "../lib/stripe";
 import { recordStoreEvent, STORE_EVENT_TYPES } from "../lib/events";
@@ -473,6 +474,7 @@ export const storeRoutes = new Hono<AppEnv>()
           sendOrderEmail(c.env, db, t.id, t.slug, "placed", created.order, created.items),
           sendOrderEmail(c.env, db, t.id, t.slug, "new_order", created.order, created.items),
           notifyOrder(c.env, db, t.id, created.order, "order_new"),
+          emitEvent(c.env, t, "order.created", orderData(created.order, created.items)),
         ]).catch((e) => console.error("[orders] email/push", e)),
       );
     }

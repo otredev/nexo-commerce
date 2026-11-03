@@ -20,6 +20,7 @@ import { sendEmail } from "./email";
 import { movementStatements, toStatement, transitionStatement, type MovementActor } from "./inventory";
 import { getTenantD1 } from "./tenant";
 import { notify } from "./notify";
+import { emitEvent, orderData } from "./outbound";
 
 const { orders, orderItems, storeSettings, businessSettings, locations, auditLog } = tenant;
 
@@ -215,7 +216,10 @@ export async function expireOrders(env: Env): Promise<number> {
         await d1.batch(cancelStatements(d1, db, { tenantId: t.id, userId: null, userName: "Sistema" }, rows.order, rows.items, { reason: "No se confirmó a tiempo", by: "system", from: ["pending"] }));
         expired++;
         const after = await loadOrderRows(db, t.id, { id });
-        if (after) await sendOrderEmail(env, db, t.id, t.slug, "cancelled", after.order, after.items).catch(() => {});
+        if (after) {
+          await sendOrderEmail(env, db, t.id, t.slug, "cancelled", after.order, after.items).catch(() => {});
+          await emitEvent(env, t, "order.status_changed", orderData(after.order, after.items)).catch(() => 0);
+        }
       } catch (err) {
         console.error("[orders] expire failed", id, err);
       }

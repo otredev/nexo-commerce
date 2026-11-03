@@ -155,3 +155,27 @@ export const notificationPrefs = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.tenantId] })],
 );
+
+/**
+ * API keys of a business (Phase 11), for integrations and AI assistants (MCP). Only the SHA-256 of
+ * the key is stored; the key itself is shown once. A key acts with a role (admin or cashier, never
+ * owner) and can be read-only.
+ */
+export const apiKeys = sqliteTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    hash: text("hash").notNull(),
+    access: text("access", { enum: ["read", "full", "pos"] }).notNull(),
+    createdBy: text("created_by").notNull(),
+    createdByName: text("created_by_name").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+    lastUsedAt: text("last_used_at"),
+    expiresAt: text("expires_at"),
+    revokedAt: text("revoked_at"),
+  },
+  (t) => [uniqueIndex("api_keys_hash_uq").on(t.hash), index("api_keys_tenant_idx").on(t.tenantId)],
+);
