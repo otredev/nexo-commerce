@@ -5,8 +5,8 @@
 RESEND_API_KEY=
 EMAIL_FROM=Nexo <no-reply@tudominio.com>
 
-# Operadores de la plataforma (correos separados por coma): abre /plataforma en el panel.
-PLATFORM_ADMINS=tu@correo.com
+# Panel de administración (/admin): los operadores tienen cuenta propia, no van aquí.
+# Crea el tuyo con: node scripts/crear-operador.mjs local
 
 # Stripe (usa claves de prueba sk_test_…). Webhook local: stripe listen --forward-to localhost:8787/api/webhooks/stripe
 STRIPE_SECRET_KEY=

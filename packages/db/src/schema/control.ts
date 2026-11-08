@@ -44,6 +44,9 @@ export const users = sqliteTable(
     passwordHash: text("password_hash").notNull(),
     createdAt: text("created_at").notNull().default(now),
     deletedAt: text("deleted_at"),
+    /** Blocked by the platform (/admin → Usuarios): cannot sign in anywhere until enabled again. */
+    disabledAt: text("disabled_at"),
+    lastLoginAt: text("last_login_at"),
   },
   (t) => [uniqueIndex("users_email_uq").on(t.email)],
 );
@@ -69,6 +72,10 @@ export const sessions = sqliteTable(
     tenantId: text("tenant_id").notNull().references(() => tenants.id),
     expiresAt: text("expires_at").notNull(),
     userAgent: text("user_agent"),
+    /** Support access: an operator entered the business as its owner (cookie nx_support, short-lived). */
+    operatorId: text("operator_id"),
+    operatorName: text("operator_name"),
+    ticketId: text("ticket_id"),
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
@@ -178,4 +185,100 @@ export const apiKeys = sqliteTable(
     revokedAt: text("revoked_at"),
   },
   (t) => [uniqueIndex("api_keys_hash_uq").on(t.hash), index("api_keys_tenant_idx").on(t.tenantId)],
+);
+
+/* ---------- Platform administration (/admin): operators, their sessions and log, support tickets ---------- */
+
+/**
+ * People who run the platform. Separate from business users: their own sign-in, no business.
+ * The first one is created with `node scripts/crear-operador.mjs <env>`; the rest from /admin.
+ */
+export const platformOperators = sqliteTable(
+  "platform_operators",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    lastLoginAt: text("last_login_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("platform_operators_email_uq").on(t.email)],
+);
+
+export const platformSessions = sqliteTable(
+  "platform_sessions",
+  {
+    /** SHA-256 of the token in the nx_platform cookie. */
+    id: text("id").primaryKey(),
+    operatorId: text("operator_id").notNull().references(() => platformOperators.id),
+    expiresAt: text("expires_at").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("platform_sessions_operator_idx").on(t.operatorId)],
+);
+
+/** Everything operators do: sign-ins, suspensions, plan changes, entering a business, ticket replies… */
+export const platformAudit = sqliteTable(
+  "platform_audit",
+  {
+    id: text("id").primaryKey(),
+    operatorId: text("operator_id"),
+    operatorName: text("operator_name").notNull(),
+    action: text("action").notNull(),
+    entity: text("entity").notNull(),
+    entityId: text("entity_id"),
+    tenantId: text("tenant_id"),
+    /** Short human summary ("Plan: Gratis → Pro"). */
+    summary: text("summary"),
+    detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>(),
+    ip: text("ip"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("platform_audit_created_idx").on(t.createdAt), index("platform_audit_tenant_idx").on(t.tenantId, t.createdAt), index("platform_audit_operator_idx").on(t.operatorId, t.createdAt)],
+);
+
+/** Support tickets opened by a business from its panel, answered from /admin. */
+export const supportTickets = sqliteTable(
+  "support_tickets",
+  {
+    id: text("id").primaryKey(),
+    /** Platform-wide sequential number (#1024). */
+    number: integer("number").notNull(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    createdBy: text("created_by").notNull(),
+    createdByName: text("created_by_name").notNull(),
+    createdByEmail: text("created_by_email").notNull(),
+    subject: text("subject").notNull(),
+    category: text("category", { enum: ["question", "problem", "billing", "suggestion"] }).notNull().default("question"),
+    priority: text("priority", { enum: ["normal", "high", "urgent"] }).notNull().default("normal"),
+    /** open: waiting for support · waiting: support answered, waiting for the business · closed. */
+    status: text("status", { enum: ["open", "waiting", "closed"] }).notNull().default("open"),
+    /** The business lets support enter its account to look into this ticket. */
+    allowAccess: integer("allow_access", { mode: "boolean" }).notNull().default(false),
+    assignedTo: text("assigned_to").references(() => platformOperators.id),
+    lastMessageAt: text("last_message_at").notNull().default(now),
+    closedAt: text("closed_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("support_tickets_number_uq").on(t.number), index("support_tickets_tenant_idx").on(t.tenantId, t.lastMessageAt), index("support_tickets_status_idx").on(t.status, t.lastMessageAt)],
+);
+
+export const supportMessages = sqliteTable(
+  "support_messages",
+  {
+    id: text("id").primaryKey(),
+    ticketId: text("ticket_id").notNull().references(() => supportTickets.id),
+    /** user: someone from the business · operator: support · system: automatic notes (support entered the account…). */
+    authorType: text("author_type", { enum: ["user", "operator", "system"] }).notNull(),
+    authorId: text("author_id"),
+    authorName: text("author_name").notNull(),
+    body: text("body").notNull(),
+    /** Internal note between operators; the business never sees it. */
+    internal: integer("internal", { mode: "boolean" }).notNull().default(false),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("support_messages_ticket_idx").on(t.ticketId, t.createdAt)],
 );

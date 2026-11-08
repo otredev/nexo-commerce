@@ -130,7 +130,6 @@ for (const db of ["DB_CONTROL", "DB_TENANT_DEFAULT", "DB_TENANT_2"]) {
   execFileSync("npx", ["wrangler", "d1", "migrations", "apply", db, "--local", "--persist-to", state], { cwd: API_DIR, stdio: "ignore", env: { ...process.env, CI: "1" } });
 }
 const vars = {
-  PLATFORM_ADMINS: ADMIN_EMAIL,
   STRIPE_SECRET_KEY: "sk_test_smoke", STRIPE_WEBHOOK_SECRET: WHSEC, STRIPE_PRICE_PRO: "price_pro", STRIPE_PRICE_BUSINESS: "price_business",
   STRIPE_APPLICATION_FEE_BPS: "150", STRIPE_API_BASE: `http://127.0.0.1:${STRIPE_PORT}`,
   CF_API_TOKEN: "cf_smoke", CF_ZONE_ID: "zone_smoke", CF_API_BASE: `http://127.0.0.1:${CF_PORT}`, STORE_CNAME_TARGET: "tiendas.nexo.test",
@@ -188,7 +187,9 @@ const pwd = "contrasena-segura-1";
 const owner = client(), admin = client(), shopper = client(), rival = client();
 let r = await owner("POST", "/api/auth/register", { businessName: `Nube ${stamp}`, ownerName: "Nora Dueña", email: `nora-${stamp}@example.com`, password: pwd });
 const tenantId = r.data.tenant.id, slug = r.data.tenant.slug;
-await admin("POST", "/api/auth/register", { businessName: `Operación ${stamp}`, ownerName: "Óscar Operador", email: ADMIN_EMAIL, password: pwd });
+// The platform operator has their own account (no business), created as scripts/crear-operador.mjs would.
+await admin("POST", "/api/dev/operator", { email: ADMIN_EMAIL, name: "Óscar Operador", password: pwd });
+await admin("POST", "/api/platform/auth/login", { email: ADMIN_EMAIL, password: pwd });
 await rival("POST", "/api/auth/register", { businessName: `Rival ${stamp}`, ownerName: "Rita", email: `rita-${stamp}@example.com`, password: pwd });
 
 /* ---------------- Plans and limits ---------------- */
@@ -196,7 +197,7 @@ console.log("Planes y límites");
 r = await owner("GET", "/api/billing");
 check("negocio nuevo en plan Gratis con su uso", r.status === 200 && r.data.plan === "free" && r.data.billingAvailable && r.data.usage.users === 1 && r.data.usage.locations === 1, r.data);
 r = await owner("GET", "/api/me");
-check("/me trae plan y estado del negocio", r.data.tenant.plan === "free" && r.data.tenant.status === "active" && r.data.platformAdmin === false, r.data);
+check("/me trae plan y estado del negocio", r.data.tenant.plan === "free" && r.data.tenant.status === "active" && !("platformAdmin" in r.data), r.data);
 r = await owner("POST", "/api/locations", { name: "Bodega", type: "warehouse", address: null, active: true, isDefault: false });
 check("segunda ubicación en Gratis → 402", r.status === 402 && r.data.error.code === "plan_limit" && /1 ubicación/.test(r.data.error.message), r.data);
 r = await owner("POST", "/api/locations", { name: "Bodega inactiva", type: "warehouse", address: null, active: false, isDefault: false });
@@ -400,16 +401,13 @@ check("y deja de resolver", r.status === 404, r.data);
 /* ---------------- Platform panel and suspension ---------------- */
 console.log("Panel de plataforma y suspensión");
 r = await owner("GET", "/api/platform/tenants");
-check("un negocio normal no ve la plataforma (404)", r.status === 404, r.data);
-r = await admin("GET", "/api/me");
-check("el operador aparece como platformAdmin", r.data.platformAdmin === true, r.data);
+check("una sesión de negocio no entra a la plataforma (401)", r.status === 401, r.data);
+r = await admin("GET", "/api/platform/me");
+check("el operador entra con su propia cuenta", r.status === 200 && r.data.operator.email === ADMIN_EMAIL, r.data);
 r = await admin("GET", `/api/platform/tenants?q=${encodeURIComponent(`Nube ${stamp}`)}`);
-check("lista de negocios con propietario y plan", r.status === 200 && r.data.items.length === 1 && r.data.items[0].owner.email === `nora-${stamp}@example.com`.toLowerCase() && r.data.items[0].plan === "business" && r.data.totals.total >= 3, r.data);
+check("lista de negocios con propietario y plan", r.status === 200 && r.data.items.length === 1 && r.data.items[0].owner.email === `nora-${stamp}@example.com`.toLowerCase() && r.data.items[0].plan === "business" && r.data.totals.total >= 2, r.data);
 r = await admin("GET", `/api/platform/tenants/${tenantId}`);
 check("detalle con uso, pedidos y bases disponibles", r.status === 200 && r.data.usage.products === 101 && r.data.usage.orders30d >= 5 && r.data.availableBindings.includes("DB_TENANT_2") && r.data.stripeAccountId === acct, r.data);
-const adminTenant = (await admin("GET", "/api/me")).data.tenant.id;
-r = await admin("PATCH", `/api/platform/tenants/${adminTenant}`, { status: "suspended" });
-check("no puede suspender su propio negocio", r.status === 409, r.data);
 r = await admin("PATCH", `/api/platform/tenants/${tenantId}`, { status: "suspended", suspendedReason: "Pago vencido" });
 check("suspender negocio", r.status === 200 && r.data.status === "suspended" && r.data.suspendedReason === "Pago vencido", r.data);
 r = await owner("GET", "/api/products");
@@ -462,7 +460,7 @@ if (process.argv.includes("--keep")) {
   // Leaves the Worker and the mocks running to try the screens: http://127.0.0.1:8790
   console.log(`\nServidor de prueba en ${BASE} (Ctrl+C para salir)`);
   console.log(`  Negocio: nora-${stamp}@example.com / ${pwd}`.toLowerCase());
-  console.log(`  Operador: ${ADMIN_EMAIL} / ${pwd}`);
+  console.log(`  Operador (/admin): ${ADMIN_EMAIL} / ${pwd}`);
   globalThis.__mocks = { stripe, cf, activate };
 } else {
   shutdown();

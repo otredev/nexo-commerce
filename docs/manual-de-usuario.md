@@ -496,6 +496,23 @@ Si el otro sistema no responde, reintentamos durante un día. Cada aviso va **fi
 - **Contraseña**: tras 5 intentos fallidos, la cuenta se bloquea 15 minutos. Cambiar la contraseña cierra tus otras sesiones.
 - **Respaldos**: se hacen automáticamente todos los días.
 
+### Soporte de Nexo
+
+Si algo no funciona, tienes una duda o quieres sugerir algo, escríbenos desde **Soporte**, abajo en el menú (propietarios y administradores).
+
+1. Presiona **Nuevo ticket**, escribe el asunto, elige el tipo y cuéntanos qué pasa. Si algo falla, di qué hiciste, qué esperabas y qué pasó; el folio de la venta o el pedido ayuda mucho.
+2. Si quieres, marca **Permitir que soporte entre a mi cuenta para revisar este ticket**. Lo puedes activar o quitar después, dentro del ticket.
+3. Te respondemos en el mismo ticket y por correo. Cuando hay una respuesta, **Soporte** muestra un número en el menú.
+4. Si ya se resolvió, presiona **Ya se resolvió, cerrar**. Si escribes en un ticket cerrado, se vuelve a abrir.
+
+| Estado | Qué significa |
+|---|---|
+| **En revisión** | Lo estamos viendo. |
+| **Respondido** | Te contestamos: revisa la respuesta. |
+| **Cerrado** | Ya se resolvió. |
+
+**Cuando soporte entra a tu cuenta**, lo hace como propietario durante una hora como máximo. Arriba del panel se ve una franja negra **Modo soporte** con el nombre de quién está, y todo lo que haga queda en **Actividad** a nombre de «Soporte Nexo». Soporte nunca puede cambiar tu plan y pagos, tus usuarios, tus llaves de API ni tu contraseña.
+
 ---
 
 ## 15. Preguntas frecuentes
@@ -517,6 +534,9 @@ Revisa que el producto esté activo, marcado **Mostrar en la tienda en línea** 
 
 **No me llegan las notificaciones.**
 Revisa que el navegador tenga permiso (el candado de la barra de direcciones → *Notificaciones*). En iPhone, el panel debe estar agregado a la pantalla de inicio.
+
+**Mi cuenta dice que está desactivada.**
+El equipo de Nexo la desactivó. Escríbenos desde otra cuenta del negocio (*Soporte*) o al correo de soporte.
 
 **¿Puedo vender sin internet?**
 No. La caja necesita conexión para garantizar que las existencias y los folios siempre cuadren.

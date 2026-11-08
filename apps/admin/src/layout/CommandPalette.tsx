@@ -59,7 +59,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   // Mounted only while open (fresh state every time); the input takes focus on mount.
 
   // Pages and shortcuts the user can open.
-  const allowed = (i: NavItem) => (!i.permission || can(i.permission)) && (!i.platform || Boolean(me?.platformAdmin));
+  const allowed = (i: NavItem) => !i.permission || can(i.permission);
   const local = useMemo<Result[]>(() => {
     const words = normalizeSearch(q).split(/\s+/).filter(Boolean);
     if (!words.length) return [];

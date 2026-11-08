@@ -9,7 +9,7 @@ export const fmtDay = (d: string) => dayFmt.format(new Date(`${d}T12:00:00Z`));
 export const pct = (n: number) => `${n.toLocaleString("es-MX", { maximumFractionDigits: 1 })} %`;
 
 /** Vertical bars by day. `tip` is the tooltip text of each bar. */
-export function DayBars({ points, label, height = 160 }: { points: Array<{ date: string; value: number; tip: string }>; label: string; height?: number }) {
+export function DayBars({ points, label, height = 160, labelOf }: { points: Array<{ date: string; value: number; tip: string }>; label: string; height?: number; labelOf?: (date: string) => string }) {
   const max = Math.max(...points.map((p) => p.value), 1);
   const dense = points.length > 14;
   const every = points.length > 45 ? 7 : dense ? 3 : 1;
@@ -24,7 +24,7 @@ export function DayBars({ points, label, height = 160 }: { points: Array<{ date:
         ))}
       </div>
       <div className="nx-bars__labels" aria-hidden="true" style={dense ? { gap: 2 } : undefined}>
-        {points.map((p, i) => <span key={p.date}>{i % every === 0 ? fmtDay(p.date).replace(".", "") : ""}</span>)}
+        {points.map((p, i) => <span key={p.date}>{i % every === 0 ? (labelOf ? labelOf(p.date) : fmtDay(p.date).replace(".", "")) : ""}</span>)}
       </div>
     </figure>
   );

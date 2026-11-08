@@ -34,7 +34,7 @@ export interface ApiKey {
 }
 
 /** API paths a key may never use: people, money and the integrations themselves. */
-export const API_KEY_BLOCKED_PATHS = ["/api/users", "/api/billing", "/api/platform", "/api/notifications", "/api/integrations", "/api/pos/display", "/api/dev"];
+export const API_KEY_BLOCKED_PATHS = ["/api/users", "/api/billing", "/api/platform", "/api/notifications", "/api/integrations", "/api/pos/display", "/api/dev", "/api/support"];
 
 /* ---------- Webhooks ---------- */
 

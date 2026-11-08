@@ -28,7 +28,8 @@ export function HomePage() {
     return { settings, taxes, locations, users, summary, dashboard };
   }, [canUsers]);
 
-  const firstName = me?.user.name.split(" ")[0] ?? "";
+  // In support mode the greeting is for the operator, not "Soporte".
+  const firstName = (me?.support?.operatorName ?? me?.user.name ?? "").split(" ")[0] ?? "";
   const steps = data
     ? [
         { done: Boolean(data.settings.taxId && data.settings.address), text: "Completa los datos fiscales del negocio", to: "/configuracion" },

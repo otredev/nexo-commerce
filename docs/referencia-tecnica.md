@@ -5,7 +5,7 @@ Cómo está construido Nexo Commerce por dentro: datos, reglas, módulos, seguri
 ## Contenido
 
 - [Bases D1](#bases-d1) · [Reglas que no se rompen](#reglas-que-no-se-rompen) · [Inventario y Kardex](#inventario-y-kardex) · [Catálogo](#catálogo) · [Punto de venta](#punto-de-venta) · [Abastecimiento](#abastecimiento)
-- [Tienda en línea](#tienda-en-línea) · [Clientes, promociones y cuentas por pagar](#clientes-promociones-y-cuentas-por-pagar) · [SaaS](#saas-planes-stripe-dominios-y-plataforma) · [Políticas, buscadores e IA](#tienda-políticas-buscadores-e-ia-fase-7)
+- [Tienda en línea](#tienda-en-línea) · [Clientes, promociones y cuentas por pagar](#clientes-promociones-y-cuentas-por-pagar) · [SaaS](#saas-planes-stripe-dominios-y-plataforma) · [Administración de la plataforma](#administración-de-la-plataforma) · [Políticas, buscadores e IA](#tienda-políticas-buscadores-e-ia-fase-7)
 - [Pantalla del cliente y notificaciones](#operación-diaria-pantalla-del-cliente-y-notificaciones-fase-8) · [Apariencia](#apariencia-de-la-tienda-fase-9) · [Estadísticas](#estadísticas-de-la-tienda-fase-10) · [Integraciones](#integraciones-api-webhooks-y-asistentes-de-ia-fase-11)
 - [Seguridad](#seguridad) · [Respaldos](#respaldos) · [API](#api) · [Navegación del panel](#navegación-del-panel) · [Sistema de diseño](#sistema-de-diseño)
 
@@ -15,10 +15,10 @@ Cómo está construido Nexo Commerce por dentro: datos, reglas, módulos, seguri
 
 | Binding | Contenido |
 |---|---|
-| `DB_CONTROL` | Plataforma: `tenants` (plan, Stripe, estado), `users`, `memberships`, `sessions`, `password_resets`, `login_attempts`, `tenant_domains`, `stripe_events` |
+| `DB_CONTROL` | Plataforma: `tenants` (plan, Stripe, estado), `users`, `memberships`, `sessions`, `password_resets`, `login_attempts`, `tenant_domains`, `stripe_events`, y la administración: `platform_operators`, `platform_sessions`, `platform_audit`, `support_tickets`, `support_messages` |
 | `DB_TENANT_DEFAULT` (y `DB_TENANT_*`) | Datos de cada negocio: configuración, catálogo, inventario, ventas, compras, pedidos, clientes… **Todas las tablas llevan `tenant_id`.** |
 
-Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es la única forma de llegar a ella. Mover un negocio a otra D1 solo cambia ese valor (ver *Plataforma*).
+Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es la única forma de llegar a ella. Mover un negocio a otra D1 solo cambia ese valor (ver *Panel de administración*).
 
 ## Reglas que no se rompen
 
@@ -113,7 +113,18 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 
 **Dominios propios (Cloudflare for SaaS)**: el negocio escribe `tienda.sunegocio.com` en *Ajustes de la tienda*; la API crea el *custom hostname* en la zona de la plataforma y muestra los registros DNS (CNAME a `STORE_CNAME_TARGET` y los TXT de verificación). Un cron cada hora (y el botón «Comprobar ahora») revisa los pendientes. El Worker `apps/store/router` recibe esos dominios (ruta `*/*` de la zona) y los pasa a Pages con `x-nexo-host`; el middleware de la tienda resuelve el negocio (`GET /api/store-host/:hostname`, solo dominios activos) y la tienda vive en la raíz del dominio (`/p/:id`, `/pagar`…). Stripe regresa al mismo dominio desde el que se compró.
 
-**Plataforma** (`/plataforma`, solo correos en `PLATFORM_ADMINS`; para el resto la ruta no existe): lista de negocios con propietario, plan, estado y base de datos; uso y ventas de 30 días; plan de cortesía a mano; **suspender** (el panel muestra una pantalla con el motivo y solo deja abrir el portal de pago; la tienda se oculta; no se borra nada) y **mover a otra D1**: estado `migrating` (el panel responde 503 y muestra «Estamos moviendo tus datos»), copia tabla por tabla, verifica conteos, cambia `db_binding` y borra lo viejo; si algo falla, deshace la copia y el negocio sigue donde estaba. Cualquier binding `DB_TENANT_*` del entorno aparece como destino. Para negocios muy grandes conviene `wrangler d1 export`.
+**Panel de administración** (`/admin/`): es una aplicación aparte del panel de los negocios (`apps/admin/admin/index.html` → `dist/admin/index.html`, código en `apps/admin/src/platform/`, acento índigo y `noindex`). El Worker sirve ese HTML para cualquier ruta `/admin/*` (`run_worker_first`) y la API vive en `/api/platform`. Detalle en [Administración de la plataforma](#administración-de-la-plataforma).
+
+**Mover un negocio a otra D1** (desde `/admin/` → *Negocios*): estado `migrating` (el panel responde 503 y muestra «Estamos moviendo tus datos»), copia tabla por tabla, verifica conteos, cambia `db_binding` y borra lo viejo; si algo falla, deshace la copia y el negocio sigue donde estaba. Cualquier binding `DB_TENANT_*` del entorno aparece como destino. Para negocios muy grandes conviene `wrangler d1 export`. **Suspender** muestra al negocio una pantalla con el motivo y solo deja abrir el portal de pago; la tienda se oculta; no se borra nada.
+
+## Administración de la plataforma
+
+- **Operadores**: cuentas propias en `platform_operators`, sin negocio ni rol de negocio (todas con acceso completo al panel). Inician sesión en `POST /api/platform/auth/login` con la cookie `nx_platform` (`HttpOnly`, `SameSite=Strict`, 12 horas que se renuevan con el uso) y con el mismo bloqueo que los usuarios (5 intentos fallidos en 15 minutos). El primero se crea con `node scripts/crear-operador.mjs <local|staging|production>`, que calcula el hash igual que la API y lo guarda con `wrangler d1 execute` (si el correo ya existe, cambia la contraseña y lo reactiva). Los demás se crean, desactivan o reciben contraseña nueva desde *Operadores*; desactivar o cambiar la contraseña cierra sus sesiones al instante, incluidas las de soporte dentro de un negocio. `PLATFORM_ADMINS` ya no existe.
+- **Bitácora** (`platform_audit`): cada acción de un operador se guarda en el mismo lote que el cambio: inicios de sesión (y los fallidos contra una cuenta de operador), altas y cambios de operadores, plan, suspensión, mudanza de base, entrar a un negocio, acciones sobre usuarios y tickets. Se filtra por operador, tipo y negocio.
+- **Métricas** (`GET /api/platform/metrics`): negocios por estado y plan, altas por mes (12 meses), usuarios, ingreso mensual recurrente (planes de pago con suscripción activa o con pago pendiente; los planes puestos a mano cuentan como cortesía), y la actividad de 30 días (ventas en caja y pedidos por día, negocios con actividad, monto vendido **por moneda** —nunca se suman monedas distintas— y los más activos). La actividad se lee con una consulta por base de negocios, no una por negocio.
+- **Usuarios**: todas las cuentas con sus negocios y roles, último acceso (`users.last_login_at`) y si están bloqueadas por intentos. Acciones: enlace para cambiar la contraseña (vale una hora; se envía por correo y también se devuelve para copiarlo, útil mientras no hay correo configurado), desbloquear, cerrar todas sus sesiones y **desactivar** (`users.disabled_at`: no puede entrar a ningún negocio, sus sesiones terminan y «¿Olvidaste tu contraseña?» no le genera enlace).
+- **Soporte** (`support_tickets`, `support_messages`): los propietarios y administradores (`support:use`) abren tickets desde *Soporte* en su panel, con número consecutivo de la plataforma, tipo (pregunta, algo no funciona, plan y pagos, sugerencia) y, si quieren, **permiso para que soporte entre** a revisar. Estados: `open` (por responder), `waiting` (soporte respondió; el negocio ve un aviso en el menú) y `closed`; si el negocio escribe, vuelve a `open`. Los operadores responden (correo al negocio), dejan notas internas que el negocio nunca ve, asignan, cambian prioridad y cierran. Un negocio puede tener hasta 10 tickets abiertos.
+- **Entrar como negocio** (`POST /api/platform/tenants/:id/support-access`): crea una sesión del negocio **como su propietario** por 60 minutos con la cookie `nx_support`, que tiene prioridad sobre `nx_session` (la sesión propia del navegador no se toca). Pide un motivo salvo que venga de un ticket en el que el negocio dio permiso. Queda en la bitácora de la plataforma, en la *Actividad* del negocio (`support.access` con el motivo) y, si viene de un ticket, como nota en la conversación. Mientras dura, el panel muestra una franja «Modo soporte» con «Salir del modo soporte» (`POST /api/auth/support/exit`, que regresa al ticket o al negocio en `/admin`), todo lo que se haga queda a nombre de «Soporte Nexo · <operador>» y no se puede cambiar plan y pagos, usuarios, llaves e integraciones, notificaciones, contraseñas ni los tickets del negocio (`403 forbidden_for_support`).
 
 ## Tienda: políticas, buscadores e IA (Fase 7)
 
@@ -245,7 +256,14 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET /api/billing`, `GET /api/billing/connect` | `settings:read` |
 | `POST /api/billing/checkout` · `portal` · `connect` | `billing:write` (propietario) |
 | `GET/PUT/DELETE /api/store-settings/domain` | `settings:read` / `store:write` |
-| `GET /api/platform/tenants`, `GET/PATCH /api/platform/tenants/:id`, `POST …/:id/move` | `PLATFORM_ADMINS` |
+| `POST /api/platform/auth/login` · `logout` | público / operador |
+| `GET /api/platform/me` · `metrics` · `audit?operatorId=&tenantId=&entity=&page=`, `POST /api/platform/auth/password` | operador (cookie `nx_platform`) |
+| `GET /api/platform/tenants?q=&status=&plan=`, `GET/PATCH /api/platform/tenants/:id`, `POST …/:id/move` · `support-access` | operador |
+| `GET /api/platform/users?q=&status=&page=`, `GET/PATCH /api/platform/users/:id`, `POST …/:id/reset-link` · `unlock` · `logout-all` | operador |
+| `GET /api/platform/tickets?status=&assigned=&tenantId=&q=`, `GET/PATCH /api/platform/tickets/:id`, `POST …/:id/messages` | operador |
+| `GET/POST /api/platform/operators`, `PATCH /api/platform/operators/:id` | operador |
+| `GET/POST /api/support/tickets`, `GET/PATCH /api/support/tickets/:id`, `POST …/:id/messages` | `support:use` (nunca con llave de API ni en modo soporte) |
+| `POST /api/auth/support/exit` | sesión de soporte |
 | `GET /api/payables?status=&supplierId=`, `POST /api/payables/:receiptId/payments` | `payables:read` / `payables:write` |
 | `GET /api/reports/sales?from=&to=`, `GET /api/reports/inventory?days=` | `reports:read` |
 | `GET /api/notifications`, `POST /api/notifications/subscriptions`, `POST …/subscriptions/remove`, `DELETE …/subscriptions/:id`, `PUT …/prefs`, `POST …/test` | sesión (cada quien las suyas) |

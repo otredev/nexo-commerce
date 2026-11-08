@@ -726,3 +726,51 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-doc__filter { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: var(--space-6); padding: 10px 14px; border-radius: var(--radius-md); background: var(--surface-muted); font-size: 13px; }
 .nx-doc__filter button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; cursor: pointer; font: inherit; }
 .nx-doc__empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 64px 0; color: var(--ink-muted); text-align: center; }
+
+/* ---------- Support tickets (business panel and /admin) ---------- */
+.nx-strong { font-weight: 600; }
+.nx-backlink { display: inline-flex; align-items: center; gap: var(--space-1); align-self: flex-start; margin-bottom: calc(var(--space-6) * -1); color: var(--ink-muted); font-size: 13px; text-decoration: none; }
+.nx-backlink:hover { color: var(--ink); }
+.nx-backlink .nx-icon { width: 16px; height: 16px; }
+.nx-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.nx-list > li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.nx-list > li:first-child { border-top: 0; padding-top: 0; }
+.nx-list > li:last-child { padding-bottom: 0; }
+.nx-table--flush { margin: calc(var(--space-2) * -1) 0; }
+.nx-table--flush th:first-child, .nx-table--flush td:first-child { padding-left: 0; }
+.nx-table--flush th:last-child, .nx-table--flush td:last-child { padding-right: 0; }
+.nx-table-pad { padding: var(--space-4) var(--space-5); }
+.nx-table tr[data-unread] td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+.nx-toolbar-select { min-width: 180px; }
+.nx-table-toolbar .nx-toolbar-select .nx-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.nx-nav__button { border: 0; background: none; cursor: pointer; width: 100%; text-align: left; }
+
+.nx-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.nx-msg { max-width: min(640px, 88%); align-self: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); border-top-left-radius: var(--radius-sm); background: var(--surface); }
+.nx-msg[data-mine] { align-self: flex-end; background: var(--accent-soft); border-color: transparent; border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-sm); }
+.nx-msg[data-internal] { background: var(--warning-soft); border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); }
+.nx-msg__head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-1); font-size: 13px; }
+.nx-msg__head time { margin-left: auto; color: var(--ink-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.nx-msg__tag { font: 600 11px/16px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--warning); }
+.nx-msg__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.nx-thread__system { display: flex; align-items: baseline; justify-content: center; gap: var(--space-2); flex-wrap: wrap; text-align: center; color: var(--ink-muted); font-size: 12.5px; }
+.nx-thread__system time { font-variant-numeric: tabular-nums; }
+
+/* Support access: an operator is inside the business ("Entrar como negocio"). */
+.nx-support-banner { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--ink); color: var(--bg); font-size: 13px; }
+.nx-support-banner strong { font-weight: 600; }
+.nx-support-banner .nx-btn { height: 28px; }
+
+/* Platform log (/admin) */
+.nx-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.nx-log__item { padding: var(--space-3) 0; border-top: 1px solid var(--border); }
+.nx-log__item:first-child { border-top: 0; padding-top: 0; }
+.nx-log__item:last-child { padding-bottom: 0; }
+.nx-log__head { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; font-size: 13.5px; }
+.nx-log__head time { font-size: 12px; white-space: nowrap; }
+.nx-log__meta { margin-top: 2px; font-size: 12.5px; overflow-wrap: anywhere; }
+.nx-log__item[data-action="operator.login_failed"] .nx-log__head strong,
+.nx-log__item[data-action="tenant.support_access"] .nx-log__head strong { color: var(--warning); }
+.nx-ranking { margin: 0; padding: 0 0 0 1.4em; display: flex; flex-direction: column; gap: var(--space-2); }
+.nx-ranking li { padding-left: var(--space-1); }
+.nx-ranking li > span { display: block; font-size: 12.5px; }

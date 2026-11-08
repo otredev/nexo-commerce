@@ -23,6 +23,7 @@ const CONTEXT: Array<[RegExp, string]> = [
   [/^\/usuarios/, "usuarios"],
   [/^\/actividad/, "14-seguridad-y-actividad"],
   [/^\/reportes/, "reportes"],
+  [/^\/soporte/, "soporte-de-nexo"],
 ];
 export function helpLinkFor(pathname: string, search: string) {
   if (pathname === "/configuracion") {

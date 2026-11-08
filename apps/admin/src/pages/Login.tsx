@@ -16,7 +16,7 @@ export function LoginPage() {
   const { submit, pending, fields, message } = useSubmit(async () => {
     const me = await post<MeResponse>("/auth/login", { email, password });
     setMe(me);
-    // The full profile (plan, account status, platform access) comes from /me.
+    // The full profile (plan, account status, support access) comes from /me.
     await refresh();
     navigate((location.state as { from?: string } | null)?.from ?? "/", { replace: true });
   });

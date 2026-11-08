@@ -1,6 +1,6 @@
 import {
-  Activity, ArrowLeftRight, BarChart3, Bell, Boxes, Building2, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, LifeBuoy, MapPin, Monitor, Package, Palette,
-  PackagePlus, Percent, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, UserPlus, Users, Wallet, Warehouse,
+  Activity, ArrowLeftRight, BarChart3, Bell, Boxes, ClipboardCheck, ClipboardList, Contact, CreditCard, Globe, Home, KeyRound, Landmark, LifeBuoy, MapPin, Monitor, Package, Palette,
+  MessageCircleQuestionMark, PackagePlus, Percent, Receipt, Settings, ShoppingBag, ShoppingCart, Tags, Truck, UserPlus, Users, Wallet, Warehouse,
 } from "lucide-react";
 import type { Permission } from "@nexo/shared";
 
@@ -13,7 +13,6 @@ export interface NavItem {
   permission?: Permission;
   end?: boolean;
   badge?: "orders";
-  platform?: boolean;
   /** Extra words the Ctrl+K search matches (synonyms, what people type). */
   keywords?: string;
 }
@@ -71,10 +70,6 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
       { to: "/configuracion", label: "Configuración", icon: Settings, keywords: "ajustes negocio logotipo moneda zona horaria" },
     ],
   },
-  {
-    group: "Plataforma",
-    items: [{ to: "/plataforma", label: "Negocios", icon: Building2, platform: true, keywords: "plataforma tenants suspender clientes saas" }],
-  },
 ];
 
 /** Shortcuts that only live in the Ctrl+K search. */
@@ -87,7 +82,8 @@ export const ACTIONS: NavItem[] = [
   { to: "/configuracion?tab=impuestos", label: "Impuestos", icon: Percent, keywords: "iva tasas configuracion" },
   { to: "/configuracion?tab=ubicaciones", label: "Ubicaciones", icon: MapPin, keywords: "sucursales tiendas bodegas almacenes" },
   { to: "/configuracion?tab=plan", label: "Plan y facturación", icon: CreditCard, keywords: "suscripcion pagar plan pro negocio stripe" },
-  { to: "/ayuda", label: "Ayuda y manual de usuario", icon: LifeBuoy, keywords: "ayuda manual guia tutorial como se usa instrucciones documentacion docs soporte preguntas frecuentes" },
+  { to: "/ayuda", label: "Ayuda y manual de usuario", icon: LifeBuoy, keywords: "ayuda manual guia tutorial como se usa instrucciones documentacion docs preguntas frecuentes" },
+  { to: "/soporte", label: "Soporte: escribir a Nexo", icon: MessageCircleQuestionMark, permission: "support:use", keywords: "soporte ticket ayuda problema error falla contacto escribir nexo reportar" },
   { to: "/configuracion?tab=integraciones", label: "Integraciones: API, webhooks e IA", icon: KeyRound, permission: "integrations:manage", keywords: "api llave key token webhook mcp claude chatgpt ia inteligencia artificial zapier make n8n erp conectar integrar" },
   { to: "/configuracion?tab=notificaciones", label: "Notificaciones push", icon: Bell, keywords: "avisos alertas celular pedidos resumen diario dispositivo" },
   { to: "/pantalla", label: "Pantalla del cliente (tablet o TV)", icon: Monitor, permission: "pos:sell", keywords: "monitor segunda pantalla cliente display emparejar codigo" },

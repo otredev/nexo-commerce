@@ -48,7 +48,8 @@ import type { ReactNode } from "react";
 import { BlockedScreen } from "./pages/Blocked";
 const LocalDisplayPage = lazy(() => import("./pages/pos/Display").then((m) => ({ default: m.LocalDisplayPage })));
 const PairedDisplayPage = lazy(() => import("./pages/pos/Display").then((m) => ({ default: m.PairedDisplayPage })));
-const PlatformPage = lazy(() => import("./pages/Platform").then((m) => ({ default: m.PlatformPage })));
+const SupportPage = lazy(() => import("./pages/Support").then((m) => ({ default: m.SupportPage })));
+const SupportTicketPage = lazy(() => import("./pages/Support").then((m) => ({ default: m.SupportTicketPage })));
 
 function Protected({ children }: { children: ReactNode }) {
   const { me, ready } = useAuth();
@@ -121,7 +122,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="usuarios" element={<UsersPage />} />
               <Route path="configuracion" element={<SettingsPage />} />
               <Route path="actividad" element={<ActivityPage />} />
-              <Route path="plataforma" element={<PlatformPage />} />
+              <Route path="soporte" element={<SupportPage />} />
+              <Route path="soporte/:id" element={<SupportTicketPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

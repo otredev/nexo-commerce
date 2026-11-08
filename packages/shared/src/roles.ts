@@ -69,6 +69,8 @@ export const PERMISSIONS = {
   "payables:write": ["owner", "admin"],
   /** API keys, webhooks and AI assistants (Phase 11). */
   "integrations:manage": ["owner", "admin"],
+  /** Support tickets with the Nexo team. */
+  "support:use": ["owner", "admin"],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

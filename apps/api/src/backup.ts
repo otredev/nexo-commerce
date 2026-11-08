@@ -59,6 +59,7 @@ export async function cleanupControl(env: Env) {
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   await env.DB_CONTROL.batch([
     env.DB_CONTROL.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(now),
+    env.DB_CONTROL.prepare("DELETE FROM platform_sessions WHERE expires_at < ?").bind(now),
     env.DB_CONTROL.prepare("DELETE FROM password_resets WHERE expires_at < ?").bind(weekAgo),
     env.DB_CONTROL.prepare("DELETE FROM login_attempts WHERE created_at < ?").bind(weekAgo),
   ]);

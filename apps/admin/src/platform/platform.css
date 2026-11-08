@@ -1,0 +1,32 @@
+/*
+ * Nexo · Administración: same design system, its own accent (indigo) so nobody confuses
+ * the platform panel with a business's panel.
+ */
+:root[data-surface="admin"] {
+  --primary: #3b4a86;
+  --primary-hover: #323f73;
+  --primary-ink: #ffffff;
+  --accent-soft: #eceef8;
+  --accent-text: #34427a;
+  --focus: #3b4a8659;
+}
+:root[data-surface="admin"][data-theme="dark"] {
+  --primary: #9aa8e6;
+  --primary-hover: #aeb9ec;
+  --primary-ink: #141830;
+  --accent-soft: #1e2338;
+  --accent-text: #b0bcef;
+  --focus: #9aa8e666;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-surface="admin"]:not([data-theme="light"]) {
+    --primary: #9aa8e6;
+    --primary-hover: #aeb9ec;
+    --primary-ink: #141830;
+    --accent-soft: #1e2338;
+    --accent-text: #b0bcef;
+    --focus: #9aa8e666;
+  }
+}
+.nx-brand-dot--admin { border-radius: 2px; }
+.nx-admin-tag { align-self: center; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-text); font: 600 11px/16px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; }

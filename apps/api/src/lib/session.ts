@@ -7,6 +7,8 @@ import type { AppEnv, Env, TenantAuth } from "../env";
 import { randomToken, sha256Hex } from "./crypto";
 
 export const SESSION_COOKIE = "nx_session";
+/** Support access from /admin ("Entrar como negocio"): a short session that takes precedence over nx_session. */
+export const SUPPORT_COOKIE = "nx_support";
 const SESSION_DAYS = 30;
 /** Sessions are extended when less than this many days remain (sliding expiration). */
 const RENEW_WHEN_DAYS_LEFT = 15;
@@ -48,12 +50,47 @@ export interface LoadedSession {
   user: { id: string; name: string; email: string };
   tenant: TenantAuth;
   role: Role;
+  /** Opened by an operator from /admin: acts as the owner, logged under the operator's name. */
+  support?: { operatorId: string; operatorName: string; ticketId: string | null };
 }
 
-/** Resolves the cookie to a session with its user, tenant and active membership. */
+/** Creates the support session of an operator inside a business, as its owner. Returns its expiry. */
+export async function createSupportSession(c: Context, input: { userId: string; tenantId: string; operatorId: string; operatorName: string; ticketId: string | null; minutes: number }) {
+  const token = randomToken();
+  const expiresAt = new Date(Date.now() + input.minutes * 60_000);
+  const env = c.env as Env;
+  await controlDb(env.DB_CONTROL).insert(control.sessions).values({
+    id: await sha256Hex(token),
+    userId: input.userId,
+    tenantId: input.tenantId,
+    expiresAt: expiresAt.toISOString(),
+    userAgent: c.req.header("user-agent")?.slice(0, 300) ?? null,
+    operatorId: input.operatorId,
+    operatorName: input.operatorName,
+    ticketId: input.ticketId,
+  });
+  setCookie(c, SUPPORT_COOKIE, token, { httpOnly: true, secure: env.APP_ENV !== "development", sameSite: "Lax", path: "/", expires: expiresAt });
+  return expiresAt.toISOString();
+}
+
+export function clearSupportCookie(c: Context) {
+  deleteCookie(c, SUPPORT_COOKIE, { path: "/" });
+}
+
+/** Resolves the cookie to a session with its user, tenant and active membership (support access first). */
 export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | null> {
+  const support = getCookie(c, SUPPORT_COOKIE);
+  if (support) {
+    const loaded = await loadSessionToken(c, support, true);
+    if (loaded) return loaded;
+    clearSupportCookie(c);
+  }
   const token = getCookie(c, SESSION_COOKIE);
   if (!token) return null;
+  return loadSessionToken(c, token, false);
+}
+
+async function loadSessionToken(c: Context<AppEnv>, token: string, supportCookie: boolean): Promise<LoadedSession | null> {
   const id = await sha256Hex(token);
   const db = controlDb(c.env.DB_CONTROL);
   const nowIso = new Date().toISOString();
@@ -65,6 +102,10 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
       userName: control.users.name,
       userEmail: control.users.email,
       userDeleted: control.users.deletedAt,
+      userDisabled: control.users.disabledAt,
+      operatorId: control.sessions.operatorId,
+      operatorName: control.sessions.operatorName,
+      ticketId: control.sessions.ticketId,
       tenantId: control.tenants.id,
       tenantSlug: control.tenants.slug,
       tenantName: control.tenants.name,
@@ -87,9 +128,13 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
     .limit(1);
 
   if (!row || row.userDeleted || !row.active || row.tenantStatus === "provisioning") return null;
+  // A support session only works through its own cookie, and a normal one never through it.
+  if (Boolean(row.operatorId) !== supportCookie) return null;
+  // Disabled by the platform: no access (support can still enter to help).
+  if (row.userDisabled && !row.operatorId) return null;
 
-  // Sliding expiration.
-  if (new Date(row.expiresAt).getTime() - Date.now() < days(RENEW_WHEN_DAYS_LEFT)) {
+  // Sliding expiration (support sessions keep their short, fixed life).
+  if (!row.operatorId && new Date(row.expiresAt).getTime() - Date.now() < days(RENEW_WHEN_DAYS_LEFT)) {
     const expiresAt = new Date(Date.now() + days(SESSION_DAYS));
     await db.update(control.sessions).set({ expiresAt: expiresAt.toISOString() }).where(eq(control.sessions.id, id));
     writeCookie(c, token, expiresAt);
@@ -98,7 +143,9 @@ export async function loadSession(c: Context<AppEnv>): Promise<LoadedSession | n
   return {
     sessionId: row.sessionId,
     expiresAt: row.expiresAt,
-    user: { id: row.userId, name: row.userName, email: row.userEmail },
+    // Changes made by support are logged under the operator's name, never as the owner.
+    user: { id: row.userId, name: row.operatorId ? `Soporte Nexo · ${row.operatorName}` : row.userName, email: row.userEmail },
+    ...(row.operatorId ? { support: { operatorId: row.operatorId, operatorName: row.operatorName ?? "Soporte", ticketId: row.ticketId } } : {}),
     tenant: {
       id: row.tenantId, slug: row.tenantSlug, name: row.tenantName, dbBinding: row.dbBinding,
       status: row.tenantStatus, plan: effectivePlan(row.plan, row.planStatus), suspendedReason: row.suspendedReason,

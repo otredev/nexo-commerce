@@ -17,7 +17,7 @@ export function RegisterPage() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const me = await post<MeResponse>("/auth/register", { ...form, timezone });
     setMe(me);
-    // The full profile (plan, account status, platform access) comes from /me.
+    // The full profile (plan, account status, support access) comes from /me.
     await refresh();
     navigate("/", { replace: true });
   });

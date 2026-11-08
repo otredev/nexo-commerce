@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, Search } from "lucide-react";
+import { ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, MessageCircleQuestionMark, Search } from "lucide-react";
 import { helpLinkFor } from "../lib/helpLinks";
 import { NAV } from "./nav";
 import { CommandPalette, shortcutLabel } from "./CommandPalette";
-import { ROLE_LABELS } from "@nexo/shared";
+import { ROLE_LABELS, type MeResponse } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
-import { get } from "../lib/api";
+import { get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 
@@ -47,7 +47,8 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/usuarios$/, "Usuarios"],
   [/^\/actividad$/, "Actividad"],
   [/^\/configuracion$/, "Configuración"],
-  [/^\/plataforma$/, "Plataforma"],
+  [/^\/soporte\/.+/, "Ticket de soporte"],
+  [/^\/soporte$/, "Soporte"],
 ];
 const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? "";
 
@@ -110,7 +111,7 @@ export function AppLayout() {
           Nexo
         </a>
         {NAV.map((section, i) => {
-          const all = section.items.filter((item) => (!item.permission || can(item.permission)) && (!item.platform || me.platformAdmin));
+          const all = section.items.filter((item) => !item.permission || can(item.permission));
           if (!all.length) return null;
           const group = section.group;
           const isCollapsed = Boolean(group && collapsed[group]);
@@ -144,6 +145,13 @@ export function AppLayout() {
             <LifeBuoy className="nx-icon" aria-hidden="true" />
             Ayuda
           </NavLink>
+          {can("support:use") && (
+            <NavLink to="/soporte" className="nx-nav__item">
+              <MessageCircleQuestionMark className="nx-icon" aria-hidden="true" />
+              Soporte
+              {(me.supportWaiting ?? 0) > 0 && <span className="nx-nav__badge" aria-label={`${me.supportWaiting} respuestas de soporte`}>{me.supportWaiting}</span>}
+            </NavLink>
+          )}
           <button
             type="button"
             className="nx-nav__item"
@@ -159,6 +167,7 @@ export function AppLayout() {
         </div>
       </aside>
       <div className="nx-main">
+        {me.support && <SupportBanner info={me.support} tenant={me.tenant.name} />}
         <header className="nx-topbar">
           <div className="nx-topbar__left">
             <Button variant="ghost" size="sm" icon className="nx-mobile-only" aria-label="Abrir menú" onClick={() => setOpen((v) => !v)}>
@@ -191,6 +200,31 @@ export function AppLayout() {
         </main>
         {searchOpen && <CommandPalette open onClose={() => setSearchOpen(false)} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Shown while an operator is inside the business from /admin ("Entrar como negocio"): who, until when,
+ * and the way out. Everything done meanwhile is logged under the operator's name.
+ */
+function SupportBanner({ info, tenant }: { info: NonNullable<MeResponse["support"]>; tenant: string }) {
+  const [left, setLeft] = useState(() => new Date(info.expiresAt).getTime() - Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setLeft(new Date(info.expiresAt).getTime() - Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, [info.expiresAt]);
+  const exit = async () => {
+    const res = await post<{ redirect: string }>("/auth/support/exit").catch(() => ({ redirect: "/admin/" }));
+    window.location.href = res.redirect;
+  };
+  const minutes = Math.max(0, Math.ceil(left / 60_000));
+  return (
+    <div className="nx-support-banner" role="status">
+      <span>
+        <strong>Modo soporte</strong> · {info.operatorName} está viendo <strong>{tenant}</strong> como su propietario{info.ticketNumber ? ` (ticket #${info.ticketNumber})` : ""}. Todo queda en Actividad. {minutes > 0 ? `Quedan ${minutes} min.` : "La sesión terminó."}
+      </span>
+      <Button size="sm" onClick={() => void exit()}>Salir del modo soporte</Button>
     </div>
   );
 }

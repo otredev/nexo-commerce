@@ -39,7 +39,7 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 | **Tienda en línea** | Catálogo público con existencias reales, carrito, recoger en tienda o envío, pago al recibir, transferencia o tarjeta (Stripe), seguimiento del pedido, políticas con aceptación, SEO, sitemaps y `llms.txt`, dominio propio, temas, banners, barra de avisos y píxeles de anuncios. |
 | **Clientes y reportes** | Clientes con historial en caja y en línea, ventas y utilidad por periodo, inventario valorizado y estadísticas de la tienda con fuentes, campañas y embudo. |
 | **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
-| **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect), suspensión de cuentas y traslado de un negocio a otra base de datos. |
+| **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect) y un **panel de administración aparte** (`/admin`) para el equipo que opera Nexo: métricas e ingreso recurrente, negocios, usuarios, tickets de soporte, entrar a un negocio para ayudar (con permiso y registro) y bitácora de todo lo que hace el equipo. |
 | **Integraciones** | API REST con llaves por negocio, webhooks firmados con reintentos y servidor **MCP** para que Claude u otros asistentes consulten y operen el negocio, incluida la apariencia y el código de la tienda. |
 
 ## Cómo está hecho
@@ -47,12 +47,14 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 ```mermaid
 flowchart LR
   subgraph Navegador
-    P["Panel<br/>React + Vite"]
+    P["Panel del negocio<br/>React + Vite"]
+    A["Administración /admin<br/>React + Vite"]
     T["Tienda en línea<br/>React"]
   end
   DP["Dominios propios<br/>Worker router"] --> PG
   T --> PG["Cloudflare Pages<br/>tienda + SEO"]
   P -- "/api · /mcp" --> W
+  A -- "/api/platform" --> W
   PG -- "service binding" --> W
   W["API · Cloudflare Worker<br/>Hono + Drizzle"]
   W --> C[("D1 · control<br/>negocios, usuarios, sesiones")]
@@ -87,8 +89,9 @@ npm run dev                 # migra la base local y levanta la API, el panel y l
 | Panel | http://localhost:5173 |
 | API | http://localhost:8787 |
 | Tienda | http://localhost:5174/&lt;tu-negocio&gt; |
+| Administración de la plataforma | http://localhost:5173/admin/ |
 
-Abre el panel, crea tu negocio y activa la tienda en **Tienda en línea → Ajustes de la tienda**. En desarrollo, los correos (por ejemplo, recuperar la contraseña) se imprimen en la consola de la API.
+Abre el panel, crea tu negocio y activa la tienda en **Tienda en línea → Ajustes de la tienda**. Para el panel de administración, crea tu cuenta de operador con `node scripts/crear-operador.mjs local`. En desarrollo, los correos (por ejemplo, recuperar la contraseña) se imprimen en la consola de la API.
 
 ### Comandos
 
@@ -103,13 +106,14 @@ Abre el panel, crea tu negocio y activa la tienda en **Tienda en línea → Ajus
 | `npm run db:migrate:local` | Aplica las migraciones a la base local |
 | `npm run deploy:staging` · `deploy:production` | Compila, migra y publica en Cloudflare |
 | `node scripts/vapid-keys.mjs` | Genera las llaves de las notificaciones push |
+| `node scripts/crear-operador.mjs <entorno>` | Crea (o recupera) una cuenta del panel de administración |
 
 ## Estructura
 
 ```
 apps/
   api/        API (Cloudflare Worker con Hono). También sirve el panel compilado.
-  admin/      Panel de administración (React + Vite).
+  admin/      Panel del negocio (React + Vite) y, en src/platform, el panel de administración de la plataforma (/admin).
   store/      Tienda en línea (Cloudflare Pages) y el router de dominios propios.
 packages/
   db/         Esquema de Drizzle y migraciones de las dos bases D1.
@@ -121,8 +125,8 @@ docs/         Manual de usuario, referencia técnica y guía de despliegue.
 
 ## Calidad
 
-- **135 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
-- **12 suites de punta a punta** con **698 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma y el servidor MCP probado con el SDK oficial.
+- **141 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
+- **13 suites de punta a punta** con **790 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial y el panel de administración (operadores, tickets y entrar como negocio con sus límites).
 - GitHub Actions revisa tipos, ejecuta las pruebas y compila en cada pull request, y despliega a staging en cada push a `main`.
 
 ## Despliegue

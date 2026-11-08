@@ -7,7 +7,7 @@ import type { AppEnv } from "../env";
 import { hashPassword, newId, randomToken, sha256Hex, verifyPassword } from "../lib/crypto";
 import { sendEmail } from "../lib/email";
 import { AppError } from "../lib/errors";
-import { clearSessionCookie, createSession, destroySession, destroyUserSessions, loadSession } from "../lib/session";
+import { clearSessionCookie, clearSupportCookie, createSession, destroySession, destroyUserSessions, loadSession } from "../lib/session";
 import { getTenantDb, slugify } from "../lib/tenant";
 import { json } from "../lib/validate";
 import { requireAuth } from "../middleware/auth";
@@ -39,7 +39,7 @@ export const authRoutes = new Hono<AppEnv>()
     // 1. Control DB: tenant (provisioning), user and owner membership, atomically.
     await cdb.batch([
       cdb.insert(control.tenants).values({ id: tenantId, slug, name: input.businessName, dbBinding, status: "provisioning" }),
-      cdb.insert(control.users).values({ id: userId, email: input.email, name: input.ownerName, passwordHash }),
+      cdb.insert(control.users).values({ id: userId, email: input.email, name: input.ownerName, passwordHash, lastLoginAt: new Date().toISOString() }),
       cdb.insert(control.memberships).values({ tenantId, userId, role: "owner" }),
     ]);
 
@@ -92,6 +92,7 @@ export const authRoutes = new Hono<AppEnv>()
     const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
     await cdb.insert(control.loginAttempts).values({ email, ip, success: Boolean(user && ok) });
     if (!user || !ok) throw new AppError(401, "invalid_credentials", "Correo o contraseña incorrectos");
+    if (user.disabledAt) throw new AppError(403, "account_disabled", "Esta cuenta está desactivada. Escribe a soporte de Nexo si crees que es un error.");
 
     // Most recent active membership in an active business.
     const membership = await cdb
@@ -104,6 +105,7 @@ export const authRoutes = new Hono<AppEnv>()
     if (!membership) throw new AppError(403, "no_active_business", "Tu acceso a este negocio está desactivado. Habla con el administrador.");
 
     await createSession(c, user.id, membership.tenantId);
+    await cdb.update(control.users).set({ lastLoginAt: new Date().toISOString() }).where(eq(control.users.id, user.id));
     return c.json({
       user: { id: user.id, name: user.name, email: user.email },
       tenant: { id: membership.tenantId, slug: membership.slug, name: membership.tenantName },
@@ -114,8 +116,19 @@ export const authRoutes = new Hono<AppEnv>()
   .post("/logout", async (c) => {
     const session = await loadSession(c);
     if (session) await destroySession(c.env, session.sessionId);
-    clearSessionCookie(c);
+    // Leaving support access keeps the browser's own session (if any) untouched.
+    if (session?.support) clearSupportCookie(c);
+    else clearSessionCookie(c);
     return c.body(null, 204);
+  })
+
+  /** Ends support access ("Salir del modo soporte") and says where to go back in /admin. */
+  .post("/support/exit", async (c) => {
+    const session = await loadSession(c);
+    clearSupportCookie(c);
+    if (!session?.support) return c.json({ redirect: "/admin/" });
+    await destroySession(c.env, session.sessionId);
+    return c.json({ redirect: session.support.ticketId ? `/admin/soporte/${session.support.ticketId}` : `/admin/negocios/${session.tenant.id}` });
   })
 
   /** Always answers 204 so it cannot be used to discover which emails have an account. */
@@ -123,7 +136,7 @@ export const authRoutes = new Hono<AppEnv>()
     const { email } = c.req.valid("json");
     const cdb = controlDb(c.env.DB_CONTROL);
     const user = await cdb.select().from(control.users).where(and(eq(control.users.email, email), isNull(control.users.deletedAt))).get();
-    if (!user) return c.body(null, 204);
+    if (!user || user.disabledAt) return c.body(null, 204);
 
     const token = randomToken();
     await cdb.insert(control.passwordResets).values({

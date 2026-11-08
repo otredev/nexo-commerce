@@ -6,8 +6,10 @@ import type { CouponRule, PromotionRule } from "./promotions";
 /** Shapes returned by the API. Shared by the dashboard so both sides stay in sync. */
 
 export interface MeResponse {
-  /** Operator of the platform (can open the platform panel). */
-  platformAdmin?: boolean;
+  /** Set when support opened this session from /admin ("Entrar como negocio"). */
+  support?: import("./platform").SupportSessionInfo | null;
+  /** Support tickets of the business answered by support and not read yet (nav badge). */
+  supportWaiting?: number;
   user: { id: string; name: string; email: string };
   tenant: {
     id: string; slug: string; name: string;
@@ -933,11 +935,18 @@ export interface PlatformTenant {
   members: number;
   domains: string[];
   suspendedReason: string | null;
+  /** Support tickets not closed yet. */
+  openTickets: number;
 }
 
 export interface PlatformTenantDetail extends PlatformTenant {
   usage: { users: number; locations: number; products: number; sales30d: number; sales30dCents: number; orders30d: number };
+  currency: string;
   stripeCustomerId: string | null;
   stripeAccountId: string | null;
+  planPeriodEnd: string | null;
   availableBindings: string[];
+  people: Array<{ id: string; name: string; email: string; role: Role; active: boolean; disabled: boolean; lastLoginAt: string | null }>;
+  tickets: import("./platform").SupportTicket[];
+  log: import("./platform").PlatformAuditEntry[];
 }

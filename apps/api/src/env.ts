@@ -16,8 +16,6 @@ export interface Env {
   EMAIL_FROM?: string;
 
   /* ---------- Phase 6: SaaS (all optional: without them the feature reports "not configured") ---------- */
-  /** Comma-separated emails of the platform operators (super-admin panel). */
-  PLATFORM_ADMINS?: string;
   /** Stripe secret key (sk_live_… / sk_test_…). */
   STRIPE_SECRET_KEY?: string;
   /** Signing secret of the webhook endpoint for platform events (subscriptions). */
@@ -78,6 +76,8 @@ export interface AuthContext {
   d1: D1Database;
   /** Set when the request authenticated with an API key instead of a session (Phase 11). */
   apiKey?: { id: string; name: string; access: "read" | "full" | "pos"; readOnly: boolean };
+  /** Set when an operator entered the business from /admin (support access). */
+  support?: { operatorId: string; operatorName: string; ticketId: string | null };
 }
 
 export type AppEnv = {

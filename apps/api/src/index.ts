@@ -33,6 +33,8 @@ import { promotionRoutes } from "./routes/promotions";
 import { payableRoutes } from "./routes/payables";
 import { billingRoutes } from "./routes/billing";
 import { platformRoutes } from "./routes/platform";
+import { supportRoutes } from "./routes/support";
+import { hashPassword, newId } from "./lib/crypto";
 import { processStripeEvent, type StripeEvent } from "./lib/webhooks";
 import { verifyStripeSignature } from "./lib/stripe";
 import { refreshPendingDomains } from "./lib/domains";
@@ -76,7 +78,7 @@ const protectedApi = new Hono<AppEnv>()
   .route("/promotions", promotionRoutes)
   .route("/payables", payableRoutes)
   .route("/billing", billingRoutes)
-  .route("/platform", platformRoutes)
+  .route("/support", supportRoutes)
   .route("/notifications", notificationRoutes)
   .route("/integrations", integrationRoutes)
   .route("/pos/display", posDisplayRoutes);
@@ -142,7 +144,32 @@ const app = new Hono<AppEnv>()
     await controlDb(c.env.DB_CONTROL).update(control.tenants).set({ plan, planStatus: "active" }).where(eq(control.tenants.id, c.var.auth.tenant.id));
     return c.json({ plan });
   })
+  // Development only: create (or reset) a platform operator for the smoke tests and local work.
+  // In staging/production the first operator is created with `node scripts/crear-operador.mjs <env>`.
+  .post("/api/dev/operator", async (c) => {
+    if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
+    const { email, name, password } = (await c.req.json()) as { email: string; name: string; password: string };
+    const hash = await hashPassword(password);
+    await c.env.DB_CONTROL
+      .prepare("INSERT INTO platform_operators (id, email, name, password_hash) VALUES (?1, lower(?2), ?3, ?4) ON CONFLICT(email) DO UPDATE SET name = ?3, password_hash = ?4, active = 1")
+      .bind(newId(), email, name, hash)
+      .run();
+    return c.json({ ok: true });
+  })
+  // Platform administration (/admin panel): its own operator sign-in, separate from businesses.
+  .route("/api/platform", platformRoutes)
   .route("/api", protectedApi)
+  // The /admin panel is its own single-page app (dist/admin/index.html): every /admin/* route gets it.
+  .get("/admin", (c) => c.redirect("/admin/", 301))
+  .get("/admin/*", async (c) => {
+    const res = await c.env.ASSETS.fetch(new Request(new URL("/admin/", c.req.url), { headers: c.req.raw.headers }));
+    const out = new Response(res.body, res);
+    out.headers.set("X-Robots-Tag", "noindex, nofollow");
+    out.headers.set("X-Frame-Options", "DENY");
+    out.headers.set("Referrer-Policy", "same-origin");
+    out.headers.set("Cache-Control", "no-cache");
+    return out;
+  })
   // MCP server for AI assistants (Phase 11). Each tool calls this same API with the caller's key.
   .all("/mcp", (c) =>
     handleMcp(c, (token) => (method, path, body) =>

@@ -14,6 +14,7 @@ const ACTIONS: Record<string, string> = {
   "location.update": "Editó una ubicación",
   "user.create": "Creó un usuario",
   "user.update": "Editó un usuario",
+  "support.access": "Soporte de Nexo entró a la cuenta",
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ function summary(entry: AuditEntry) {
     return keys.length ? `Cambió ${keys.join(", ")}` : "";
   }
   if (after && typeof after.name === "string") return after.name;
+  if (entry.action === "support.access" && after && typeof after.reason === "string") return `Motivo: ${after.reason}`;
   return "";
 }
 
