@@ -34,7 +34,7 @@ import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatemen
 import { couponUseStatement, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { dailyProductUpsert, dailySalesUpsert, getSettings, loadSale, openSessionFor, sessionTotals } from "../lib/sales";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { variants, products, taxRates, stockLevels, saleItems, salePayments, saleReturns, saleReturnItems, sales, locations, customers } = tenant;
 
@@ -113,7 +113,7 @@ export const saleRoutes = new Hono<AppEnv>()
     if (priced.couponError) throw new AppError(422, "coupon_invalid", priced.couponError, { couponCode: priced.couponError });
     const totals = priced.totals;
     // The cashier's limit applies only to discounts given by hand, not to promotions or coupons.
-    if (priced.manualDiscountCents > 0 && !can(role, "discount:unlimited") && priced.manualDiscountCents * 10_000 > totals.subtotalCents * settings.cashierMaxDiscountBps) {
+    if (priced.manualDiscountCents > 0 && !allowed(c.var.auth, "discount:unlimited") && priced.manualDiscountCents * 10_000 > totals.subtotalCents * settings.cashierMaxDiscountBps) {
       throw new AppError(403, "discount_limit", `Tu descuento máximo es ${settings.cashierMaxDiscountBps / 100} % del subtotal. Pide autorización a un administrador.`);
     }
     // Customer record: its name and contact go on the receipt.

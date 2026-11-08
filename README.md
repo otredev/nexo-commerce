@@ -38,8 +38,8 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 | **Abastecimiento** | Proveedores, órdenes de compra con recepciones parciales, sugerencias de reorden y cuentas por pagar. |
 | **Tienda en línea** | Catálogo público con existencias reales, carrito, recoger en tienda o envío, pago al recibir, transferencia o tarjeta (Stripe), seguimiento del pedido, cuentas de clientes con «Mis pedidos» (pagar pide cuenta; navegar y el carrito no), políticas con aceptación, SEO, sitemaps y `llms.txt`, dominio propio, temas, banners, barra de avisos y píxeles de anuncios. |
 | **Clientes y reportes** | Clientes con historial en caja y en línea, ventas y utilidad por periodo, inventario valorizado y estadísticas de la tienda con fuentes, campañas y embudo. |
-| **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
-| **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect) y un **panel de administración aparte** (`/admin`) para el equipo que opera Nexo: métricas e ingreso recurrente, negocios, usuarios, tickets de soporte, entrar a un negocio para ayudar (con permiso y registro) y bitácora de todo lo que hace el equipo. |
+| **Operación** | Usuarios con roles (propietario, administrador, cajero) y **roles personalizados** con permisos por área, actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
+| **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect) y un **panel de administración aparte** (`/admin`) para el equipo que opera Nexo: métricas e ingreso recurrente, negocios, usuarios, tickets de soporte, entrar a un negocio para ayudar (con permiso y registro) y bitácora de todo lo que hace el equipo, con permisos por operador (soporte, solo lectura…). |
 | **Integraciones** | API REST con llaves por negocio, webhooks firmados con reintentos y servidor **MCP** para que Claude u otros asistentes consulten y operen el negocio, incluida la apariencia y el código de la tienda. |
 
 ## Cómo está hecho
@@ -125,8 +125,8 @@ docs/         Manual de usuario, referencia técnica y guía de despliegue.
 
 ## Calidad
 
-- **144 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
-- **14 suites de punta a punta** con **834 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial el panel de administración (operadores, tickets y entrar como negocio con sus límites) y las cuentas de clientes de la tienda (aislamiento entre tiendas, bloqueo y recuperación).
+- **149 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
+- **15 suites de punta a punta** con **889 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial el panel de administración (operadores, tickets y entrar como negocio con sus límites) las cuentas de clientes de la tienda (aislamiento entre tiendas, bloqueo y recuperación) y los permisos (roles personalizados sin escalar privilegios y permisos de operadores).
 - GitHub Actions revisa tipos, ejecuta las pruebas y compila en cada pull request, y despliega a staging en cada push a `main`.
 
 ## Despliegue

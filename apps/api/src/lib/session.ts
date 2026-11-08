@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { and, eq, gt } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
-import { effectivePlan, type Role } from "@nexo/shared";
+import { effectivePermissions, effectivePlan, ROLE_LABELS, type Permission, type Role } from "@nexo/shared";
 import type { AppEnv, Env, TenantAuth } from "../env";
 import { randomToken, sha256Hex } from "./crypto";
 
@@ -50,6 +50,9 @@ export interface LoadedSession {
   user: { id: string; name: string; email: string };
   tenant: TenantAuth;
   role: Role;
+  /** What this member can do: their custom role's permissions, or the built-in role's. */
+  permissions: Permission[];
+  roleName: string;
   /** Opened by an operator from /admin: acts as the owner, logged under the operator's name. */
   support?: { operatorId: string; operatorName: string; ticketId: string | null };
 }
@@ -116,6 +119,8 @@ async function loadSessionToken(c: Context<AppEnv>, token: string, supportCookie
       dbBinding: control.tenants.dbBinding,
       role: control.memberships.role,
       active: control.memberships.active,
+      customName: control.tenantRoles.name,
+      customPermissions: control.tenantRoles.permissions,
     })
     .from(control.sessions)
     .innerJoin(control.users, eq(control.users.id, control.sessions.userId))
@@ -124,6 +129,7 @@ async function loadSessionToken(c: Context<AppEnv>, token: string, supportCookie
       control.memberships,
       and(eq(control.memberships.userId, control.sessions.userId), eq(control.memberships.tenantId, control.sessions.tenantId)),
     )
+    .leftJoin(control.tenantRoles, and(eq(control.tenantRoles.id, control.memberships.roleId), eq(control.tenantRoles.tenantId, control.memberships.tenantId)))
     .where(and(eq(control.sessions.id, id), gt(control.sessions.expiresAt, nowIso)))
     .limit(1);
 
@@ -151,6 +157,9 @@ async function loadSessionToken(c: Context<AppEnv>, token: string, supportCookie
       status: row.tenantStatus, plan: effectivePlan(row.plan, row.planStatus), suspendedReason: row.suspendedReason,
     },
     role: row.role,
+    // Support access acts as the owner: everything (minus what requireAuth blocks for support).
+    permissions: effectivePermissions(row.role, row.customPermissions),
+    roleName: row.customName && row.role !== "owner" ? row.customName : ROLE_LABELS[row.role],
   };
 }
 

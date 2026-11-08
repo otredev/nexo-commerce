@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ROLES } from "./roles";
+import { ASSIGNABLE_PERMISSIONS, ROLES } from "./roles";
 import { REASON_CODES, UNIT_CODES } from "./catalog";
 import { PAYMENT_CODES } from "./sales";
 import { API_KEY_ACCESS_IDS, WEBHOOK_EVENT_TYPES, type ApiKeyAccess, type WebhookEventType } from "./integrations";
@@ -76,13 +76,27 @@ export const createUserSchema = z.object({
   name,
   email,
   role: z.enum(["admin", "cashier"]),
+  /** A custom role of the business (its permissions replace the built-in role's). */
+  roleId: z.string().max(40).nullable().default(null),
   password,
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const updateMemberSchema = z.object({
   role: z.enum(["admin", "cashier"]).optional(),
+  roleId: z.string().max(40).nullable().optional(),
   active: z.boolean().optional(),
+});
+
+/** A custom role: a name and the permissions it gives (unknown or owner-only ones are dropped). */
+export const customRoleSchema = z.object({
+  name: z.string().trim().min(2, "Escribe el nombre").max(40, "Máximo 40 caracteres"),
+  description: z.string().trim().max(200).nullable().default(null).transform((v) => (v ? v : null)),
+  permissions: z
+    .array(z.string())
+    .max(80)
+    .transform((v) => ASSIGNABLE_PERMISSIONS.filter((p) => v.includes(p)))
+    .refine((v) => v.length > 0, "Marca al menos un permiso"),
 });
 
 export const roleSchema = z.enum(ROLES);

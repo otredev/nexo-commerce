@@ -57,10 +57,12 @@ export const memberships = sqliteTable(
     tenantId: text("tenant_id").notNull().references(() => tenants.id),
     userId: text("user_id").notNull().references(() => users.id),
     role: text("role", { enum: ["owner", "admin", "cashier"] }).notNull(),
+    /** Custom role of the business (tenant_roles): its permissions replace the built-in role's. Never on the owner. */
+    roleId: text("role_id"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull().default(now),
   },
-  (t) => [primaryKey({ columns: [t.tenantId, t.userId] }), index("memberships_user_idx").on(t.userId)],
+  (t) => [primaryKey({ columns: [t.tenantId, t.userId] }), index("memberships_user_idx").on(t.userId), index("memberships_role_idx").on(t.tenantId, t.roleId)],
 );
 
 export const sessions = sqliteTable(
@@ -201,6 +203,8 @@ export const platformOperators = sqliteTable(
     name: text("name").notNull(),
     passwordHash: text("password_hash").notNull(),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
+    /** What they can do in /admin (PLATFORM_PERMISSIONS). ["*"] = everything. */
+    permissions: text("permissions", { mode: "json" }).$type<string[]>().notNull().default(sql`'["*"]'`),
     lastLoginAt: text("last_login_at"),
     createdAt: text("created_at").notNull().default(now),
   },
@@ -281,4 +285,22 @@ export const supportMessages = sqliteTable(
     createdAt: text("created_at").notNull().default(now),
   },
   (t) => [index("support_messages_ticket_idx").on(t.ticketId, t.createdAt)],
+);
+
+/**
+ * Roles a business creates for its people ("Encargado", "Almacenista"…). Kept with the memberships so a
+ * session resolves its permissions in the same query. Permissions are Permission ids from @nexo/shared.
+ */
+export const tenantRoles = sqliteTable(
+  "tenant_roles",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull().references(() => tenants.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    permissions: text("permissions", { mode: "json" }).$type<string[]>().notNull(),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("tenant_roles_name_uq").on(t.tenantId, t.name)],
 );

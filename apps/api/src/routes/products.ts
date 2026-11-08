@@ -35,7 +35,7 @@ import {
   validateReferences,
 } from "../lib/products";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { products, variants, stockLevels, taxRates, categories, brands } = tenant;
 
@@ -85,7 +85,7 @@ function productStatus(r: ListRow) {
 /** Loads a product with live variants and stock by location. */
 async function loadProduct(c: { var: AppEnv["Variables"] }, id: string): Promise<ProductDetail | null> {
   const { db, tenant: t, role } = c.var.auth;
-  const showCost = can(role, "costs:read");
+  const showCost = allowed(c.var.auth, "costs:read");
   const p = await db.select().from(products).where(and(eq(products.id, id), eq(products.tenantId, t.id), isNull(products.deletedAt))).get();
   if (!p) return null;
   const vs = await db.select().from(variants).where(and(eq(variants.productId, id), eq(variants.tenantId, t.id), isNull(variants.deletedAt))).orderBy(asc(variants.position));
@@ -143,7 +143,7 @@ export const productRoutes = new Hono<AppEnv>()
   .get("/", requirePermission("catalog:read"), async (c) => {
     const query = listQuery.parse(c.req.query());
     const { d1, tenant: t, role } = c.var.auth;
-    const showCost = can(role, "costs:read");
+    const showCost = allowed(c.var.auth, "costs:read");
     const params: unknown[] = [t.id, query.status];
     const where = ["p.tenant_id = ?1", "p.deleted_at IS NULL", "p.status = ?2"];
     const add = (sql: string, value: unknown) => {

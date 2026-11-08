@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ me, ready, refresh, setMe, logout, can: (p) => (me ? can(me.role, p) : false) }}>
+    <AuthContext.Provider value={{ me, ready, refresh, setMe, logout, can: (p) => (me ? (me.permissions ?? []).includes(p) || (!me.permissions && can(me.role, p)) : false) }}>
       {children}
     </AuthContext.Provider>
   );

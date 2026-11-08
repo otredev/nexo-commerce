@@ -7,6 +7,7 @@ import { createMiddleware } from "hono/factory";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { and, eq, gt } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
+import { operatorPermissions, type PlatformPermission } from "@nexo/shared";
 import type { AppEnv, Env } from "../env";
 import { newId, randomToken, sha256Hex } from "./crypto";
 import { AppError } from "./errors";
@@ -20,6 +21,7 @@ const hours = (n: number) => n * 3_600_000;
 export interface OperatorAuth {
   sessionId: string;
   operator: { id: string; name: string; email: string };
+  permissions: PlatformPermission[];
 }
 
 export type PlatformEnv = { Bindings: Env; Variables: AppEnv["Variables"] & { operator: OperatorAuth } };
@@ -47,7 +49,7 @@ export async function loadOperator(c: Context<PlatformEnv>): Promise<OperatorAut
   const id = await sha256Hex(token);
   const db = controlDb(c.env.DB_CONTROL);
   const row = await db
-    .select({ sessionId: control.platformSessions.id, expiresAt: control.platformSessions.expiresAt, id: control.platformOperators.id, name: control.platformOperators.name, email: control.platformOperators.email, active: control.platformOperators.active })
+    .select({ sessionId: control.platformSessions.id, expiresAt: control.platformSessions.expiresAt, id: control.platformOperators.id, name: control.platformOperators.name, email: control.platformOperators.email, active: control.platformOperators.active, permissions: control.platformOperators.permissions })
     .from(control.platformSessions)
     .innerJoin(control.platformOperators, eq(control.platformOperators.id, control.platformSessions.operatorId))
     .where(and(eq(control.platformSessions.id, id), gt(control.platformSessions.expiresAt, new Date().toISOString())))
@@ -58,7 +60,7 @@ export async function loadOperator(c: Context<PlatformEnv>): Promise<OperatorAut
     await db.update(control.platformSessions).set({ expiresAt: expiresAt.toISOString() }).where(eq(control.platformSessions.id, id));
     writeCookie(c, token, expiresAt, c.env.APP_ENV !== "development");
   }
-  return { sessionId: row.sessionId, operator: { id: row.id, name: row.name, email: row.email } };
+  return { sessionId: row.sessionId, operator: { id: row.id, name: row.name, email: row.email }, permissions: operatorPermissions(row.permissions) };
 }
 
 export function clearOperatorCookie(c: Context) {
@@ -71,6 +73,15 @@ export const requireOperator = createMiddleware<PlatformEnv>(async (c, next) => 
   c.set("operator", auth);
   await next();
 });
+
+/** The signed-in operator needs this permission (403 otherwise). */
+export const requireOp = (permission: PlatformPermission) =>
+  createMiddleware<PlatformEnv>(async (c, next) => {
+    if (!c.var.operator.permissions.includes(permission)) throw new AppError(403, "forbidden", "Tu cuenta de operador no tiene permiso para esto.");
+    await next();
+  });
+
+export const opCan = (c: { var: { operator: OperatorAuth } }, permission: PlatformPermission) => c.var.operator.permissions.includes(permission);
 
 export interface PlatformLogInput {
   action: string;

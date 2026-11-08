@@ -1,6 +1,6 @@
 /** Operator session of the /admin panel (cookie nx_platform). */
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import type { OperatorMe } from "@nexo/shared";
+import type { OperatorMe, PlatformPermission } from "@nexo/shared";
 import { get, post } from "../lib/api";
 
 interface OperatorState {
@@ -8,6 +8,7 @@ interface OperatorState {
   ready: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
+  can: (p: PlatformPermission) => boolean;
 }
 
 const Ctx = createContext<OperatorState | null>(null);
@@ -34,7 +35,8 @@ export function OperatorProvider({ children }: { children: ReactNode }) {
     await post("/platform/auth/logout").catch(() => {});
     setMe(null);
   }, []);
-  return <Ctx.Provider value={{ me, ready, refresh, logout }}>{children}</Ctx.Provider>;
+  const can = useCallback((p: PlatformPermission) => Boolean(me?.permissions.includes(p)), [me]);
+  return <Ctx.Provider value={{ me, ready, refresh, logout, can }}>{children}</Ctx.Provider>;
 }
 
 export function useOperator() {

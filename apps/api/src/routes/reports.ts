@@ -4,7 +4,7 @@ import { ANALYTICS_MAX_DAYS, businessDate, can, daysBetween, fromMilli, paymentL
 import { storeSales, storeTraffic } from "../lib/storeAnalytics";
 import type { AppEnv } from "../env";
 import { getSettings } from "../lib/sales";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const shiftDate = (date: string, days: number) => {
   const d = new Date(`${date}T12:00:00Z`);
@@ -61,7 +61,7 @@ export const reportRoutes = new Hono<AppEnv>()
       totalCents: net(td),
       avgTicketCents: td.count ? Math.round(td.total / td.count) : 0,
       // Profit without taxes: they are not income of the business.
-      grossProfitCents: can(role, "costs:read") ? net(td) - td.tax - td.cost : null,
+      grossProfitCents: allowed(c.var.auth, "costs:read") ? net(td) - td.tax - td.cost : null,
       yesterdayTotalCents: net(day(shiftDate(today, -1))),
       onlineCount: td.online_count,
       onlineTotalCents: td.online_total,
@@ -158,7 +158,7 @@ export const reportRoutes = new Hono<AppEnv>()
     if (query.to < query.from) return c.json({ error: { code: "validation_error", message: "El periodo termina antes de empezar" } }, 400);
     const { d1, tenant: t, role } = c.var.auth;
     const settings = await getSettings(c);
-    const showCost = can(role, "costs:read");
+    const showCost = allowed(c.var.auth, "costs:read");
     const { from, to } = query;
     const length = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
     const prevTo = shiftDate(from, -1);
@@ -282,7 +282,7 @@ export const reportRoutes = new Hono<AppEnv>()
   .get("/inventory", requirePermission("reports:read"), async (c) => {
     const { days } = z.object({ days: z.coerce.number().int().min(7).max(365).default(60) }).parse(c.req.query());
     const { d1, tenant: t, role } = c.var.auth;
-    if (!can(role, "costs:read")) return c.json({ error: { code: "forbidden", message: "No tienes permiso para esta acción" } }, 403);
+    if (!allowed(c.var.auth, "costs:read")) return c.json({ error: { code: "forbidden", message: "No tienes permiso para esta acción" } }, 403);
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
     const [valRes, staleRes] = await d1.batch([
       d1.prepare(`SELECT p.category_id, COALESCE(c.name, 'Sin categoría') AS name, SUM(sl.quantity) AS qty, SUM(sl.quantity * v.cost_cents) AS cost_milli, SUM(sl.quantity * v.price_cents) AS retail_milli

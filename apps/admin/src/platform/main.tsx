@@ -9,7 +9,7 @@ import { ToastProvider } from "@nexo/ui";
 import "@nexo/ui/styles.css";
 import "./platform.css";
 import { OperatorProvider, useOperator } from "./auth";
-import { PlatformLayout } from "./Layout";
+import { NAV, PlatformLayout } from "./Layout";
 import { LoginPage } from "./pages/Login";
 import { DashboardPage } from "./pages/Dashboard";
 const TenantsPage = lazy(() => import("./pages/Tenants").then((m) => ({ default: m.TenantsPage })));
@@ -31,6 +31,14 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Inicio needs the metrics; without them, the first section this operator can open. */
+function Home() {
+  const { can } = useOperator();
+  if (can("metrics:read")) return <DashboardPage />;
+  const first = NAV.find((n) => n.to !== "/" && (!n.permission || can(n.permission)));
+  return <Navigate to={first?.to ?? "/operadores"} replace />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/admin">
@@ -40,7 +48,7 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="/ingresar" element={<LoginPage />} />
               <Route element={<Protected><PlatformLayout /></Protected>}>
-                <Route index element={<DashboardPage />} />
+                <Route index element={<Home />} />
                 <Route path="negocios" element={<TenantsPage />} />
                 <Route path="negocios/:id" element={<TenantDetailPage />} />
                 <Route path="usuarios" element={<UsersPage />} />

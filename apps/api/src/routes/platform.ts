@@ -8,14 +8,14 @@ import { and, count, desc, eq, gt, inArray, isNull, like, or, sql } from "drizzl
 import { z } from "zod";
 import { control, controlDb, tenant as tenantSchema } from "@nexo/db";
 import {
-  effectivePlan, moveTenantSchema, operatorCreateSchema, operatorLoginSchema, operatorPasswordSchema, operatorUpdateSchema, PLANS, platformTenantUpdateSchema,
+  effectivePlan, moveTenantSchema, operatorCreateSchema, operatorPermissions, PLATFORM_PERMISSIONS, operatorLoginSchema, operatorPasswordSchema, operatorUpdateSchema, PLANS, platformTenantUpdateSchema,
   SUPPORT_ACCESS_MINUTES, supportAccessSchema, type OperatorMe, type PlatformAuditEntry, type PlatformOperator, type PlatformTenant, type PlatformTenantDetail,
 } from "@nexo/shared";
 import type { Env } from "../env";
 import { hashPassword, newId, verifyPassword } from "../lib/crypto";
 import { AppError } from "../lib/errors";
 import { moveTenant, tenantBindings } from "../lib/moveTenant";
-import { clearOperatorCookie, createOperatorSession, inSlices, loadOperator, platformLogEntry, requireOperator, type PlatformEnv } from "../lib/operator";
+import { clearOperatorCookie, createOperatorSession, inSlices, loadOperator, opCan, platformLogEntry, requireOp, requireOperator, type PlatformEnv } from "../lib/operator";
 import { platformMetrics } from "../lib/platformMetrics";
 import { usageOf } from "../lib/plan";
 import { createSupportSession } from "../lib/session";
@@ -118,9 +118,10 @@ async function detail(env: Env, id: string): Promise<PlatformTenantDetail> {
   }
   const [members, tickets, log] = await Promise.all([
     cdb
-      .select({ id: control.users.id, name: control.users.name, email: control.users.email, role: control.memberships.role, active: control.memberships.active, disabledAt: control.users.disabledAt, lastLoginAt: control.users.lastLoginAt })
+      .select({ id: control.users.id, name: control.users.name, email: control.users.email, role: control.memberships.role, roleName: control.tenantRoles.name, active: control.memberships.active, disabledAt: control.users.disabledAt, lastLoginAt: control.users.lastLoginAt })
       .from(control.memberships)
       .innerJoin(control.users, eq(control.users.id, control.memberships.userId))
+      .leftJoin(control.tenantRoles, eq(control.tenantRoles.id, control.memberships.roleId))
       .where(and(eq(control.memberships.tenantId, id), isNull(control.users.deletedAt))),
     cdb.select().from(control.supportTickets).where(eq(control.supportTickets.tenantId, id)).orderBy(desc(control.supportTickets.lastMessageAt)).limit(10),
     auditList(env, { tenantId: id, limit: 10 }),
@@ -134,7 +135,7 @@ async function detail(env: Env, id: string): Promise<PlatformTenantDetail> {
     stripeAccountId: row.stripeAccountId,
     planPeriodEnd: row.planPeriodEnd,
     availableBindings: tenantBindings(env),
-    people: members.sort((a, b) => order[a.role] - order[b.role]).map((m) => ({ ...m, disabled: Boolean(m.disabledAt) })),
+    people: members.sort((a, b) => order[a.role] - order[b.role]).map((m) => ({ ...m, roleName: m.roleName ?? null, disabled: Boolean(m.disabledAt) })),
     tickets: tickets.map((t) => toTicket(t)),
     log,
   };
@@ -166,26 +167,29 @@ async function auditList(env: Env, q: { operatorId?: string; tenantId?: string; 
 
 /* ---------------- Operators ---------------- */
 
-const toOperator = (o: typeof control.platformOperators.$inferSelect): PlatformOperator => ({ id: o.id, email: o.email, name: o.name, active: o.active, lastLoginAt: o.lastLoginAt, createdAt: o.createdAt });
+const toOperator = (o: typeof control.platformOperators.$inferSelect): PlatformOperator => ({
+  id: o.id, email: o.email, name: o.name, active: o.active, permissions: operatorPermissions(o.permissions), lastLoginAt: o.lastLoginAt, createdAt: o.createdAt,
+});
+const permissionsLabel = (p: readonly string[]) => (p.length === PLATFORM_PERMISSIONS.length ? "acceso completo" : `${p.length} permisos`);
 
 const operatorRoutes = new Hono<PlatformEnv>()
   .get("/", async (c) => {
     const rows = await controlDb(c.env.DB_CONTROL).select().from(control.platformOperators).orderBy(desc(control.platformOperators.active), control.platformOperators.name);
     return c.json({ items: rows.map(toOperator) });
   })
-  .post("/", json(operatorCreateSchema), async (c) => {
+  .post("/", requireOp("operators:manage"), json(operatorCreateSchema), async (c) => {
     const input = c.req.valid("json");
     const cdb = controlDb(c.env.DB_CONTROL);
     const taken = await cdb.select({ id: control.platformOperators.id }).from(control.platformOperators).where(eq(control.platformOperators.email, input.email)).get();
     if (taken) throw new AppError(409, "email_taken", "Ya existe un operador con este correo", { email: "Ya existe un operador con este correo" });
     const id = newId();
     await cdb.batch([
-      cdb.insert(control.platformOperators).values({ id, email: input.email, name: input.name, passwordHash: await hashPassword(input.password) }),
-      platformLogEntry(c, { action: "operator.create", entity: "operator", entityId: id, summary: `${input.name} (${input.email})` }),
+      cdb.insert(control.platformOperators).values({ id, email: input.email, name: input.name, passwordHash: await hashPassword(input.password), permissions: input.permissions ?? ["*"] }),
+      platformLogEntry(c, { action: "operator.create", entity: "operator", entityId: id, summary: `${input.name} (${input.email}) · ${permissionsLabel(input.permissions ?? PLATFORM_PERMISSIONS)}` }),
     ]);
     return c.json(toOperator((await cdb.select().from(control.platformOperators).where(eq(control.platformOperators.id, id)).get())!), 201);
   })
-  .patch("/:id", json(operatorUpdateSchema), async (c) => {
+  .patch("/:id", requireOp("operators:manage"), json(operatorUpdateSchema), async (c) => {
     const input = c.req.valid("json");
     const id = c.req.param("id");
     const cdb = controlDb(c.env.DB_CONTROL);
@@ -193,16 +197,21 @@ const operatorRoutes = new Hono<PlatformEnv>()
     if (!row) throw new AppError(404, "not_found", "Operador no encontrado");
     if (input.active === false && id === c.var.operator.operator.id) throw new AppError(409, "self_disable", "No puedes desactivar tu propia cuenta.");
     if (input.password && id === c.var.operator.operator.id) throw new AppError(409, "own_password", "Cambia tu propia contraseña desde «Mi cuenta» (pide la actual).");
+    if (input.permissions && id === c.var.operator.operator.id && !input.permissions.includes("operators:manage")) {
+      throw new AppError(409, "self_lockout", "No puedes quitarte el permiso de administrar operadores: pídeselo a otro operador.");
+    }
     const set = {
       ...(input.active !== undefined && { active: input.active }),
       ...(input.name && { name: input.name }),
       ...(input.password && { passwordHash: await hashPassword(input.password) }),
+      ...(input.permissions && { permissions: input.permissions.length === PLATFORM_PERMISSIONS.length ? ["*"] : input.permissions }),
     };
     if (!Object.keys(set).length) return c.json(toOperator(row));
     const summary = [
       input.name && input.name !== row.name ? `Nombre: ${row.name} → ${input.name}` : null,
       input.active !== undefined && input.active !== row.active ? (input.active ? "Reactivado" : "Desactivado") : null,
       input.password ? "Contraseña nueva" : null,
+      input.permissions ? `Permisos: ${permissionsLabel(input.permissions)}` : null,
     ].filter(Boolean).join(" · ");
     const signOut = input.active === false || Boolean(input.password);
     await cdb.batch([
@@ -218,6 +227,7 @@ const operatorRoutes = new Hono<PlatformEnv>()
 /* ---------------- Businesses: routes ---------------- */
 
 const tenantRoutes = new Hono<PlatformEnv>()
+  .use("*", requireOp("tenants:read"))
   .get("/", async (c) => {
     const q = listQuery.parse(c.req.query());
     const t = control.tenants;
@@ -233,10 +243,14 @@ const tenantRoutes = new Hono<PlatformEnv>()
     return c.json({ items: await decorate(c.env, rows), totals: { total: totals?.total ?? 0, active: totals?.active ?? 0, suspended: totals?.suspended ?? 0, paying: totals?.paying ?? 0 } });
   })
 
-  .get("/:id", async (c) => c.json(await detail(c.env, c.req.param("id"))))
+  .get("/:id", async (c) => {
+    const d = await detail(c.env, c.req.param("id"));
+    // Tickets and the log only for whoever may read them.
+    return c.json({ ...d, tickets: opCan(c, "support:read") ? d.tickets : [], log: opCan(c, "audit:read") ? d.log : [] });
+  })
 
   /** Suspend / reactivate, and set the plan by hand (courtesy plans, agreements outside Stripe). */
-  .patch("/:id", json(platformTenantUpdateSchema), async (c) => {
+  .patch("/:id", requireOp("tenants:manage"), json(platformTenantUpdateSchema), async (c) => {
     const input = c.req.valid("json");
     const id = c.req.param("id");
     const db = controlDb(c.env.DB_CONTROL);
@@ -262,7 +276,7 @@ const tenantRoutes = new Hono<PlatformEnv>()
   })
 
   /** Moves the business to another D1 binding. */
-  .post("/:id/move", json(moveTenantSchema), async (c) => {
+  .post("/:id/move", requireOp("tenants:move"), json(moveTenantSchema), async (c) => {
     const { binding } = c.req.valid("json");
     const id = c.req.param("id");
     const before = await tenantRow(c.env, id);
@@ -276,7 +290,7 @@ const tenantRoutes = new Hono<PlatformEnv>()
    * "Entrar como negocio": a short session inside the business as its owner, logged under the operator's
    * name everywhere (platform log, the business's activity and, from a ticket, the conversation).
    */
-  .post("/:id/support-access", json(supportAccessSchema), async (c) => {
+  .post("/:id/support-access", requireOp("tenants:enter"), json(supportAccessSchema), async (c) => {
     const id = c.req.param("id");
     const { reason, ticketId } = c.req.valid("json");
     const op = c.var.operator.operator;
@@ -315,7 +329,7 @@ const privateRoutes = new Hono<PlatformEnv>()
   .use("*", requireOperator)
   .get("/me", async (c) => {
     const [open] = await controlDb(c.env.DB_CONTROL).select({ n: count() }).from(control.supportTickets).where(eq(control.supportTickets.status, "open"));
-    const body: OperatorMe = { operator: c.var.operator.operator, openTickets: open?.n ?? 0 };
+    const body: OperatorMe = { operator: c.var.operator.operator, permissions: c.var.operator.permissions, openTickets: opCan(c, "support:read") ? (open?.n ?? 0) : 0 };
     return c.json(body);
   })
   .post("/auth/password", json(operatorPasswordSchema), async (c) => {
@@ -332,8 +346,8 @@ const privateRoutes = new Hono<PlatformEnv>()
     ]);
     return c.body(null, 204);
   })
-  .get("/metrics", async (c) => c.json(await platformMetrics(c.env)))
-  .get("/audit", async (c) => {
+  .get("/metrics", requireOp("metrics:read"), async (c) => c.json(await platformMetrics(c.env)))
+  .get("/audit", requireOp("audit:read"), async (c) => {
     const q = auditQuery.parse(c.req.query());
     const a = control.platformAudit;
     const where = and(q.operatorId ? eq(a.operatorId, q.operatorId) : undefined, q.tenantId ? eq(a.tenantId, q.tenantId) : undefined, q.entity ? eq(a.entity, q.entity) : undefined);

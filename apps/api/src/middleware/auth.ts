@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { API_KEY_BLOCKED_PATHS, can, type Permission } from "@nexo/shared";
+import { API_KEY_BLOCKED_PATHS, type Permission } from "@nexo/shared";
 import type { AppEnv } from "../env";
 import { AppError, forbidden, unauthorized } from "../lib/errors";
 import { loadSession, type LoadedSession } from "../lib/session";
@@ -44,7 +44,10 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 
 export const requirePermission = (permission: Permission) =>
   createMiddleware<AppEnv>(async (c, next) => {
-    if (!can(c.var.auth.role, permission)) throw forbidden();
+    if (!allowed(c.var.auth, permission)) throw forbidden();
     await next();
   });
 
+
+/** Whether the signed-in member (or API key) has a permission. */
+export const allowed = (auth: { permissions: readonly Permission[] }, permission: Permission) => auth.permissions.includes(permission);

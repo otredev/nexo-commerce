@@ -150,11 +150,12 @@ const app = new Hono<AppEnv>()
   // In staging/production the first operator is created with `node scripts/crear-operador.mjs <env>`.
   .post("/api/dev/operator", async (c) => {
     if (c.env.APP_ENV !== "development") return c.json({ error: { code: "not_found", message: "Ruta no encontrada" } }, 404);
-    const { email, name, password } = (await c.req.json()) as { email: string; name: string; password: string };
+    const { email, name, password, permissions } = (await c.req.json()) as { email: string; name: string; password: string; permissions?: string[] };
     const hash = await hashPassword(password);
+    const perms = JSON.stringify(permissions ?? ["*"]);
     await c.env.DB_CONTROL
-      .prepare("INSERT INTO platform_operators (id, email, name, password_hash) VALUES (?1, lower(?2), ?3, ?4) ON CONFLICT(email) DO UPDATE SET name = ?3, password_hash = ?4, active = 1")
-      .bind(newId(), email, name, hash)
+      .prepare("INSERT INTO platform_operators (id, email, name, password_hash, permissions) VALUES (?1, lower(?2), ?3, ?4, ?5) ON CONFLICT(email) DO UPDATE SET name = ?3, password_hash = ?4, permissions = ?5, active = 1")
+      .bind(newId(), email, name, hash, perms)
       .run();
     return c.json({ ok: true });
   })

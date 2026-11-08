@@ -15,7 +15,7 @@ import { PriorityBadge, TicketStatusBadge } from "./Tickets";
 export function TicketDetailPage() {
   const { id = "" } = useParams();
   const toast = useToast();
-  const { me, refresh } = useOperator();
+  const { me, refresh, can } = useOperator();
   const { data: t, error, setData } = useLoad(() => get<SupportTicketDetail>(`/platform/tickets/${id}`), [id]);
   const ops = useLoad(() => get<{ items: PlatformOperator[] }>("/platform/operators"), []);
   const [body, setBody] = useState("");
@@ -52,7 +52,7 @@ export function TicketDetailPage() {
         title={`#${t.number} · ${t.subject}`}
         description={<span className="nx-row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}><TicketStatusBadge status={t.status} /><PriorityBadge priority={t.priority} /><span className="nx-muted">{TICKET_CATEGORY_LABELS[t.category]} · abierto el {fmtDateTime(t.createdAt)}</span></span>}
         actions={
-          t.tenant && (
+          t.tenant && can("tenants:enter") && can("tenants:read") && (
             <Button onClick={() => void openEnter.submit()} loading={openEnter.pending} disabled={t.tenant.status !== "active"}>
               <LogIn className="nx-icon" aria-hidden="true" />Entrar como negocio
             </Button>
@@ -65,7 +65,7 @@ export function TicketDetailPage() {
           <Card>
             <SupportThread messages={t.thread} viewer="operator" />
           </Card>
-          <Card title={internal ? "Nota interna" : "Responder"} description={internal ? "Solo la ve el equipo de Nexo." : `Le llega un correo a ${t.createdByName} (${t.createdByEmail}) y el ticket pasa a «Esperando al negocio».`}>
+          {can("support:reply") && <Card title={internal ? "Nota interna" : "Responder"} description={internal ? "Solo la ve el equipo de Nexo." : `Le llega un correo a ${t.createdByName} (${t.createdByEmail}) y el ticket pasa a «Esperando al negocio».`}>
             <form className="nx-stack" onSubmit={onSubmit} noValidate>
               {reply.message && <Alert tone="danger">{reply.message}</Alert>}
               <TextAreaField label={internal ? "Nota" : "Mensaje"} rows={5} value={body} onChange={(e) => setBody(e.target.value)} error={reply.fields.body} placeholder={internal ? "Contexto para el equipo…" : "Hola, ya revisamos…"} />
@@ -74,7 +74,7 @@ export function TicketDetailPage() {
                 <Button type="submit" variant="primary" loading={reply.pending} disabled={!body.trim()}>{internal ? "Guardar nota" : "Enviar respuesta"}</Button>
               </div>
             </form>
-          </Card>
+          </Card>}
         </div>
         <div className="nx-stack" style={{ gap: 16 }}>
           <Card title="Negocio">
@@ -88,7 +88,7 @@ export function TicketDetailPage() {
               </dl>
             ) : <p className="nx-muted" style={{ margin: 0 }}>—</p>}
           </Card>
-          <Card title="Gestión">
+          {can("support:reply") && <Card title="Gestión">
             <div className="nx-stack" style={{ gap: 12 }}>
               <SelectField label="Asignado a" value={t.assignedTo?.id ?? ""} onChange={(e) => void update.submit({ assignedTo: e.target.value || null }, e.target.value ? "Ticket asignado" : "Ticket sin asignar")}>
                 <option value="">Sin asignar</option>
@@ -105,7 +105,7 @@ export function TicketDetailPage() {
               </div>
               <p className="nx-help" style={{ margin: 0 }}>Si el negocio responde un ticket cerrado, se vuelve a abrir solo.</p>
             </div>
-          </Card>
+          </Card>}
         </div>
       </div>
       {enter && <EnterModal tenant={enter} open onClose={() => setEnter(null)} ticketId={t.id} />}

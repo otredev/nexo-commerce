@@ -26,7 +26,7 @@ import { AppError, notFound } from "../lib/errors";
 import { isStockCheckError, movementStatements } from "../lib/inventory";
 import { lookupVariants } from "../lib/lookup";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { variants, products, locations, stockLevels } = tenant;
 
@@ -58,7 +58,7 @@ export const inventoryRoutes = new Hono<AppEnv>()
   .get("/", requirePermission("inventory:read"), async (c) => {
     const query = listQuery.parse(c.req.query());
     const { d1, tenant: t, role } = c.var.auth;
-    const showCost = can(role, "costs:read");
+    const showCost = allowed(c.var.auth, "costs:read");
     const params: unknown[] = [t.id];
     const add = (value: unknown) => { params.push(value); return `?${params.length}`; };
     const stockFilter = query.locationId ? `AND location_id = ${add(query.locationId)}` : "";
@@ -109,7 +109,7 @@ export const inventoryRoutes = new Hono<AppEnv>()
       .object({ locationId: z.string().min(1).max(40), q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(50).default(20) })
       .parse(c.req.query());
     const { d1, tenant: t, role } = c.var.auth;
-    return c.json(await lookupVariants(d1, t.id, { ...query, showCost: can(role, "costs:read") }));
+    return c.json(await lookupVariants(d1, t.id, { ...query, showCost: allowed(c.var.auth, "costs:read") }));
   })
 
   /* ---------- Dashboard numbers ---------- */
@@ -134,7 +134,7 @@ export const inventoryRoutes = new Hono<AppEnv>()
       variants: row?.variants ?? 0,
       lowStock: row?.low ?? 0,
       outOfStock: row?.out_of_stock ?? 0,
-      inventoryValueCents: can(role, "costs:read") ? Math.round((row?.value_milli ?? 0) / 1000) : null,
+      inventoryValueCents: allowed(c.var.auth, "costs:read") ? Math.round((row?.value_milli ?? 0) / 1000) : null,
     };
     return c.json(body);
   })
@@ -190,7 +190,7 @@ export const inventoryRoutes = new Hono<AppEnv>()
   .get("/movements", requirePermission("inventory:read"), async (c) => {
     const query = movementsQuery.parse(c.req.query());
     const { d1, tenant: t, role } = c.var.auth;
-    const showCost = can(role, "costs:read");
+    const showCost = allowed(c.var.auth, "costs:read");
     const params: unknown[] = [t.id];
     const add = (value: unknown) => { params.push(value); return `?${params.length}`; };
     const where = ["m.tenant_id = ?1"];

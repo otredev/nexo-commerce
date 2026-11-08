@@ -24,7 +24,7 @@ import { isTransitionError, toStatement, transitionStatement } from "../lib/inve
 import { cancelStatements, loadOrderRows, orderLabel, sendOrderEmail, toOrderItem, trackingUrl, type OrderEmail, type OrderRow } from "../lib/orders";
 import { dailyProductUpsert, dailySalesUpsert, getSettings, openSessionFor } from "../lib/sales";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { locations } = tenant;
 
@@ -58,7 +58,7 @@ async function loadDetail(c: Context<AppEnv>, id: string): Promise<OrderDetail> 
     taxCents: o.taxCents,
     shippingCents: o.shippingCents,
     totalCents: o.totalCents,
-    costCents: can(role, "costs:read") ? o.costCents : null,
+    costCents: allowed(c.var.auth, "costs:read") ? o.costCents : null,
     locationId: o.locationId,
     locationName: location?.name ?? "—",
     paidMethod: o.paidMethod,

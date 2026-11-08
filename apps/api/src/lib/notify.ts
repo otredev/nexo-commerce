@@ -5,7 +5,7 @@
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
-import { can, formatMoney, NOTIFICATION_EVENTS, type NotificationEvent, type Role } from "@nexo/shared";
+import { effectivePermissions, formatMoney, NOTIFICATION_EVENTS, type NotificationEvent, type Permission } from "@nexo/shared";
 import type { Env } from "../env";
 import { chunk } from "./inventory";
 import { getTenantD1 } from "./tenant";
@@ -14,18 +14,22 @@ import { sendPush, type PushMessage } from "./webpush";
 export const pushConfigured = (env: Env) => Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
 const vapid = (env: Env) => ({ publicKey: env.VAPID_PUBLIC_KEY!, privateKey: env.VAPID_PRIVATE_KEY!, subject: env.VAPID_SUBJECT ?? `mailto:${env.EMAIL_FROM?.match(/<(.+)>/)?.[1] ?? "soporte@example.com"}` });
 
-type Message = PushMessage | ((role: Role) => PushMessage | null);
+/** A message, or one per person according to what they may see. */
+type Message = PushMessage | ((permissions: readonly Permission[]) => PushMessage | null);
 
 export async function notify(env: Env, tenantId: string, event: NotificationEvent | "test", message: Message, opts: { userId?: string } = {}): Promise<number> {
   if (!pushConfigured(env)) return 0;
   const db = controlDb(env.DB_CONTROL);
   const permission = event === "test" ? null : NOTIFICATION_EVENTS.find((e) => e.id === event)!.permission;
   const members = await db
-    .select({ userId: control.memberships.userId, role: control.memberships.role })
+    .select({ userId: control.memberships.userId, role: control.memberships.role, custom: control.tenantRoles.permissions })
     .from(control.memberships)
     .innerJoin(control.users, eq(control.users.id, control.memberships.userId))
+    .leftJoin(control.tenantRoles, eq(control.tenantRoles.id, control.memberships.roleId))
     .where(and(eq(control.memberships.tenantId, tenantId), eq(control.memberships.active, true), isNull(control.users.deletedAt)));
-  let people = members.filter((m) => (!permission || can(m.role, permission)) && (!opts.userId || m.userId === opts.userId));
+  let people = members
+    .map((m) => ({ userId: m.userId, permissions: effectivePermissions(m.role, m.custom) }))
+    .filter((m) => (!permission || m.permissions.includes(permission)) && (!opts.userId || m.userId === opts.userId));
   if (!people.length) return 0;
   if (event !== "test") {
     const prefs = await db.select().from(control.notificationPrefs).where(and(eq(control.notificationPrefs.tenantId, tenantId), inArray(control.notificationPrefs.userId, people.map((p) => p.userId))));
@@ -36,8 +40,8 @@ export async function notify(env: Env, tenantId: string, event: NotificationEven
     const subs = await db.select().from(control.pushSubscriptions).where(and(eq(control.pushSubscriptions.tenantId, tenantId), inArray(control.pushSubscriptions.userId, part.map((p) => p.userId))));
     await Promise.all(
       subs.map(async (s) => {
-        const role = part.find((p) => p.userId === s.userId)!.role;
-        const msg = typeof message === "function" ? message(role) : message;
+        const perms = part.find((p) => p.userId === s.userId)!.permissions;
+        const msg = typeof message === "function" ? message(perms) : message;
         if (!msg) return;
         let status = 0;
         try {
@@ -96,8 +100,8 @@ export async function dailyDigest(env: Env, at = new Date(), opts: { force?: boo
     if (!row || (!row.low && !row.due)) continue;
     const lowText = row.low ? `${row.low} ${row.low === 1 ? "producto necesita" : "productos necesitan"} resurtirse` : null;
     const dueText = row.due ? `${row.due} ${row.due === 1 ? "factura vence" : "facturas vencen"} hoy o ya vencieron (${formatMoney(row.due_cents, biz.currency, biz.locale)})` : null;
-    sent += await notify(env, t.id, "daily_digest", (role) => {
-      const parts = [lowText, can(role, "payables:read") ? dueText : null].filter(Boolean) as string[];
+    sent += await notify(env, t.id, "daily_digest", (perms) => {
+      const parts = [lowText, perms.includes("payables:read") ? dueText : null].filter(Boolean) as string[];
       if (!parts.length) return null;
       return { title: "Resumen de hoy", body: parts.join(" · "), url: lowText ? "/inventario?stock=low" : "/cuentas-por-pagar?estado=overdue", tag: `digest-${today}` };
     });

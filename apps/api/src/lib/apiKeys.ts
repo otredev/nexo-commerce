@@ -5,7 +5,7 @@
 import type { Context } from "hono";
 import { and, eq } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
-import { API_KEY_ACCESS, effectivePlan, type ApiKey, type ApiKeyAccess } from "@nexo/shared";
+import { API_KEY_ACCESS, effectivePlan, type ApiKey, type ApiKeyAccess, rolePermissions } from "@nexo/shared";
 import type { AppEnv } from "../env";
 import { randomToken, sha256Hex } from "./crypto";
 import type { LoadedSession } from "./session";
@@ -59,6 +59,8 @@ export async function loadApiKey(c: Context<AppEnv>, key: string): Promise<KeySe
       status: row.tenantStatus, plan: effectivePlan(row.plan, row.planStatus), suspendedReason: row.suspendedReason,
     },
     role: access.role,
+    permissions: rolePermissions(access.role),
+    roleName: `API · ${row.name}`,
     apiKey: { id: row.id, name: row.name, access: row.access, readOnly: access.readOnly },
   };
 }

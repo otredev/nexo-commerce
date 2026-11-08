@@ -43,6 +43,7 @@ export const PLATFORM_ACTION_LABELS: Record<string, string> = {
   "user.logout_all": "Cerró sesiones",
   "user.disable": "Desactivó un usuario",
   "user.enable": "Reactivó un usuario",
+  "user.role": "Cambió el acceso de un usuario",
   "ticket.reply": "Respondió un ticket",
   "ticket.note": "Agregó nota interna",
   "ticket.update": "Actualizó un ticket",
@@ -50,17 +51,70 @@ export const PLATFORM_ACTION_LABELS: Record<string, string> = {
 
 /* ---------- Operators ---------- */
 
+/** What each operator can do in /admin. "*" = everything (the first operator, and older accounts). */
+export const PLATFORM_PERMISSION_GROUPS = [
+  {
+    label: "Negocios",
+    items: [
+      { id: "metrics:read", label: "Ver el inicio y las métricas (incluye ingresos)" },
+      { id: "tenants:read", label: "Ver negocios" },
+      { id: "tenants:manage", label: "Cambiar plan, suspender y reactivar" },
+      { id: "tenants:move", label: "Mover un negocio a otra base de datos" },
+      { id: "tenants:enter", label: "Entrar como negocio" },
+    ],
+  },
+  {
+    label: "Usuarios",
+    items: [
+      { id: "users:read", label: "Ver usuarios" },
+      { id: "users:manage", label: "Enlace de contraseña, desbloquear, cerrar sesiones y desactivar" },
+      { id: "users:roles", label: "Cambiar el rol de un usuario en su negocio" },
+    ],
+  },
+  {
+    label: "Soporte",
+    items: [
+      { id: "support:read", label: "Ver tickets" },
+      { id: "support:reply", label: "Responder, asignar y cerrar tickets" },
+    ],
+  },
+  {
+    label: "Equipo",
+    items: [
+      { id: "audit:read", label: "Ver la bitácora" },
+      { id: "operators:manage", label: "Crear operadores y cambiar sus permisos", help: "Da acceso a todo: puede darse cualquier permiso." },
+    ],
+  },
+] as const;
+export type PlatformPermission = (typeof PLATFORM_PERMISSION_GROUPS)[number]["items"][number]["id"];
+export const PLATFORM_PERMISSIONS = PLATFORM_PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i.id)) as PlatformPermission[];
+
+/** Ready-made sets for the operator editor. */
+export const PLATFORM_PRESETS: Record<"full" | "support" | "readonly", { label: string; permissions: PlatformPermission[] }> = {
+  full: { label: "Acceso completo", permissions: [...PLATFORM_PERMISSIONS] },
+  support: { label: "Soporte", permissions: ["tenants:read", "tenants:enter", "users:read", "users:manage", "support:read", "support:reply"] },
+  readonly: { label: "Solo lectura", permissions: ["metrics:read", "tenants:read", "users:read", "support:read", "audit:read"] },
+};
+
+/** Stored list → effective permissions ("*" means all, unknown ids are ignored). */
+export function operatorPermissions(stored: readonly string[] | null | undefined): PlatformPermission[] {
+  if (!stored || stored.includes("*")) return [...PLATFORM_PERMISSIONS];
+  return PLATFORM_PERMISSIONS.filter((p) => stored.includes(p));
+}
+
 export interface PlatformOperator {
   id: string;
   email: string;
   name: string;
   active: boolean;
+  permissions: PlatformPermission[];
   lastLoginAt: string | null;
   createdAt: string;
 }
 
 export interface OperatorMe {
   operator: Pick<PlatformOperator, "id" | "email" | "name">;
+  permissions: PlatformPermission[];
   /** Tickets waiting for support, for the nav badge. */
   openTickets: number;
 }
@@ -105,6 +159,9 @@ export interface PlatformUserMembership {
   tenantSlug: string;
   tenantStatus: string;
   role: Role;
+  /** Custom role of the business, when it has one. */
+  roleId: string | null;
+  roleName: string | null;
   active: boolean;
 }
 
@@ -122,6 +179,8 @@ export interface PlatformUser {
 }
 
 export interface PlatformUserDetail extends PlatformUser {
+  /** Custom roles of each business the person belongs to (to change their role from /admin). */
+  tenantRoles: Record<string, Array<{ id: string; name: string }>>;
   sessions: number;
   attempts: Array<{ success: boolean; ip: string | null; createdAt: string }>;
 }
@@ -191,9 +250,17 @@ const password = z.string().min(10, "Usa al menos 10 caracteres").max(128, "Máx
 const body = z.string().trim().min(1, "Escribe un mensaje").max(5000, "Máximo 5 000 caracteres");
 
 export const operatorLoginSchema = z.object({ email, password: z.string().min(1, "Requerido").max(128) });
-export const operatorCreateSchema = z.object({ name: z.string().trim().min(1, "Requerido").max(120), email, password });
+const platformPermissions = z.array(z.string()).max(40).transform((v) => PLATFORM_PERMISSIONS.filter((p) => v.includes(p)));
+export const operatorCreateSchema = z.object({ name: z.string().trim().min(1, "Requerido").max(120), email, password, permissions: platformPermissions.optional() });
 /** password: another operator sets a new one (forgotten password); the person changes it later. */
-export const operatorUpdateSchema = z.object({ active: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), password: password.optional() });
+export const operatorUpdateSchema = z.object({ active: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), password: password.optional(), permissions: platformPermissions.optional() });
+
+/** /admin changes a person's access inside one business: built-in role or a custom role of that business. */
+export const membershipUpdateSchema = z.object({
+  role: z.enum(["admin", "cashier"]).optional(),
+  roleId: z.string().max(40).nullable().optional(),
+  active: z.boolean().optional(),
+});
 export const operatorPasswordSchema = z.object({ currentPassword: z.string().min(1, "Requerido"), newPassword: password });
 
 export const platformUserUpdateSchema = z.object({ disabled: z.boolean() });

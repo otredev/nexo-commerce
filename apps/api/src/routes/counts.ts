@@ -27,7 +27,7 @@ import { newId } from "../lib/crypto";
 import { AppError, notFound } from "../lib/errors";
 import { chunk, countAdjustmentStatements, isTransitionError, toStatement, transitionStatement } from "../lib/inventory";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { stockCounts, stockCountItems, locations, categories } = tenant;
 
@@ -65,8 +65,8 @@ async function loadCount(c: Context<AppEnv>, id: string): Promise<StockCountDeta
     row.categoryId ? db.select({ name: categories.name }).from(categories).where(eq(categories.id, row.categoryId)).get() : Promise.resolve(undefined),
     db.select().from(stockCountItems).where(eq(stockCountItems.countId, id)),
   ]);
-  const showExpected = can(role, "counts:write");
-  const showCost = can(role, "costs:read");
+  const showExpected = allowed(c.var.auth, "counts:write");
+  const showCost = allowed(c.var.auth, "costs:read");
   items.sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }) || a.sku.localeCompare(b.sku));
   return {
     id: row.id,
@@ -143,7 +143,7 @@ export const countRoutes = new Hono<AppEnv>()
         )
         .bind(...params),
     ]);
-    const showCost = can(role, "costs:read");
+    const showCost = allowed(c.var.auth, "costs:read");
     const items: StockCountListItem[] = (rows!.results as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
       number: r.number as number,
@@ -157,7 +157,7 @@ export const countRoutes = new Hono<AppEnv>()
       createdAt: r.created_at as string,
       createdByName: r.created_by_name as string | null,
       completedAt: r.completed_at as string | null,
-      summary: can(role, "counts:write") ? toSummary(r.summary ? (JSON.parse(r.summary as string) as SummaryMilli) : null, showCost) : null,
+      summary: allowed(c.var.auth, "counts:write") ? toSummary(r.summary ? (JSON.parse(r.summary as string) as SummaryMilli) : null, showCost) : null,
     }));
     const body: Paginated<StockCountListItem> = { items, total: (count!.results[0] as { total: number }).total, page: query.page, pageSize: query.pageSize };
     return c.json(body);

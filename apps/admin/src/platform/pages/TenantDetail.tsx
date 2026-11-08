@@ -7,7 +7,7 @@ import {
 import { Alert, Badge, Button, Card, Modal, PageHeader, SelectField, Stat, TextField, useToast } from "@nexo/ui";
 import { get, patch, post } from "../../lib/api";
 import { useLoad, useSubmit } from "../../lib/hooks";
-import { ago, fmtDate } from "../auth";
+import { ago, fmtDate, useOperator } from "../auth";
 import { AuditList } from "./Audit";
 import { TENANT_STATUS_BADGE } from "./Tenants";
 import { TicketStatusBadge } from "./Tickets";
@@ -15,6 +15,7 @@ import { TicketStatusBadge } from "./Tickets";
 export function TenantDetailPage() {
   const { id = "" } = useParams();
   const toast = useToast();
+  const { can } = useOperator();
   const { data: t, error, setData } = useLoad(() => get<PlatformTenantDetail>(`/platform/tenants/${id}`), [id]);
   const [plan, setPlan] = useState<PlanId>("free");
   const [reason, setReason] = useState("");
@@ -48,7 +49,7 @@ export function TenantDetailPage() {
       <PageHeader
         title={t.name}
         description={<span className="nx-row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>{TENANT_STATUS_BADGE[t.status]}<Badge plain>{PLANS[t.plan].name}</Badge><span className="nx-mono nx-muted">/{t.slug}</span><span className="nx-muted">· desde {fmtDate(t.createdAt)}</span></span>}
-        actions={<Button variant="primary" onClick={() => setEnter(true)} disabled={t.status !== "active"} title={t.status !== "active" ? "Solo con el negocio activo" : undefined}><LogIn className="nx-icon" aria-hidden="true" />Entrar como negocio</Button>}
+        actions={can("tenants:enter") && <Button variant="primary" onClick={() => setEnter(true)} disabled={t.status !== "active"} title={t.status !== "active" ? "Solo con el negocio activo" : undefined}><LogIn className="nx-icon" aria-hidden="true" />Entrar como negocio</Button>}
       />
       {t.status === "suspended" && <Alert tone="danger" title="Negocio suspendido">{t.suspendedReason ? `Motivo: ${t.suspendedReason}` : "Sin motivo registrado."} Su panel y su tienda están en pausa.</Alert>}
       {(update.message || move.message) && <Alert tone="danger">{update.message ?? move.message}</Alert>}
@@ -73,7 +74,7 @@ export function TenantDetailPage() {
                         <Link className="nx-link nx-strong" to={`/usuarios/${p.id}`}>{p.name}</Link>
                         <div className="nx-muted" style={{ fontSize: 12 }}>{p.email}</div>
                       </td>
-                      <td>{ROLE_LABELS[p.role]}{!p.active && <> <Badge plain>Sin acceso</Badge></>}{p.disabled && <> <Badge tone="danger">Desactivado</Badge></>}</td>
+                      <td>{p.roleName ?? ROLE_LABELS[p.role]}{!p.active && <> <Badge plain>Sin acceso</Badge></>}{p.disabled && <> <Badge tone="danger">Desactivado</Badge></>}</td>
                       <td className="nx-muted">{ago(p.lastLoginAt)}</td>
                     </tr>
                   ))}
@@ -81,7 +82,7 @@ export function TenantDetailPage() {
               </table>
             </div>
           </Card>
-          <Card title="Tickets de soporte" actions={<Link className="nx-link" to={`/soporte?negocio=${t.id}`}>Ver todos</Link>}>
+          {can("support:read") && <Card title="Tickets de soporte" actions={<Link className="nx-link" to={`/soporte?negocio=${t.id}`}>Ver todos</Link>}>
             {t.tickets.length === 0 ? <p className="nx-muted" style={{ margin: 0 }}>Este negocio no ha abierto tickets.</p> : (
               <ul className="nx-list">
                 {t.tickets.map((k) => (
@@ -92,14 +93,14 @@ export function TenantDetailPage() {
                 ))}
               </ul>
             )}
-          </Card>
-          <Card title="Bitácora del negocio" description="Lo que el equipo de Nexo hizo con este negocio." actions={<Link className="nx-link" to={`/bitacora?negocio=${t.id}`}>Ver todo</Link>}>
+          </Card>}
+          {can("audit:read") && <Card title="Bitácora del negocio" description="Lo que el equipo de Nexo hizo con este negocio." actions={<Link className="nx-link" to={`/bitacora?negocio=${t.id}`}>Ver todo</Link>}>
             <AuditList items={t.log} empty="Sin movimientos de la plataforma todavía." hideTenant />
-          </Card>
+          </Card>}
         </div>
 
         <div className="nx-stack" style={{ gap: 24 }}>
-          <Card title="Plan">
+          {can("tenants:manage") ? <><Card title="Plan">
             <div className="nx-stack" style={{ gap: 8 }}>
               <SelectField label="Plan asignado" value={plan} onChange={(e) => setPlan(e.target.value as PlanId)}>
                 {Object.values(PLANS).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -121,11 +122,18 @@ export function TenantDetailPage() {
                 <p className="nx-help" style={{ margin: 0 }}>Su panel y su tienda en línea quedan en pausa; los datos no se borran.</p>
               </div>
             )}
-          </Card>
+          </Card></> : (
+            <Card title="Plan y acceso">
+              <dl className="nx-kv">
+                <div><dt>Plan</dt><dd>{PLANS[t.plan].name}</dd></div>
+                <div><dt>Estado</dt><dd>{TENANT_STATUS_BADGE[t.status]}</dd></div>
+              </dl>
+            </Card>
+          )}
           <Card title="Base de datos">
             <div className="nx-stack" style={{ gap: 8 }}>
               <p style={{ margin: 0 }}>Vive en <span className="nx-mono">{t.dbBinding}</span>.</p>
-              {t.availableBindings.length < 2 ? (
+              {!can("tenants:move") ? null : t.availableBindings.length < 2 ? (
                 <p className="nx-help" style={{ margin: 0 }}>Este entorno solo tiene una base de datos de negocios. Agrega otra (DB_TENANT_…) en wrangler.jsonc para poder moverlo.</p>
               ) : (
                 <>

@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { control, controlDb } from "@nexo/db";
 import { can, deviceLabel, NOTIFICATION_EVENTS, notificationPrefsSchema, pushSubscribeSchema, type NotificationSettings } from "@nexo/shared";
 import type { AppEnv } from "../env";
+import { allowed } from "../middleware/auth";
 import { newId } from "../lib/crypto";
 import { AppError } from "../lib/errors";
 import { notify, pushConfigured } from "../lib/notify";
@@ -24,7 +25,7 @@ export const notificationRoutes = new Hono<AppEnv>()
     const body: NotificationSettings = {
       available: pushConfigured(c.env),
       publicKey: c.env.VAPID_PUBLIC_KEY ?? null,
-      events: NOTIFICATION_EVENTS.filter((e) => can(role, e.permission)).map((e) => ({ id: e.id, label: e.label, help: e.help, enabled: prefsRow?.prefs[e.id] !== false })),
+      events: NOTIFICATION_EVENTS.filter((e) => allowed(c.var.auth, e.permission)).map((e) => ({ id: e.id, label: e.label, help: e.help, enabled: prefsRow?.prefs[e.id] !== false })),
       devices,
     };
     return c.json(body);

@@ -31,3 +31,14 @@ export function errorResponse(c: Context, err: unknown) {
   console.error("Unhandled error", err);
   return c.json({ error: { code: "internal", message: "Ocurrió un error inesperado. Intenta de nuevo." } }, 500);
 }
+
+/** A UNIQUE constraint failed (D1 wraps it in the driver error's cause). */
+export const isUniqueViolation = (e: unknown) => {
+  const parts: string[] = [];
+  let cur: unknown = e;
+  for (let i = 0; cur && i < 4; i++) {
+    parts.push(String(cur));
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return parts.join(" ").includes("UNIQUE");
+};

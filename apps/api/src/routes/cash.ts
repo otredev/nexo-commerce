@@ -11,7 +11,7 @@ import { AppError, notFound } from "../lib/errors";
 import { isUniqueError, toStatement } from "../lib/inventory";
 import { getSettings, sessionTotals } from "../lib/sales";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { cashSessions, cashMovements, locations } = tenant;
 
@@ -45,7 +45,7 @@ async function loadSession(c: Context<AppEnv>, id: string, opts: { revealExpecte
   };
 }
 
-const canSeeExpected = (c: Context<AppEnv>) => c.var.auth.role !== "cashier";
+const canSeeExpected = (c: Context<AppEnv>) => allowed(c.var.auth, "cash:review");
 
 export const cashRoutes = new Hono<AppEnv>()
   /** The open session of a location, or null. */

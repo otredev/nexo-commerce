@@ -70,6 +70,9 @@ export interface AuthContext {
   user: { id: string; name: string; email: string };
   tenant: TenantAuth;
   role: Role;
+  /** Effective permissions (custom role or built-in role). Check them with allowed(). */
+  permissions: import("@nexo/shared").Permission[];
+  roleName: string;
   /** Drizzle client bound to the D1 that stores this tenant. */
   db: TenantDb;
   /** Raw D1 handle of the same database, for batch(). */

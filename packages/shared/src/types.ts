@@ -11,6 +11,10 @@ export interface MeResponse {
   /** Support tickets of the business answered by support and not read yet (nav badge). */
   supportWaiting?: number;
   user: { id: string; name: string; email: string };
+  /** What this person can do here (custom role or built-in role). */
+  permissions: import("./roles").Permission[];
+  /** Name of their role: custom role name, or the built-in label. */
+  roleName: string;
   tenant: {
     id: string; slug: string; name: string;
     status?: "provisioning" | "active" | "suspended" | "migrating";
@@ -60,8 +64,23 @@ export interface Member {
   name: string;
   email: string;
   role: Role;
+  /** Custom role of the business (null: the built-in role applies). */
+  roleId: string | null;
+  roleName: string | null;
   active: boolean;
   createdAt: string;
+}
+
+/** A role the business created, with the permissions it gives. */
+export interface CustomRole {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: import("./roles").Permission[];
+  /** People with this role. */
+  members: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AuditEntry {
@@ -976,7 +995,7 @@ export interface PlatformTenantDetail extends PlatformTenant {
   stripeAccountId: string | null;
   planPeriodEnd: string | null;
   availableBindings: string[];
-  people: Array<{ id: string; name: string; email: string; role: Role; active: boolean; disabled: boolean; lastLoginAt: string | null }>;
+  people: Array<{ id: string; name: string; email: string; role: Role; roleName: string | null; active: boolean; disabled: boolean; lastLoginAt: string | null }>;
   tickets: import("./platform").SupportTicket[];
   log: import("./platform").PlatformAuditEntry[];
 }

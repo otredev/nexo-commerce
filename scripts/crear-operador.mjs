@@ -8,7 +8,7 @@
  *
  * Pide correo, nombre y contraseña, calcula el hash igual que la API (PBKDF2-SHA256, 100 000 iteraciones)
  * y lo guarda en la base de control con `wrangler d1 execute`. Si el correo ya existe, cambia su
- * contraseña y lo reactiva (sirve para recuperar el acceso). Nada se manda por la red salvo a Cloudflare.
+ * contraseña, lo reactiva y le devuelve el acceso completo (sirve para recuperar el acceso). Nada se manda por la red salvo a Cloudflare.
  *
  * Requisitos: haber desplegado al menos una vez con la migración 0004 (npm run deploy:staging) y tener
  * la sesión de wrangler iniciada (npx wrangler login).
@@ -67,7 +67,7 @@ for (const b of crypto.getRandomValues(new Uint8Array(16))) id += ALPHABET[b % 3
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const sql = `INSERT INTO platform_operators (id, email, name, password_hash, active) VALUES (${q(id)}, ${q(email)}, ${q(name)}, ${q(hash)}, 1)
-ON CONFLICT(email) DO UPDATE SET name = excluded.name, password_hash = excluded.password_hash, active = 1;
+ON CONFLICT(email) DO UPDATE SET name = excluded.name, password_hash = excluded.password_hash, permissions = '["*"]', active = 1;
 INSERT INTO platform_audit (id, operator_id, operator_name, action, entity, entity_id, summary) VALUES (${q(`${id}L`)}, NULL, 'Script crear-operador', 'operator.create', 'operator', (SELECT id FROM platform_operators WHERE email = ${q(email)}), ${q(`${name} (${email})`)});
 `;
 

@@ -26,7 +26,7 @@ import { AppError, notFound } from "../lib/errors";
 import { chunk, isStockCheckError, isTransitionError, movementStatements, toStatement, transitionStatement } from "../lib/inventory";
 import { resolveLines, variantLabel } from "../lib/lines";
 import { json } from "../lib/validate";
-import { requirePermission } from "../middleware/auth";
+import { requirePermission, allowed } from "../middleware/auth";
 
 const { transfers, transferItems, locations, stockLevels } = tenant;
 
@@ -78,7 +78,7 @@ async function loadTransfer(c: Context<AppEnv>, id: string): Promise<TransferDet
       unit: i.unit as UnitCode,
       quantity: fromMilli(i.quantity),
       receivedQuantity: i.receivedQuantity === null ? null : fromMilli(i.receivedQuantity),
-      unitCostCents: can(c.var.auth.role, "costs:read") ? i.unitCostCents : null,
+      unitCostCents: allowed(c.var.auth, "costs:read") ? i.unitCostCents : null,
       originStock: fromMilli(stock.get(i.variantId) ?? 0),
     })),
   };

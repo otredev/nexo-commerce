@@ -96,9 +96,17 @@ Todo está en **Configuración** (al final del menú).
 
 En **Usuarios** invitas a tu equipo:
 
-1. **Nuevo usuario** → nombre, correo, contraseña inicial y rol (*Administrador* o *Cajero*).
+1. **Nuevo usuario** → nombre, correo, contraseña inicial y rol.
 2. Para cambiar el rol, elige otro en la lista.
 3. **Desactivar** quita el acceso al instante y cierra sus sesiones. Su historial se conserva.
+
+**Roles y permisos.** Nexo trae tres roles: **Propietario** (todo, incluido el plan y los pagos), **Administrador** (todo menos el plan y los pagos) y **Cajero** (vende en la caja con corte a ciegas, atiende pedidos y consulta el catálogo). Si necesitas algo intermedio, crea tus propios roles en **Usuarios → Roles y permisos**:
+
+1. **Nuevo rol** (o **Copiar** desde Administrador o Cajero) → nombre y descripción.
+2. Marca lo que puede hacer, agrupado por áreas: punto de venta y caja, catálogo e inventario, abastecimiento, tienda en línea, clientes y promociones, y negocio. Por ejemplo, un **Almacenista** con inventario, compras y traspasos, pero sin ver ventas ni costos.
+3. Asigna el rol a cada persona desde la lista de **Personas**.
+
+Los cambios a un rol se aplican al instante a quien lo tenga. Nadie puede dar permisos que él mismo no tiene, ni cambiar a alguien con más permisos que él. Un rol que alguien tiene no se puede eliminar: primero cambia a esas personas de rol.
 
 ![Usuarios](img/usuarios.png)
 

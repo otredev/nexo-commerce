@@ -5,7 +5,7 @@ import { ROLE_LABELS, type PlatformUser, type PlatformUserDetail } from "@nexo/s
 import { Alert, Badge, Button, Card, EmptyState, Modal, PageHeader, Pagination, SearchInput, Segmented, useDebounced, useToast } from "@nexo/ui";
 import { get, patch, post } from "../../lib/api";
 import { useLoad, useSubmit } from "../../lib/hooks";
-import { ago, fmtDate, fmtDateTime } from "../auth";
+import { ago, fmtDate, fmtDateTime, useOperator } from "../auth";
 
 type StatusFilter = "all" | "disabled" | "locked";
 
@@ -52,7 +52,7 @@ export function UsersPage() {
                     <td>
                       {u.memberships.map((m) => (
                         <div key={m.tenantId} style={{ fontSize: 13 }}>
-                          <Link className="nx-link" to={`/negocios/${m.tenantId}`}>{m.tenantName}</Link> <span className="nx-muted">· {ROLE_LABELS[m.role]}{m.active ? "" : " (sin acceso)"}</span>
+                          <Link className="nx-link" to={`/negocios/${m.tenantId}`}>{m.tenantName}</Link> <span className="nx-muted">· {m.roleName ?? ROLE_LABELS[m.role]}{m.active ? "" : " (sin acceso)"}</span>
                         </div>
                       ))}
                     </td>
@@ -73,6 +73,7 @@ export function UsersPage() {
 export function UserDetailPage() {
   const { id = "" } = useParams();
   const toast = useToast();
+  const { can } = useOperator();
   const { data: u, error, setData } = useLoad(() => get<PlatformUserDetail>(`/platform/users/${id}`), [id]);
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
@@ -81,6 +82,10 @@ export function UserDetailPage() {
     toast(message);
   });
   const resetLink = useSubmit(async () => setLink(await post<{ url: string; expiresAt: string }>(`/platform/users/${id}/reset-link`)));
+  const membership = useSubmit(async (tenantId: string, body: Record<string, unknown>, message: string) => {
+    setData(await patch<PlatformUserDetail>(`/platform/users/${id}/memberships/${tenantId}`, body));
+    toast(message);
+  });
   const toggle = useSubmit(async (disabled: boolean) => {
     setData(await patch<PlatformUserDetail>(`/platform/users/${id}`, { disabled }));
     setConfirmDisable(false);
@@ -88,7 +93,7 @@ export function UserDetailPage() {
   });
   if (error) return <Alert tone="danger">{error.message}</Alert>;
   if (!u) return <div className="nx-page-loading"><span className="nx-spinner" aria-label="Cargando" /></div>;
-  const failure = act.message ?? resetLink.message ?? toggle.message;
+  const failure = act.message ?? resetLink.message ?? toggle.message ?? membership.message;
 
   return (
     <>
@@ -98,12 +103,39 @@ export function UserDetailPage() {
       {u.disabledAt && <Alert tone="danger" title="Cuenta desactivada">Desde {fmtDateTime(u.disabledAt)}. No puede iniciar sesión en ningún negocio.</Alert>}
       <div className="nx-grid-2">
         <div className="nx-stack" style={{ gap: 24 }}>
-          <Card title="Negocios">
+          <Card title="Negocios" description={can("users:roles") ? "Su rol en cada negocio. El propietario no se puede cambiar. Cada cambio queda en la bitácora y en la actividad del negocio." : undefined}>
             <ul className="nx-list">
               {u.memberships.map((m) => (
                 <li key={m.tenantId}>
-                  <Link className="nx-link" to={`/negocios/${m.tenantId}`}>{m.tenantName}</Link>
-                  <span className="nx-muted">{ROLE_LABELS[m.role]}{m.active ? "" : " · sin acceso"}{m.tenantStatus === "suspended" ? " · negocio suspendido" : ""}</span>
+                  <span>
+                    <Link className="nx-link" to={`/negocios/${m.tenantId}`}>{m.tenantName}</Link>
+                    {m.tenantStatus === "suspended" && <span className="nx-muted"> · negocio suspendido</span>}
+                  </span>
+                  {can("users:roles") && m.role !== "owner" ? (
+                    <span className="nx-row" style={{ gap: 8 }}>
+                      <select
+                        className="nx-select"
+                        style={{ height: "var(--control-sm)", width: 200 }}
+                        aria-label={`Rol en ${m.tenantName}`}
+                        value={m.roleId ? `role:${m.roleId}` : m.role}
+                        disabled={membership.pending}
+                        onChange={(e) => void membership.submit(m.tenantId, e.target.value.startsWith("role:") ? { roleId: e.target.value.slice(5) } : { role: e.target.value, roleId: null }, "Rol cambiado")}
+                      >
+                        <option value="admin">{ROLE_LABELS.admin}</option>
+                        <option value="cashier">{ROLE_LABELS.cashier}</option>
+                        {(u.tenantRoles[m.tenantId] ?? []).length > 0 && (
+                          <optgroup label="Roles del negocio">
+                            {u.tenantRoles[m.tenantId]!.map((r) => <option key={r.id} value={`role:${r.id}`}>{r.name}</option>)}
+                          </optgroup>
+                        )}
+                      </select>
+                      <Button size="sm" variant="ghost" loading={membership.pending} onClick={() => void membership.submit(m.tenantId, { active: !m.active }, m.active ? "Ya no puede entrar a ese negocio" : "Acceso devuelto")}>
+                        {m.active ? "Quitar acceso" : "Dar acceso"}
+                      </Button>
+                    </span>
+                  ) : (
+                    <span className="nx-muted">{m.roleName ?? ROLE_LABELS[m.role]}{m.active ? "" : " · sin acceso"}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -129,7 +161,7 @@ export function UserDetailPage() {
               <div><dt>Sesiones abiertas</dt><dd>{u.sessions}</dd></div>
             </dl>
           </Card>
-          <Card title="Acciones">
+          {can("users:manage") && <Card title="Acciones">
             <div className="nx-stack" style={{ gap: 16 }}>
               <div className="nx-stack" style={{ gap: 4 }}>
                 <div><Button onClick={() => void resetLink.submit()} loading={resetLink.pending}>Enlace para cambiar contraseña</Button></div>
@@ -152,7 +184,7 @@ export function UserDetailPage() {
                 <p className="nx-help" style={{ margin: 0 }}>Desactivada, no puede entrar a ningún negocio. Sus datos no se borran.</p>
               </div>
             </div>
-          </Card>
+          </Card>}
         </div>
       </div>
       <Modal

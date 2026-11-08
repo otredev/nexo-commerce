@@ -1,17 +1,18 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Building2, Gauge, KeyRound, LifeBuoy, LogOut, Menu, ScrollText, ShieldCheck, Users } from "lucide-react";
+import type { PlatformPermission } from "@nexo/shared";
 import { Alert, Avatar, Button, Modal, TextField, useToast } from "@nexo/ui";
 import { post } from "../lib/api";
 import { useSubmit } from "../lib/hooks";
 import { useOperator } from "./auth";
 
-const NAV = [
-  { to: "/", label: "Inicio", icon: Gauge, end: true },
-  { to: "/negocios", label: "Negocios", icon: Building2 },
-  { to: "/usuarios", label: "Usuarios", icon: Users },
-  { to: "/soporte", label: "Soporte", icon: LifeBuoy, badge: true },
-  { to: "/bitacora", label: "Bitácora", icon: ScrollText },
+export const NAV: Array<{ to: string; label: string; icon: typeof Gauge; end?: boolean; badge?: boolean; permission?: PlatformPermission }> = [
+  { to: "/", label: "Inicio", icon: Gauge, end: true, permission: "metrics:read" },
+  { to: "/negocios", label: "Negocios", icon: Building2, permission: "tenants:read" },
+  { to: "/usuarios", label: "Usuarios", icon: Users, permission: "users:read" },
+  { to: "/soporte", label: "Soporte", icon: LifeBuoy, badge: true, permission: "support:read" },
+  { to: "/bitacora", label: "Bitácora", icon: ScrollText, permission: "audit:read" },
   { to: "/operadores", label: "Operadores", icon: ShieldCheck },
 ];
 
@@ -28,7 +29,7 @@ const TITLES: Array<[RegExp, string]> = [
 ];
 
 export function PlatformLayout() {
-  const { me, logout, refresh } = useOperator();
+  const { me, logout, refresh, can } = useOperator();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -57,7 +58,7 @@ export function PlatformLayout() {
         </a>
         <nav className="nx-nav" aria-label="Principal">
           <div className="nx-nav__list">
-            {NAV.map(({ to, label, icon: Icon, end, badge }) => (
+            {NAV.filter((n) => !n.permission || can(n.permission)).map(({ to, label, icon: Icon, end, badge }) => (
               <NavLink key={to} to={to} end={end} className="nx-nav__item">
                 <Icon className="nx-icon" aria-hidden="true" />
                 {label}

@@ -774,3 +774,19 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-ranking { margin: 0; padding: 0 0 0 1.4em; display: flex; flex-direction: column; gap: var(--space-2); }
 .nx-ranking li { padding-left: var(--space-1); }
 .nx-ranking li > span { display: block; font-size: 12.5px; }
+
+/* ---------- Roles and permissions ---------- */
+.nx-roles { display: flex; flex-direction: column; gap: var(--space-8); }
+.nx-section-title { margin: 0 0 var(--space-3); font: 600 15px/22px var(--font-sans); color: var(--ink); }
+.nx-role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--space-4); }
+.nx-role-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4) var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.nx-role-card__head { display: flex; align-items: center; gap: var(--space-2); }
+.nx-role-card__head .nx-num { margin-left: auto; font-size: 12px; }
+.nx-role-card p { margin: 0; font-size: 13px; flex: 1; }
+.nx-perms { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4) var(--space-6); }
+.nx-perms__group { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nx-perms__legend { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 0 0 var(--space-2); margin-bottom: var(--space-1); border-bottom: 1px solid var(--border); font: 600 13px/18px var(--font-sans); }
+.nx-perms__all { margin-left: auto; padding: 0; border: 0; background: none; font-size: 12px; cursor: pointer; }
+.nx-perms__item { display: flex; align-items: flex-start; gap: var(--space-2); padding: 5px 0; font-size: 13.5px; line-height: 1.4; cursor: pointer; }
+.nx-perms__item input { margin-top: 2px; flex: none; accent-color: var(--primary); }
+.nx-perms__item[data-off] { color: var(--ink-muted); cursor: default; }

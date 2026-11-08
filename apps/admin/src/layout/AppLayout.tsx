@@ -190,7 +190,7 @@ export function AppLayout() {
             </NavLink>
             <div className="nx-topbar__who">
               <div style={{ fontSize: 13, fontWeight: 500 }}>{me.user.name}</div>
-              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{ROLE_LABELS[me.role]}</div>
+              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{me.roleName ?? ROLE_LABELS[me.role]}</div>
             </div>
             <Avatar name={me.user.name} />
           </div>

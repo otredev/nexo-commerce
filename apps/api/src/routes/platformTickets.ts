@@ -13,7 +13,7 @@ import {
 import type { Env } from "../env";
 import { newId } from "../lib/crypto";
 import { AppError } from "../lib/errors";
-import { inSlices, platformLogEntry, type PlatformEnv } from "../lib/operator";
+import { inSlices, platformLogEntry, requireOp, type PlatformEnv } from "../lib/operator";
 import { notifyBusiness, ticketThread, toTicket, type TicketRow } from "../lib/support";
 import { json } from "../lib/validate";
 
@@ -59,6 +59,7 @@ async function detail(env: Env, id: string): Promise<SupportTicketDetail> {
 }
 
 export const platformTicketRoutes = new Hono<PlatformEnv>()
+  .use("*", requireOp("support:read"))
   .get("/", async (c) => {
     const q = listQuery.parse(c.req.query());
     const me = c.var.operator.operator.id;
@@ -86,7 +87,7 @@ export const platformTicketRoutes = new Hono<PlatformEnv>()
 
   .get("/:id", async (c) => c.json(await detail(c.env, c.req.param("id"))))
 
-  .post("/:id/messages", json(operatorReplySchema), async (c) => {
+  .post("/:id/messages", requireOp("support:reply"), json(operatorReplySchema), async (c) => {
     const row = await ticketRow(c.env, c.req.param("id"));
     const { body, internal } = c.req.valid("json");
     const op = c.var.operator.operator;
@@ -102,7 +103,7 @@ export const platformTicketRoutes = new Hono<PlatformEnv>()
     return c.json(await detail(c.env, row.id));
   })
 
-  .patch("/:id", json(operatorTicketUpdateSchema), async (c) => {
+  .patch("/:id", requireOp("support:reply"), json(operatorTicketUpdateSchema), async (c) => {
     const row = await ticketRow(c.env, c.req.param("id"));
     const input = c.req.valid("json");
     const op = c.var.operator.operator;

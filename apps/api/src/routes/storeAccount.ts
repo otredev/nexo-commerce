@@ -13,7 +13,7 @@ import {
 import type { AppEnv } from "../env";
 import { hashPassword, newId, randomToken, sha256Hex, verifyPassword } from "../lib/crypto";
 import { sendEmail } from "../lib/email";
-import { AppError } from "../lib/errors";
+import { AppError, isUniqueViolation } from "../lib/errors";
 import { toStatement } from "../lib/inventory";
 import { customerSearchText, normalizePhone } from "../lib/pricing";
 import { clearCustomerCookie, createCustomerSession, loadCustomer, toAccount } from "../lib/storeAccount";
@@ -94,7 +94,7 @@ export const storeAccountRoutes = new Hono<AppEnv>()
       ]);
     } catch (e) {
       // Two sign-ups with the same email at once: the unique index keeps one.
-      if (String(e).includes("UNIQUE")) throw new AppError(409, "email_taken", "Ya tienes una cuenta con este correo. Inicia sesión.", { email: "Ya tienes una cuenta con este correo" });
+      if (isUniqueViolation(e)) throw new AppError(409, "email_taken", "Ya tienes una cuenta con este correo. Inicia sesión.", { email: "Ya tienes una cuenta con este correo" });
       throw e;
     }
     await createCustomerSession(c, db, t.id, t.slug, accountId);
