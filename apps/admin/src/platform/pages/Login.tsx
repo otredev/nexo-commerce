@@ -42,7 +42,6 @@ export function LoginPage() {
             </form>
           </div>
         </div>
-        <div className="nx-auth__footer">¿Olvidaste tu contraseña? Pide a otro operador que la cambie, o usa <code>scripts/crear-operador.mjs</code>.</div>
       </div>
     </div>
   );
