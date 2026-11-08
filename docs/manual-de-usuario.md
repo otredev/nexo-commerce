@@ -42,7 +42,9 @@ Guía para dueños, administradores y cajeros. Explica cómo hacer cada tarea en
 ![Inicio del panel](img/inicio.png)
 
 - **Inicio** muestra lo que vendiste hoy, la comparación con ayer, la gráfica de la semana, lo más vendido, las cajas abiertas y los pedidos en línea por atender.
-- **Menú lateral**: agrupa las secciones (Ventas, Tienda en línea, Catálogo, Abastecimiento, Negocio). Haz clic en el título de una sección para plegarla o desplegarla. Si pliegas la sección donde estás, la página actual sigue visible. Si pliegas *Tienda en línea* y hay pedidos nuevos, el contador aparece junto al título.
+- **Menú lateral**: agrupa las secciones (Ventas, Tienda en línea, Catálogo, Abastecimiento, Negocio), que empiezan cerradas. Haz clic en el título de una sección para desplegarla o plegarla. Si pliegas la sección donde estás, la página actual sigue visible. Si *Tienda en línea* está plegada y hay pedidos nuevos, el contador aparece junto al título.
+- **Favoritos**: pasa el cursor sobre cualquier opción del menú y toca la **estrella** para agregarla a **Favoritos**, la sección de arriba que siempre está abierta. Toca la estrella otra vez para quitarla. Tus favoritos se guardan en ese navegador, para ti y para cada negocio.
+- En el panel no se puede seleccionar texto ni abrir el menú del clic derecho, salvo en los campos donde escribes y en los valores para copiar (llaves, enlaces y código).
 - **Barra superior**: el nombre de la página, el buscador y tu usuario.
 - **Ayuda** (abajo en el menú) abre este manual dentro del panel, con buscador. El ícono **?** de la barra superior te lleva directo a la parte del manual de la página donde estás.
 

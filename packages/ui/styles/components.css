@@ -790,3 +790,32 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-perms__item { display: flex; align-items: flex-start; gap: var(--space-2); padding: 5px 0; font-size: 13.5px; line-height: 1.4; cursor: pointer; }
 .nx-perms__item input { margin-top: 2px; flex: none; accent-color: var(--primary); }
 .nx-perms__item[data-off] { color: var(--ink-muted); cursor: default; }
+
+/* ---------- Sidebar favorites ---------- */
+.nx-nav__row { position: relative; }
+.nx-nav__row .nx-nav__item { padding-right: var(--space-3); }
+.nx-nav__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-nav__fav { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-subtle); cursor: pointer; opacity: 0; transition: opacity .12s ease; }
+.nx-nav__fav .nx-icon { width: 15px; height: 15px; }
+.nx-nav__fav:hover { color: var(--ink); background: var(--surface); }
+.nx-nav__fav:focus-visible { opacity: 1; outline: none; box-shadow: 0 0 0 3px var(--focus); }
+.nx-nav__fav[data-on] { color: var(--warning); }
+.nx-nav__fav[data-on] .nx-icon { fill: currentColor; }
+.nx-nav__row:hover .nx-nav__fav, .nx-nav__row:focus-within .nx-nav__fav { opacity: 1; }
+.nx-nav__row:hover .nx-nav__item, .nx-nav__row:focus-within .nx-nav__item { padding-right: 34px; }
+/* Phones and tablets have no hover: the star stays visible, softly. */
+@media (hover: none) {
+  .nx-nav__fav { opacity: .55; }
+  .nx-nav__fav[data-on] { opacity: 1; }
+  .nx-nav__row .nx-nav__item { padding-right: 34px; }
+}
+@media (prefers-reduced-motion: reduce) { .nx-nav__fav { transition: none; } }
+.nx-nav__group--static { display: flex; align-items: center; gap: var(--space-2); height: 28px; margin-bottom: 2px; padding: 0 var(--space-3); color: var(--ink-muted); }
+.nx-nav__group-icon { width: 13px; height: 13px; color: var(--warning); fill: currentColor; }
+.nx-nav__hint { margin: 0; padding: 2px var(--space-3) var(--space-2); font-size: 12px; line-height: 17px; color: var(--ink-subtle); }
+
+/* ---------- Nexo panels: no text selection (fields stay editable and copyable) ---------- */
+.nx-shell, .nx-auth { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Technical values meant to be copied (API keys, links, code) stay selectable too. */
+.nx-shell :is(input, textarea, select, [contenteditable="true"], .nx-selectable, .nx-copy__value, .nx-codeblock),
+.nx-auth :is(input, textarea, select) { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }

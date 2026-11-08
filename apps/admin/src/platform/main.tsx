@@ -9,6 +9,7 @@ import { ToastProvider } from "@nexo/ui";
 import "@nexo/ui/styles.css";
 import "./platform.css";
 import { OperatorProvider, useOperator } from "./auth";
+import { blockContextMenu } from "../lib/noContextMenu";
 import { NAV, PlatformLayout } from "./Layout";
 import { LoginPage } from "./pages/Login";
 import { DashboardPage } from "./pages/Dashboard";
@@ -38,6 +39,8 @@ function Home() {
   const first = NAV.find((n) => n.to !== "/" && (!n.permission || can(n.permission)));
   return <Navigate to={first?.to ?? "/operadores"} replace />;
 }
+
+blockContextMenu();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

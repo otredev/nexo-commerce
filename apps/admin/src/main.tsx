@@ -5,6 +5,7 @@ import { ToastProvider } from "@nexo/ui";
 import "@nexo/ui/styles.css";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { PwaBridge, registerServiceWorker } from "./lib/pwa";
+import { blockContextMenu } from "./lib/noContextMenu";
 import { AppLayout } from "./layout/AppLayout";
 import { LoginPage } from "./pages/Login";
 import { RegisterPage } from "./pages/Register";
@@ -68,6 +69,7 @@ function PublicOnly({ children }: { children: ReactNode }) {
 }
 
 registerServiceWorker();
+blockContextMenu();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

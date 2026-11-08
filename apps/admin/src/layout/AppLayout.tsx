@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, MessageCircleQuestionMark, Search } from "lucide-react";
+import { ChevronDown, CircleHelp, LifeBuoy, LogOut, Menu, MessageCircleQuestionMark, Search, Star } from "lucide-react";
 import { helpLinkFor } from "../lib/helpLinks";
-import { NAV } from "./nav";
+import { NAV, type NavItem } from "./nav";
 import { CommandPalette, shortcutLabel } from "./CommandPalette";
 import { ROLE_LABELS, type MeResponse } from "@nexo/shared";
 import { Avatar, Button } from "@nexo/ui";
@@ -10,7 +10,15 @@ import { get, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 
-const NAV_COLLAPSED_KEY = "nx.nav.collapsed";
+/** Groups the person opened (every group starts closed except Favoritos, which is always open). */
+const NAV_OPEN_KEY = "nx.nav.groups";
+const favoritesKey = (userId: string, tenantId: string) => `nx.nav.favorites:${userId}:${tenantId}`;
+const readJson = <T,>(key: string, fallback: T): T => {
+  try { return (JSON.parse(localStorage.getItem(key) ?? "null") as T) ?? fallback; } catch { return fallback; }
+};
+const writeJson = (key: string, value: unknown) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: lasts this visit */ }
+};
 
 const TITLES: Array<[RegExp, string]> = [
   [/^\/$/, "Inicio"],
@@ -55,14 +63,22 @@ const titleFor = (path: string) => TITLES.find(([re]) => re.test(path))?.[1] ?? 
 export function AppLayout() {
   const { me, logout, can } = useAuth();
   const [open, setOpen] = useState(false);
-  // Sidebar sections the person folded, remembered in this browser.
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(NAV_COLLAPSED_KEY) ?? "{}") as Record<string, boolean>; } catch { return {}; }
-  });
+  // Sidebar groups the person opened, remembered in this browser. Closed unless opened.
+  const [opened, setOpened] = useState<Record<string, boolean>>(() => readJson(NAV_OPEN_KEY, {}));
   const toggleGroup = (group: string) =>
-    setCollapsed((all) => {
+    setOpened((all) => {
       const next = { ...all, [group]: !all[group] };
-      try { localStorage.setItem(NAV_COLLAPSED_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      writeJson(NAV_OPEN_KEY, next);
+      return next;
+    });
+  // Favorites: per person and business, in the order they were added.
+  const favKey = me ? favoritesKey(me.user.id, me.tenant.id) : null;
+  const [favorites, setFavorites] = useState<string[]>([]);
+  useEffect(() => { if (favKey) setFavorites(readJson<string[]>(favKey, [])); }, [favKey]);
+  const toggleFavorite = (to: string) =>
+    setFavorites((all) => {
+      const next = all.includes(to) ? all.filter((x) => x !== to) : [...all, to];
+      if (favKey) writeJson(favKey, next);
       return next;
     });
   const [searchOpen, setSearchOpen] = useState(false);
@@ -96,6 +112,9 @@ export function AppLayout() {
     return () => { alive = false; clearInterval(id); };
   }, [canOrders, location.pathname]);
   if (!me) return null;
+  // Favorites the person can still open (a role change may have taken some away), in their order.
+  const reachable = NAV.flatMap((s) => s.items).filter((item) => !item.permission || can(item.permission));
+  const favItems = favorites.map((to) => reachable.find((item) => item.to === to)).filter((x): x is NavItem => Boolean(x));
   const isActive = (to: string, end?: boolean) => {
     const [path, query] = to.split("?");
     if (query) return location.pathname === path && location.search.includes(query);
@@ -114,13 +133,26 @@ export function AppLayout() {
           const all = section.items.filter((item) => !item.permission || can(item.permission));
           if (!all.length) return null;
           const group = section.group;
-          const isCollapsed = Boolean(group && collapsed[group]);
+          const isCollapsed = Boolean(group && !opened[group]);
+          const favSection = i === 0 && (
+            <nav className="nx-nav nx-nav--favorites" aria-label="Favoritos">
+              <div className="nx-nav__group nx-nav__group--static"><Star className="nx-nav__group-icon" aria-hidden="true" /><span>Favoritos</span></div>
+              <div className="nx-nav__list">
+                {favItems.length === 0 ? (
+                  <p className="nx-nav__hint">Toca la estrella de cualquier opción para tenerla aquí.</p>
+                ) : (
+                  favItems.map((item) => <NavRow key={`fav-${item.to}`} item={item} fav onToggle={toggleFavorite} badge={item.badge === "orders" ? newOrders : 0} />)
+                )}
+              </div>
+            </nav>
+          );
           // A collapsed group still shows the page you are on, so you never lose where you are.
           const items = isCollapsed ? all.filter((item) => isActive(item.to, item.end)) : all;
           const hiddenBadge = isCollapsed && newOrders > 0 && all.some((item) => item.badge === "orders" && !items.includes(item));
           const listId = `nx-nav-${i}`;
           return (
-            <nav className="nx-nav" key={i} aria-label={group ?? "Principal"}>
+            <Fragment key={i}>
+            <nav className="nx-nav" aria-label={group ?? "Principal"}>
               {group && (
                 <button type="button" className="nx-nav__group" aria-expanded={!isCollapsed} aria-controls={listId} onClick={() => toggleGroup(group)}>
                   <span>{group}</span>
@@ -129,15 +161,11 @@ export function AppLayout() {
                 </button>
               )}
               <div id={listId} className="nx-nav__list">
-              {items.map(({ to, label, icon: Icon, end, badge }) => (
-                <NavLink key={to} to={to} end={end} className="nx-nav__item">
-                  <Icon className="nx-icon" aria-hidden="true" />
-                  {label}
-                  {badge === "orders" && newOrders > 0 && <span className="nx-nav__badge" aria-label={`${newOrders} nuevos`}>{newOrders}</span>}
-                </NavLink>
-              ))}
+              {items.map((item) => <NavRow key={item.to} item={item} fav={favorites.includes(item.to)} onToggle={toggleFavorite} badge={item.badge === "orders" ? newOrders : 0} />)}
               </div>
             </nav>
+            {favSection}
+            </Fragment>
           );
         })}
         <div className="nx-sidebar__footer nx-nav">
@@ -225,6 +253,31 @@ function SupportBanner({ info, tenant }: { info: NonNullable<MeResponse["support
         <strong>Modo soporte</strong> · {info.operatorName} está viendo <strong>{tenant}</strong> como su propietario{info.ticketNumber ? ` (ticket #${info.ticketNumber})` : ""}. Todo queda en Actividad. {minutes > 0 ? `Quedan ${minutes} min.` : "La sesión terminó."}
       </span>
       <Button size="sm" onClick={() => void exit()}>Salir del modo soporte</Button>
+    </div>
+  );
+}
+
+/** A menu entry with its star: add it to Favoritos or take it out. */
+function NavRow({ item, fav, onToggle, badge }: { item: NavItem; fav: boolean; onToggle: (to: string) => void; badge: number }) {
+  const { to, label, icon: Icon, end } = item;
+  return (
+    <div className="nx-nav__row">
+      <NavLink to={to} end={end} className="nx-nav__item">
+        <Icon className="nx-icon" aria-hidden="true" />
+        <span className="nx-nav__label">{label}</span>
+        {badge > 0 && <span className="nx-nav__badge" aria-label={`${badge} nuevos`}>{badge}</span>}
+      </NavLink>
+      <button
+        type="button"
+        className="nx-nav__fav"
+        data-on={fav || undefined}
+        aria-pressed={fav}
+        aria-label={fav ? `Quitar ${label} de favoritos` : `Agregar ${label} a favoritos`}
+        title={fav ? "Quitar de favoritos" : "Agregar a favoritos"}
+        onClick={() => onToggle(to)}
+      >
+        <Star className="nx-icon" aria-hidden="true" />
+      </button>
     </div>
   );
 }
