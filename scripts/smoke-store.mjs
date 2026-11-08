@@ -54,14 +54,14 @@ r = await owner("GET", "/api/store-settings");
 check("ajustes por defecto con dirección pública", r.status === 200 && r.data.enabled === false && r.data.url.endsWith(`/${slug}`) && r.data.publishedCount === 2 && r.data.activeCount === 4, r.data);
 const base = { ...r.data };
 delete base.slug; delete base.url; delete base.publishedCount; delete base.activeCount;
-r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: null });
+r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: null, accountRequired: false });
 check("activar sin ubicación → 422", r.status === 422 && r.data.error.fields?.locationId, r.data);
-r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, transferEnabled: true, transferInstructions: null });
+r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, transferEnabled: true, transferInstructions: null, accountRequired: false });
 check("transferencia sin datos bancarios → 422", r.status === 422 && r.data.error.fields?.transferInstructions, r.data);
 const storeConfig = {
   ...base, enabled: true, locationId: main, tagline: "Hecho a mano en Oaxaca", pickupEnabled: true, pickupInstructions: "Lunes a sábado de 10 a 19 h.",
   deliveryEnabled: true, deliveryFeeCents: 5000, freeDeliveryFromCents: 50000, deliveryArea: "Centro de la ciudad", minOrderCents: 10000,
-  payOnDelivery: true, transferEnabled: true, transferInstructions: "CLABE 012345678901234567", whatsapp: "+52 (55) 1234-5678", holdHours: 48,
+  payOnDelivery: true, transferEnabled: true, transferInstructions: "CLABE 012345678901234567", whatsapp: "+52 (55) 1234-5678", holdHours: 48, accountRequired: false,
 };
 r = await owner("PUT", "/api/store-settings", storeConfig);
 check("activar tienda", r.status === 200 && r.data.enabled && r.data.whatsapp === "+525512345678", r.data);
@@ -217,7 +217,7 @@ r = await shopper("GET", `/api/store/${otherSlug}/orders/${t1}`);
 check("el token no funciona en otra tienda", r.status === 404, r.data);
 r = await shopper("POST", `/api/store/${slug}/orders`, { ...order([{ variantId: pm, quantity: 1 }], { expectedTotalCents: 25000 }) }, { origin: "https://otro-sitio.example.com" });
 check("la API pública acepta pedidos desde el dominio de la tienda (sin cookies)", r.status === 201, r.data);
-await owner("PUT", "/api/store-settings", { ...storeConfig, enabled: false });
+await owner("PUT", "/api/store-settings", { ...storeConfig, enabled: false, accountRequired: false });
 r = await shopper("GET", `/api/store/${slug}/products`);
 check("desactivar la tienda la oculta", r.status === 404, r.data);
 

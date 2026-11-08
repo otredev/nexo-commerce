@@ -4,12 +4,15 @@ import { FULFILLMENT_LABELS, POLICY_INFO, type Fulfillment, type OnlinePaymentMe
 import { Alert, Button, TextAreaField, TextField } from "@nexo/ui";
 import { api, imageUrl, RequestError, track } from "../lib/api";
 import { useStore, type CartLine } from "../lib/store";
+import { useAccount } from "../lib/account";
+import { AuthForm } from "../components/AuthForm";
 
 const newClientId = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const SAVED = "nx-customer";
 
 export function CheckoutPage() {
   const { slug, link, store, cart, money, totals, replace, clear, coupon, setCoupon, linePrice, reload } = useStore();
+  const { account, ready: accountReady, refresh: refreshAccount, logout } = useAccount();
   const [code, setCode] = useState(coupon?.code ?? "");
   const [codeError, setCodeError] = useState<string | null>(null);
   const [checkingCode, setCheckingCode] = useState(false);
@@ -32,6 +35,14 @@ export function CheckoutPage() {
   const clientId = useRef(newClientId());
 
   useEffect(() => { track(slug, "checkout_start"); }, [slug]);
+  // Signed in: the account's details fill the form (the email is always the account's).
+  useEffect(() => {
+    if (!account) return;
+    setName((v) => v || account.name);
+    setEmail(account.email);
+    setPhone((v) => v || account.phone || "");
+    setAddress((v) => v || account.address || "");
+  }, [account]);
   useEffect(() => {
     if (!store) return;
     if (!store.pickupEnabled) setFulfillment("delivery");
@@ -79,6 +90,8 @@ export function CheckoutPage() {
     );
   }
   const t = totals(fulfillment);
+  /** The store asks for an account to pay, and nobody is signed in yet. */
+  const needsAccount = store.accountRequired && accountReady && !account;
   /** Terms and privacy notice the customer must accept (when the store publishes them). */
   const legal = (store?.policies ?? []).filter((p) => p.kind !== "returns");
   const below = t.itemsCents < store.minOrderCents;
@@ -140,6 +153,11 @@ export function CheckoutPage() {
         if (err.code === "legal_changed") { await reload().catch(() => {}); setAccepted(false); }
         clientId.current = newClientId();
         setMessage(err.message);
+      } else if (err.code === "account_required" || err.code === "not_signed_in") {
+        // The session ended (or the store started asking for accounts): sign in again; the cart stays.
+        await refreshAccount();
+        clientId.current = newClientId();
+        setMessage(err.message);
       } else if (err.code === "validation_error") {
         setFields(err.fields);
         setMessage("Revisa los datos marcados.");
@@ -152,16 +170,30 @@ export function CheckoutPage() {
 
   return (
     <div className="st-wrap">
-      <form className="st-checkout" onSubmit={(e) => { e.preventDefault(); void submit(); }} noValidate>
+      {/* The sign-in form and the order form are siblings: forms cannot nest. */}
+      <div className="st-checkout">
         <div>
           <h1 className="st-page-title">Completa tu pedido</h1>
           {notice && <div style={{ marginBottom: 20 }}><Alert tone="warning">{notice}</Alert></div>}
           {message && <div style={{ marginBottom: 20 }}><Alert tone="danger">{message}</Alert></div>}
+          {needsAccount ? (
+            <section className="st-section" aria-labelledby="checkout-account">
+              <h2 className="st-section__title" id="checkout-account">Para pagar, entra a tu cuenta</h2>
+              <p className="st-muted" style={{ margin: "0 0 16px" }}>Tu carrito se queda como está. Con tu cuenta ves tus pedidos y la próxima vez compras más rápido.</p>
+              <AuthForm mode="register" />
+            </section>
+          ) : (
+          <form id="checkout-form" onSubmit={(e) => { e.preventDefault(); void submit(); }} noValidate>
           <section className="st-section">
             <h2 className="st-section__title">Tus datos</h2>
+            {account && (
+              <p className="st-signed-as">
+                Compras como <strong>{account.email}</strong> · <button type="button" className="st-linklike" onClick={() => { void logout(); setEmail(""); }}>No soy yo</button>
+              </p>
+            )}
             <div className="nx-form-grid">
               <TextField label="Nombre completo" autoComplete="name" value={name} onChange={(e) => { setName(e.target.value); clear1("customerName"); }} error={fields.customerName} fieldClassName="nx-span-2" />
-              <TextField label="Correo" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); clear1("customerEmail"); }} error={fields.customerEmail} help="Te enviamos la confirmación y el seguimiento." />
+              <TextField label="Correo" type="email" autoComplete="email" value={email} disabled={Boolean(account)} onChange={(e) => { setEmail(e.target.value); clear1("customerEmail"); }} error={fields.customerEmail} help="Te enviamos la confirmación y el seguimiento." />
               <TextField label="Teléfono" type="tel" autoComplete="tel" value={phone} onChange={(e) => { setPhone(e.target.value); clear1("customerPhone"); }} error={fields.customerPhone} help="Por si necesitamos contactarte." />
             </div>
           </section>
@@ -234,6 +266,8 @@ export function CheckoutPage() {
           <section className="st-section">
             <TextAreaField label="Notas para la tienda" optional rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Es para regalo, horario preferido…" />
           </section>
+          </form>
+          )}
         </div>
 
         <aside className="st-summary" aria-label="Resumen del pedido">
@@ -288,11 +322,11 @@ export function CheckoutPage() {
                 </span>
               </label>
             )}
-            <Button type="submit" variant="primary" size="lg" block loading={pending} disabled={below || !checked || Boolean(t.couponError) || (legal.length > 0 && !accepted)}>{payment === "card" ? "Continuar al pago" : "Confirmar pedido"}</Button>
+            <Button type="submit" form="checkout-form" variant="primary" size="lg" block loading={pending} disabled={below || !checked || needsAccount || Boolean(t.couponError) || (legal.length > 0 && !accepted)}>{needsAccount ? "Entra a tu cuenta para pagar" : payment === "card" ? "Continuar al pago" : "Confirmar pedido"}</Button>
           </div>
           <p className="nx-help" style={{ marginTop: 12, textAlign: "center" }}>Apartamos tus productos al confirmar.</p>
         </aside>
-      </form>
+      </div>
     </div>
   );
 }

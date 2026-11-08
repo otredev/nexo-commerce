@@ -45,11 +45,11 @@ check("ajustes con SEO, FAQ e indexable por defecto", r.data.indexable === true 
 const base = { ...r.data };
 for (const k of ["slug", "url", "publishedCount", "activeCount"]) delete base[k];
 const faq = [{ q: "¿Hacen envíos?", a: "Sí, en toda la CDMX." }, { q: "¿Puedo recoger hoy?", a: "Sí, de 10 a 19 h." }];
-r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, seoTitle: "Velas artesanales en CDMX", seoDescription: "Velas de soya hechas a mano.", faq });
+r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, seoTitle: "Velas artesanales en CDMX", seoDescription: "Velas de soya hechas a mano.", faq, accountRequired: false });
 check("guardar SEO y preguntas frecuentes", r.status === 200 && r.data.seoTitle === "Velas artesanales en CDMX" && r.data.faq.length === 2, r.data);
-r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, faq: [{ q: "¿", a: "" }] });
+r = await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, faq: [{ q: "¿", a: "" }], accountRequired: false });
 check("pregunta incompleta → 422", r.status === 422, r.data);
-r = await cashier("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main });
+r = await cashier("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, accountRequired: false });
 check("el cajero no cambia la tienda → 403", r.status === 403, r.data);
 
 console.log("Políticas");
@@ -113,10 +113,10 @@ r = await shopper("GET", `/api/store/${slug}/sitemap`);
 check("datos del sitemap: solo productos publicados y políticas", r.status === 200 && r.data.indexable && r.data.products.length === 1 && r.data.products[0].id === vela.id && !r.data.products.some((p) => p.id === oculto.id) && r.data.policies.map((p) => p.kind).join() === "terms", r.data);
 r = await shopper("GET", "/api/store-index");
 check("índice general incluye la tienda", r.status === 200 && r.data.some((s) => s.slug === slug && s.domain === null && s.updatedAt), r.data?.length);
-await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, indexable: false, faq });
+await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, indexable: false, faq, accountRequired: false });
 r = await shopper("GET", "/api/store-index");
 check("una tienda no indexable sale del índice", !r.data.some((s) => s.slug === slug), r.data?.length);
-await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, faq });
+await owner("PUT", "/api/store-settings", { ...base, enabled: true, locationId: main, faq, accountRequired: false });
 
 console.log("Visitas");
 r = await shopper("POST", `/api/store/${slug}/events`, { type: "page_view", path: `/${slug}`, referrer: "https://www.google.com/", utm: { source: "ig" } }, { "user-agent": "Mozilla/5.0 (iPhone)" });

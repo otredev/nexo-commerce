@@ -713,6 +713,8 @@ export const storeSettings = sqliteTable("store_settings", {
   indexable: integer("indexable", { mode: "boolean" }).notNull().default(true),
   /** Frequently asked questions, shown in the store and marked up as FAQPage. */
   faq: text("faq", { mode: "json" }).$type<Array<{ q: string; a: string }>>().notNull().default(sql`'[]'`),
+  /** Customers must sign in (or create an account) to place an order. Browsing and the cart never need it. */
+  accountRequired: integer("account_required", { mode: "boolean" }).notNull().default(true),
   updatedAt: text("updated_at").notNull().default(now),
 });
 
@@ -782,6 +784,8 @@ export const orders = sqliteTable(
     customerEmail: text("customer_email").notNull(),
     customerPhone: text("customer_phone").notNull(),
     customerId: text("customer_id"),
+    /** Store account that placed it (customer signed in), for "Mis pedidos". */
+    accountId: text("account_id"),
     couponCode: text("coupon_code"),
     /** Promotions + coupon. */
     discountCents: integer("discount_cents").notNull().default(0),
@@ -828,6 +832,7 @@ export const orders = sqliteTable(
     uniqueIndex("orders_token_uq").on(t.token),
     index("orders_tenant_status_idx").on(t.tenantId, t.status, t.createdAt),
     index("orders_customer_idx").on(t.tenantId, t.customerId),
+    index("orders_account_idx").on(t.tenantId, t.accountId, t.createdAt),
   ],
 );
 
@@ -1008,4 +1013,57 @@ export const webhookDeliveries = sqliteTable(
     index("webhook_deliveries_endpoint_idx").on(t.tenantId, t.endpointId, t.createdAt),
     index("webhook_deliveries_due_idx").on(t.status, t.nextAttemptAt),
   ],
+);
+
+/* ---------- Store customer accounts: sign-in on the online store ---------- */
+
+/**
+ * A customer's account in one business's online store. Linked to the customer record in Clientes
+ * (created on sign-up, or the existing one with the same email). Email is unique per business.
+ */
+export const customerAccounts = sqliteTable(
+  "customer_accounts",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    customerId: text("customer_id").notNull(),
+    /** Lowercase. */
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    /** Last delivery address, offered again at checkout. */
+    address: text("address"),
+    passwordHash: text("password_hash").notNull(),
+    createdIp: text("created_ip"),
+    lastLoginAt: text("last_login_at"),
+    createdAt: text("created_at").notNull().default(now),
+    updatedAt: text("updated_at").notNull().default(now),
+  },
+  (t) => [uniqueIndex("customer_accounts_email_uq").on(t.tenantId, t.email), index("customer_accounts_customer_idx").on(t.tenantId, t.customerId)],
+);
+
+/** Signed-in store customers. id = SHA-256 of the token in the nx_customer cookie (scoped to /api/store/<slug>). */
+export const customerSessions = sqliteTable(
+  "customer_sessions",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    accountId: text("account_id").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("customer_sessions_account_idx").on(t.tenantId, t.accountId)],
+);
+
+export const customerPasswordResets = sqliteTable(
+  "customer_password_resets",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    accountId: text("account_id").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    usedAt: text("used_at"),
+    createdAt: text("created_at").notNull().default(now),
+  },
+  (t) => [index("customer_password_resets_account_idx").on(t.tenantId, t.accountId)],
 );

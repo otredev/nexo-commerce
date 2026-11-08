@@ -7,18 +7,23 @@ export class RequestError extends Error {
   }
 }
 
-/** Public store API: no cookies, JSON in and out, our error shape. */
-export async function api<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+/**
+ * Store API: JSON in and out, our error shape. The only cookie is the customer's sign-in, scoped by the
+ * server to this store's API path (/api/store/<slug>).
+ */
+export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`/api/store${path}`, {
       method,
+      credentials: "same-origin",
       headers: body === undefined ? {} : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
     throw new RequestError(0, "network", "No hay conexión. Revisa tu internet e intenta de nuevo.");
   }
+  if (res.status === 204) return undefined as T;
   const data = (await res.json().catch(() => null)) as unknown;
   if (!res.ok) {
     const err = (data as ApiError | null)?.error;

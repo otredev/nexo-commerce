@@ -12,6 +12,8 @@ import { ProductPage } from "./pages/Product";
 import { CheckoutPage } from "./pages/Checkout";
 import { OrderPage } from "./pages/Order";
 import { PolicyPage } from "./pages/Policy";
+import { AccountPage, AuthPage, ForgotPage, ResetPage } from "./pages/Account";
+import { AccountProvider } from "./lib/account";
 import { POLICY_INFO, POLICY_KINDS } from "@nexo/shared";
 
 /** On a business's own domain the server injects its slug and the store lives at the root. */
@@ -22,7 +24,9 @@ function Store() {
   const s = (ownDomainSlug ?? slug!).toLowerCase();
   return (
     <StoreProvider slug={s} base={ownDomainSlug ? "" : `/${s}`}>
-      <StoreLayout />
+      <AccountProvider slug={s}>
+        <StoreLayout />
+      </AccountProvider>
     </StoreProvider>
   );
 }
@@ -33,6 +37,10 @@ const storePages = (
     <Route path="p/:id" element={<ProductPage />} />
     <Route path="pagar" element={<CheckoutPage />} />
     <Route path="pedido/:token" element={<OrderPage />} />
+    <Route path="entrar" element={<AuthPage />} />
+    <Route path="cuenta" element={<AccountPage />} />
+    <Route path="cuenta/recuperar" element={<ForgotPage />} />
+    <Route path="cuenta/restablecer" element={<ResetPage />} />
     {POLICY_KINDS.map((k) => <Route key={k} path={POLICY_INFO[k].path} element={<PolicyPage kind={k} />} />)}
     <Route path="*" element={<NotFound />} />
   </>

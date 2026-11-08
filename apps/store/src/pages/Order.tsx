@@ -5,6 +5,7 @@ import { whatsappLink, customerStatusLabel, FULFILLMENT_LABELS, formatQty, ONLIN
 import { Alert, Button, Modal, useToast } from "@nexo/ui";
 import { api, imageUrl, RequestError } from "../lib/api";
 import { useStore } from "../lib/store";
+import { useAccount } from "../lib/account";
 import { pixelEvent } from "../lib/pixels";
 
 const timeFmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -17,6 +18,7 @@ export function OrderPage() {
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const { slug, link, store, money } = useStore();
+  const { account } = useAccount();
   const toast = useToast();
   const [order, setOrder] = useState<PublicOrder | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
@@ -187,6 +189,7 @@ export function OrderPage() {
 
         <div className="nx-row" style={{ marginTop: 24, gap: 12, flexWrap: "wrap" }}>
           <Link className="nx-btn nx-btn--secondary" to={link()}>Seguir comprando</Link>
+          {account && <Link className="nx-btn nx-btn--ghost" to={link("/cuenta")}>Mis pedidos</Link>}
           {whatsapp && <a className="nx-btn nx-btn--ghost" href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle className="nx-icon" aria-hidden="true" />Escribir a la tienda</a>}
           {order.canCancel && <Button variant="danger-ghost" onClick={() => setCancelling(true)}>Cancelar pedido</Button>}
         </div>

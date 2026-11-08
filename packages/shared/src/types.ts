@@ -586,6 +586,8 @@ export interface StoreSettings {
   seoDescription: string | null;
   indexable: boolean;
   faq: Array<{ q: string; a: string }>;
+  /** Customers sign in (or sign up) to place an order. */
+  accountRequired: boolean;
   /** Read-only: public address of the store and how many products are published. */
   slug: string;
   url: string;
@@ -634,6 +636,32 @@ export interface StoreInfo {
   domain: string | null;
   /** Theme, announcement bar, banners and pixels (Phase 9). */
   appearance: import("./appearance").PublicAppearance;
+  /** Paying needs a customer account (browsing and the cart do not). */
+  accountRequired: boolean;
+}
+
+/** The signed-in customer of a store (its own account, one per business). */
+export interface StoreAccount {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  address: string | null;
+  acceptsMarketing: boolean;
+  createdAt: string;
+}
+
+/** An order in "Mis pedidos". The token opens its tracking page. */
+export interface StoreAccountOrder {
+  number: number;
+  token: string;
+  status: import("./store").OrderStatus;
+  paymentStatus: string;
+  paymentMethod: string;
+  fulfillment: import("./store").Fulfillment;
+  totalCents: number;
+  items: number;
+  createdAt: string;
 }
 
 export interface StorePolicy {
@@ -796,6 +824,8 @@ export interface Customer extends CustomerStats {
   source: "admin" | "pos" | "online";
   archived: boolean;
   createdAt: string;
+  /** Has an account in the online store (when it was created). */
+  accountSince?: string | null;
 }
 
 export interface CustomerHistoryItem {

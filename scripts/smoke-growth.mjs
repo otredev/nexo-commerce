@@ -42,7 +42,7 @@ const pv = playera.variants[0].id, cv = cojin.variants[0].id;
 await owner("POST", "/api/cash/open", { locationId: main, openingCashCents: 100000 });
 const s0 = (await owner("GET", "/api/store-settings")).data;
 delete s0.slug; delete s0.url; delete s0.publishedCount; delete s0.activeCount;
-await owner("PUT", "/api/store-settings", { ...s0, enabled: true, locationId: main });
+await owner("PUT", "/api/store-settings", { ...s0, enabled: true, locationId: main, accountRequired: false });
 const sale = (items, extra = {}) => owner("POST", "/api/sales", { clientId: cid(), locationId: main, items, payments: [{ method: "cash", amountCents: 1_000_000 }], ...extra });
 
 console.log("Clientes");

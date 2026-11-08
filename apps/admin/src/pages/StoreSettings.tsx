@@ -31,6 +31,7 @@ interface Form {
   seoDescription: string;
   indexable: boolean;
   faq: Array<{ q: string; a: string }>;
+  accountRequired: boolean;
 }
 
 const toForm = (s: StoreSettings): Form => ({
@@ -55,6 +56,7 @@ const toForm = (s: StoreSettings): Form => ({
   seoDescription: s.seoDescription ?? "",
   indexable: s.indexable,
   faq: s.faq,
+  accountRequired: s.accountRequired,
 });
 
 export function StoreSettingsPage() {
@@ -100,6 +102,7 @@ export function StoreSettingsPage() {
       seoDescription: form.seoDescription.trim() || null,
       indexable: form.indexable,
       faq: form.faq.map((f) => ({ q: f.q.trim(), a: f.a.trim() })).filter((f) => f.q || f.a),
+      accountRequired: form.accountRequired,
     };
     if (Object.keys(fields).length) throw new RequestError(422, "validation_error", "Revisa los campos marcados", fields);
     const saved = await put<StoreSettings>("/store-settings", body);
@@ -169,6 +172,16 @@ export function StoreSettingsPage() {
               )}
               <CardPayments checked={form.cardEnabled} onChange={(v) => set("cardEnabled", v)} writable={writable} error={f.cardEnabled} />
             </div>
+          </Card>
+
+          <Card title="Cuentas de clientes" description="Tus clientes pueden crear una cuenta en la tienda para ver sus pedidos y comprar más rápido. Al registrarse aparecen en Clientes.">
+            <Checkbox
+              label="Pedir cuenta para comprar"
+              help="Pueden ver productos y llenar el carrito sin cuenta; al pagar se les pide entrar o crear una. Si lo desactivas, también pueden comprar como invitados."
+              checked={form.accountRequired}
+              onChange={(e) => set("accountRequired", e.target.checked)}
+              disabled={!writable}
+            />
           </Card>
 
           <Card title="Buscadores y asistentes de IA" description="Cómo aparece tu tienda en Google y qué leen ChatGPT, Gemini o Perplexity.">

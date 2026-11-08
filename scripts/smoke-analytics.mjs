@@ -116,7 +116,7 @@ await rival("POST", "/api/auth/register", { businessName: `Rival ${stamp}`, owne
 const main = (await owner("GET", "/api/locations")).data.find((l) => l.isDefault).id;
 const settings = (await owner("GET", "/api/store-settings")).data;
 for (const k of ["slug", "url", "publishedCount", "activeCount"]) delete settings[k];
-await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true, transferEnabled: true, transferInstructions: "CLABE 012345678901234567" });
+await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true, transferEnabled: true, transferInstructions: "CLABE 012345678901234567", accountRequired: false });
 const dulce = (await owner("POST", "/api/products", { name: "Cajeta", online: true, variants: [{ sku: `CJ-${stamp}`, priceCents: 10000, initialStock: 50 }] })).data;
 const mazapan = (await owner("POST", "/api/products", { name: "Mazapán", online: true, variants: [{ sku: `MZ-${stamp}`, priceCents: 1500, initialStock: 50 }] })).data;
 ae.products = { sold: dulce.id, viewedOnly: mazapan.id };

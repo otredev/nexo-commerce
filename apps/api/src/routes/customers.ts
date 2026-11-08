@@ -26,7 +26,7 @@ const STATS = `
   ) GROUP BY customer_id`;
 
 type Row = typeof customers.$inferSelect;
-const toCustomer = (r: Row, s?: { purchases: number; total: number; last_at: string | null }): Customer => ({
+const toCustomer = (r: Row, s?: { purchases: number; total: number; last_at: string | null }, accountSince: string | null = null): Customer => ({
   id: r.id,
   name: r.name,
   email: r.email,
@@ -42,7 +42,11 @@ const toCustomer = (r: Row, s?: { purchases: number; total: number; last_at: str
   totalCents: s?.total ?? 0,
   lastPurchaseAt: s?.last_at ?? null,
   avgTicketCents: s?.purchases ? Math.round(s.total / s.purchases) : 0,
+  accountSince,
 });
+
+/** When the customer opened an account in the online store (null: never). */
+const ACCOUNT_AT = "(SELECT MIN(a.created_at) FROM customer_accounts a WHERE a.tenant_id = c.tenant_id AND a.customer_id = c.id)";
 
 async function getCustomer(c: Context<AppEnv>, id: string) {
   const { db, tenant: t } = c.var.auth;
@@ -88,7 +92,7 @@ export const customerRoutes = new Hono<AppEnv>()
     const from = `FROM customers c LEFT JOIN (${STATS}) s ON s.customer_id = c.id WHERE ${where.join(" AND ")}`;
     const [count, rows] = await d1.batch([
       d1.prepare(`SELECT COUNT(*) AS total FROM customers c WHERE ${where.join(" AND ")}`).bind(...params),
-      d1.prepare(`SELECT c.*, s.purchases, s.total, s.last_at ${from} ORDER BY ${order} LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`).bind(...params),
+      d1.prepare(`SELECT c.*, s.purchases, s.total, s.last_at, ${ACCOUNT_AT} AS account_at ${from} ORDER BY ${order} LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`).bind(...params),
     ]);
     const items = (rows!.results as Array<Record<string, unknown>>).map((r) =>
       toCustomer(
@@ -98,6 +102,7 @@ export const customerRoutes = new Hono<AppEnv>()
           archived: Boolean(r.archived), searchText: "", createdAt: r.created_at as string, updatedAt: r.updated_at as string,
         },
         r.purchases ? { purchases: r.purchases as number, total: r.total as number, last_at: r.last_at as string | null } : undefined,
+        (r.account_at as string | null) ?? null,
       ),
     );
     const body: Paginated<Customer> = { items, total: (count!.results[0] as { total: number }).total, page: query.page, pageSize: query.pageSize };
@@ -127,7 +132,7 @@ export const customerRoutes = new Hono<AppEnv>()
   .get("/:id", requirePermission("customers:read"), async (c) => {
     const { d1, tenant: t } = c.var.auth;
     const row = await getCustomer(c, c.req.param("id"));
-    const [stats, history, top] = await d1.batch([
+    const [stats, history, top, account] = await d1.batch([
       d1.prepare(`SELECT * FROM (${STATS}) WHERE customer_id = ?2`).bind(t.id, row.id),
       d1
         .prepare(
@@ -151,10 +156,11 @@ export const customerRoutes = new Hono<AppEnv>()
            ) GROUP BY product_id ORDER BY total DESC LIMIT 5`,
         )
         .bind(t.id, row.id),
+      d1.prepare(`SELECT ${ACCOUNT_AT.replaceAll("c.tenant_id", "?1").replaceAll("c.id", "?2")} AS at`).bind(t.id, row.id),
     ]);
     const s = stats!.results[0] as { purchases: number; total: number; last_at: string | null } | undefined;
     const body: CustomerDetail = {
-      ...toCustomer(row, s),
+      ...toCustomer(row, s, ((account!.results[0] as { at: string | null } | undefined)?.at) ?? null),
       history: (history!.results as Array<Record<string, unknown>>).map((h) => ({
         kind: h.kind as "sale" | "order",
         id: h.id as string,

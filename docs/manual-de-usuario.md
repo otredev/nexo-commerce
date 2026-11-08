@@ -280,7 +280,7 @@ Las anulaciones y devoluciones son para propietarios y administradores.
 
 ![Clientes](img/clientes.png)
 
-Los clientes se registran en **Clientes**, al cobrar en la caja o solos cuando hacen un pedido en la tienda en línea (se reconocen por su correo o su teléfono). Su ficha junta las compras en caja y en línea, el total gastado, el ticket promedio, la última compra y lo que más compra. **Exportar** descarga la lista en CSV.
+Los clientes se registran en **Clientes**, al cobrar en la caja, solos cuando hacen un pedido en la tienda en línea (se reconocen por su correo o su teléfono) o cuando **crean su cuenta** en la tienda. Los que tienen cuenta llevan la etiqueta **Cuenta en la tienda**. Su ficha junta las compras en caja y en línea, el total gastado, el ticket promedio, la última compra y lo que más compra. **Exportar** descarga la lista en CSV.
 
 ### Promociones y cupones
 
@@ -337,6 +337,16 @@ Tu catálogo en internet, con las existencias reales de la ubicación que elijas
 5. **Contacto y avisos**: WhatsApp de la tienda, el correo que recibe los pedidos nuevos y después de cuántas horas se liberan los pedidos sin aceptar (se cancelan solos y devuelven sus existencias).
 
 ![Ajustes de la tienda](img/tienda.png)
+
+### Cuentas de clientes
+
+Tus clientes pueden crear una cuenta en la tienda con su nombre, correo y contraseña (el botón **Entrar** arriba a la derecha). Con ella ven **Mis pedidos**, guardan su teléfono y su dirección, y compran más rápido. Cada cuenta es solo de tu tienda.
+
+- **Navegar y llenar el carrito no pide cuenta.** Al pagar, si no han entrado, la tienda les pide **entrar o crear su cuenta** ahí mismo, sin perder el carrito.
+- Al registrarse aparecen en **Clientes**. Si ya existía un cliente con ese correo (por ejemplo, de la caja), se liga a él sin cambiar lo que ya tenías.
+- En **Mis pedidos** solo ven los pedidos que hicieron con su cuenta.
+- Si olvidan su contraseña, usan **¿Olvidaste tu contraseña?** y reciben un enlace por correo.
+- Para dejar que también compren como invitados, desmarca **Pedir cuenta para comprar** en **Ajustes de la tienda → Cuentas de clientes**.
 
 ### Cobrar con tarjeta (Stripe)
 

@@ -71,6 +71,13 @@
       "when": 1793667514096,
       "tag": "0009_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794174436615,
+      "tag": "0010_store_accounts",
+      "breakpoints": true
     }
   ]
 }

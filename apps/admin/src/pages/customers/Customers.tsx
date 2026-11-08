@@ -82,7 +82,7 @@ export function CustomersPage() {
                 {data?.items.map((c) => (
                   <tr key={c.id} className="nx-clickable" onClick={() => navigate(`/clientes/${c.id}`)}>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{c.name}</div>
+                      <div style={{ fontWeight: 500 }}>{c.name}{c.accountSince && <> <Badge tone="accent">Cuenta en la tienda</Badge></>}</div>
                       <div className="nx-muted" style={{ fontSize: 12 }}>{SOURCE_LABEL[c.source]}{c.acceptsMarketing && " · acepta promociones"}</div>
                     </td>
                     <td className="nx-muted">{c.phone ?? "—"}{c.email && <div style={{ fontSize: 12 }}>{c.email}</div>}</td>

@@ -382,6 +382,7 @@ export const storeSettingsSchema = z
       .array(z.object({ q: z.string().trim().min(3, "Escribe la pregunta").max(200), a: z.string().trim().min(3, "Escribe la respuesta").max(1500) }))
       .max(20, "Máximo 20 preguntas")
       .default([]),
+    accountRequired: z.boolean().default(true),
   })
   .superRefine((s, ctx) => {
     if (s.enabled && !s.locationId) ctx.addIssue({ code: "custom", path: ["locationId"], message: "Elige qué ubicación surte los pedidos" });
@@ -626,3 +627,25 @@ export const webhookEndpointSchema = z.object({
   events: z.array(z.enum(WEBHOOK_EVENT_TYPES as [WebhookEventType, ...WebhookEventType[]])).max(WEBHOOK_EVENT_TYPES.length).default([]),
   active: z.boolean().default(true),
 });
+
+/* ---------- Store customer accounts ---------- */
+
+const phoneField = z.string().trim().max(20).regex(/^[+\d\s()-]*$/, "Solo números").nullable().default(null).transform((v) => (v ? v : null));
+
+export const storeRegisterSchema = z.object({
+  name,
+  email,
+  password,
+  phone: phoneField,
+  acceptsMarketing: z.boolean().default(false),
+});
+export const storeLoginSchema = z.object({ email, password: z.string().min(1, "Requerido").max(128) });
+export const storeAccountUpdateSchema = z.object({
+  name,
+  phone: phoneField,
+  address: z.string().trim().max(300).nullable().default(null).transform((v) => (v ? v : null)),
+  acceptsMarketing: z.boolean(),
+});
+export const storePasswordChangeSchema = z.object({ currentPassword: z.string().min(1, "Requerido").max(128), newPassword: password });
+export const storeForgotSchema = z.object({ email });
+export const storeResetSchema = z.object({ token: z.string().min(20).max(200), password });

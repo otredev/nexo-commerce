@@ -288,7 +288,7 @@ const main = locs.find((l) => l.isDefault).id;
 const settings = (await owner("GET", "/api/store-settings")).data;
 for (const k of ["slug", "url", "publishedCount", "activeCount"]) delete settings[k];
 const storeConfig = { ...settings, enabled: true, locationId: main, payOnDelivery: true, holdHours: 48 };
-r = await owner("PUT", "/api/store-settings", { ...storeConfig, cardEnabled: true });
+r = await owner("PUT", "/api/store-settings", { ...storeConfig, cardEnabled: true, accountRequired: false });
 check("activar tarjeta sin Stripe conectado → 422", r.status === 422 && r.data.error.fields.cardEnabled, r.data);
 r = await cashier("POST", "/api/billing/connect");
 check("solo el propietario conecta Stripe → 403", r.status === 403, r.data);
@@ -306,7 +306,7 @@ r = await webhook({ id: `evt_${stamp}_${++evt}`, type: "account.updated", accoun
 r = await owner("GET", "/api/billing/connect");
 check("account.updated desactiva cobros", r.data.chargesEnabled === false, r.data);
 await webhook({ id: `evt_${stamp}_${++evt}`, type: "account.updated", account: acct, data: { object: { id: acct, charges_enabled: true } } });
-r = await owner("PUT", "/api/store-settings", { ...storeConfig, cardEnabled: true });
+r = await owner("PUT", "/api/store-settings", { ...storeConfig, cardEnabled: true, accountRequired: false });
 check("activar pago con tarjeta en la tienda", r.status === 200 && r.data.cardEnabled === true, r.data);
 r = await shopper("GET", `/api/store/${slug}`);
 check("la tienda ofrece tarjeta", r.status === 200 && r.data.cardEnabled === true, r.data);

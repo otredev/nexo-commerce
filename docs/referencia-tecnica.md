@@ -90,6 +90,7 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 - **Cobro**: pago al recibir/recoger, transferencia (con tus datos bancarios) o tarjeta con Stripe (ver *SaaS*). El pago se registra en el panel; **el efectivo entra a la caja abierta** como ingreso, así el corte cuadra. Al entregarse, el pedido suma a las ventas del día (`daily_sales.online_*`) y a lo más vendido.
 - **Pedidos olvidados**: cada hora, los pedidos nuevos y sin pagar con más de N horas (48 por defecto, configurable) se cancelan solos y liberan sus existencias.
 - **Protección**: máximo 10 pedidos por hora por IP y por tienda; los pedidos se validan contra productos publicados y activos.
+- **Cuentas de clientes** (`customer_accounts`, `customer_sessions`, `customer_password_resets` en la base del negocio): cada tienda tiene sus propias cuentas (correo único por negocio). La sesión va en la cookie `nx_customer` (`HttpOnly`, `SameSite=Lax`, 60 días que se renuevan) con **`Path=/api/store/<slug>`**: solo viaja a la API de esa tienda, así dos tiendas en el mismo dominio no comparten sesión, y una cookie copiada a otra tienda no sirve (la sesión se busca con el `tenant_id`). Registrarse crea el cliente en *Clientes* (`source = online`) o se liga al que tiene el mismo correo **sin sobrescribir** sus datos (solo llena lo vacío). Con sesión, el pedido usa el correo de la cuenta, se liga a su cliente (`orders.account_id`) y la cuenta recuerda teléfono y dirección. *Mis pedidos* muestra solo los pedidos hechos con la cuenta, nunca los anteriores con el mismo correo (el correo no se verifica). `store_settings.account_required` (activado por defecto): sin sesión, `POST /orders` responde `401 account_required`; el carrito vive en el navegador y no se pierde. Bloqueo de 15 minutos tras 5 intentos fallidos por tienda y correo, máximo 5 registros por hora por IP y tienda, y recuperación de contraseña con enlace de una hora a `/<slug>/cuenta/restablecer`. Las páginas `/entrar` y `/cuenta` llevan `noindex` y no ejecutan el código personalizado de la tienda.
 
 ## Clientes, promociones y cuentas por pagar
 
@@ -249,6 +250,7 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `POST /api/store/:slug/coupons/check` | público (tienda) |
 | `POST /api/store/:slug/orders/:token/pay` · `payment-status` | público (tienda) |
 | `GET /api/store-host/:hostname` | público (middleware de la tienda) |
+| `GET/PUT /api/store/:slug/account`, `POST …/account/register` · `login` · `logout` · `password` · `forgot` · `reset`, `GET …/account/orders` | público (tienda); sesión del cliente (`nx_customer`) para su perfil, contraseña y pedidos |
 | `GET /api/store-index` | público: tiendas indexables para el índice de sitemaps |
 | `GET /api/store/:slug/policies/:kind` · `GET /api/store/:slug/sitemap` · `POST /api/store/:slug/events` | público (tienda) |
 | `GET /api/store-settings/policies`, `GET …/policies/:kind/template`, `PUT …/policies/:kind` | `settings:read` / `store:write` |

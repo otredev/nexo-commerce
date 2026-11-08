@@ -45,6 +45,7 @@ import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } 
 import { stripe, stripeConfigured } from "../lib/stripe";
 import { recordStoreEvent, STORE_EVENT_TYPES } from "../lib/events";
 import { json } from "../lib/validate";
+import { loadCustomer } from "../lib/storeAccount";
 
 const { storeSettings, businessSettings, products, variants, taxRates, categories, brands, orders, orderItems, stockLevels, auditLog, storePolicies } = tenant;
 
@@ -70,7 +71,7 @@ async function activeDomain(c: Context<AppEnv>, tenantId: string) {
  * Public base URL of the store for links that leave it (Stripe return pages): the customer's own domain
  * when the request came from an active one, otherwise STORE_URL/slug.
  */
-async function storeBase(c: Context<AppEnv>, t: TenantRef) {
+export async function storeBase(c: Context<AppEnv>, t: TenantRef) {
   const fallback = `${c.env.STORE_URL.replace(/\/$/, "")}/${t.slug}`;
   const origin = c.req.header("origin") ?? c.req.header("x-nexo-store-origin");
   if (!origin) return fallback;
@@ -87,7 +88,7 @@ async function storeBase(c: Context<AppEnv>, t: TenantRef) {
 const notFound = () => new AppError(404, "store_not_found", "Esta tienda no existe o no está disponible.");
 
 /** Resolves the business behind a store slug, with its settings. 404 when missing or disabled. */
-async function resolveStore(c: Context<AppEnv>) {
+export async function resolveStore(c: Context<AppEnv>) {
   const slug = c.req.param("slug")?.toLowerCase() ?? "";
   if (!/^[a-z0-9-]{1,60}$/.test(slug)) throw notFound();
   const t = await controlDb(c.env.DB_CONTROL)
@@ -191,6 +192,7 @@ export const storeRoutes = new Hono<AppEnv>()
       indexable: store.indexable,
       domain: await activeDomain(c, t.id),
       appearance: publicAppearance(appearance, today),
+      accountRequired: store.accountRequired,
     };
     return c.json(body, 200, short);
   })
@@ -312,6 +314,10 @@ export const storeRoutes = new Hono<AppEnv>()
 
     const existing = await db.select({ token: orders.token, number: orders.number }).from(orders).where(and(eq(orders.tenantId, t.id), eq(orders.clientId, input.clientId))).get();
     if (existing) return c.json(existing, 200);
+    // Signed-in customer: the order goes to their account (and their customer in Clientes) with their email.
+    const account = await loadCustomer(c, db, t.id, t.slug);
+    if (store.accountRequired && !account) throw new AppError(401, "account_required", "Inicia sesión o crea tu cuenta para hacer el pedido.");
+    if (account) input.customerEmail = account.email;
     if (ip) {
       const recent = await d1
         .prepare("SELECT COUNT(*) AS n FROM orders WHERE tenant_id = ?1 AND ip = ?2 AND created_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 hour')")
@@ -393,24 +399,30 @@ export const storeRoutes = new Hono<AppEnv>()
     const now = new Date().toISOString();
     const actor = { tenantId: t.id, userId: null, userName: input.customerName };
     const cost = input.items.reduce((a, item) => a + Math.round((byId.get(item.variantId)!.cost * toMilli(item.quantity)) / 1000), 0);
-    const customer = await customerForOrder(d1, db, t.id, { name: input.customerName, email: input.customerEmail, phone: input.customerPhone });
+    const customer = account
+      ? { id: account.customerId, statements: [] as D1PreparedStatement[] }
+      : await customerForOrder(d1, db, t.id, { name: input.customerName, email: input.customerEmail, phone: input.customerPhone });
     const statements: D1PreparedStatement[] = [
       d1.prepare("INSERT INTO counters (tenant_id, name, value) VALUES (?1, 'order', 1) ON CONFLICT(tenant_id, name) DO UPDATE SET value = value + 1").bind(t.id),
       d1
         .prepare(
           `INSERT INTO orders (id, tenant_id, number, token, client_id, location_id, status, fulfillment, customer_name, customer_email, customer_phone, address, notes,
              payment_method, payment_status, prices_include_tax, subtotal_cents, tax_cents, shipping_cents, total_cents, cost_cents, ip, created_at, updated_at,
-             customer_id, coupon_code, discount_cents, legal_accepted_at, terms_version, privacy_version)
-           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20, ?21, ?22, ?23, ?24, ?25, ?26
+             customer_id, coupon_code, discount_cents, legal_accepted_at, terms_version, privacy_version, account_id)
+           SELECT ?1, ?2, value, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27
            FROM counters WHERE tenant_id = ?2 AND name = 'order'`,
         )
         .bind(
           orderId, t.id, token, input.clientId, store.locationId, input.fulfillment, input.customerName, input.customerEmail, input.customerPhone,
           input.fulfillment === "delivery" ? input.address : null, input.notes, input.paymentMethod, biz.pricesIncludeTax ? 1 : 0,
           totals.subtotalCents, totals.taxCents, shipping, total, cost, ip, now, customer.id, coupon?.code ?? null, totals.discountCents,
-          legal.length ? now : null, legal.length ? termsVersion : null, legal.length ? privacyVersion : null,
+          legal.length ? now : null, legal.length ? termsVersion : null, legal.length ? privacyVersion : null, account?.id ?? null,
         ),
       ...customer.statements,
+      // The account remembers the phone and the last delivery address for next time.
+      ...(account
+        ? [d1.prepare("UPDATE customer_accounts SET phone = COALESCE(?2, phone), address = COALESCE(?3, address), updated_at = ?4 WHERE id = ?1").bind(account.id, input.customerPhone || null, input.fulfillment === "delivery" ? input.address : null, now)]
+        : []),
       ...(coupon ? [couponUseStatement(d1, coupon.id)] : []),
     ];
     input.items.forEach((item, i) => {

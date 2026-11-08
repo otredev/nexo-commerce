@@ -196,7 +196,7 @@ const product = (await owner("POST", "/api/products", { name: "Café de olla", o
 const main = (await owner("GET", "/api/locations")).data.find((l) => l.isDefault).id;
 const settings = (await owner("GET", "/api/store-settings")).data;
 for (const k of ["slug", "url", "publishedCount", "activeCount"]) delete settings[k];
-r = await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true, holdHours: 48 });
+r = await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true, holdHours: 48, accountRequired: false });
 check("tienda activa", r.status === 200 && r.data.enabled, r.data);
 async function place() {
   const body = { clientId: `ops-${stamp}-${Math.random()}`, items: [{ variantId: product.variants[0].id, quantity: 1 }], fulfillment: "pickup", customerName: "Pepe Cliente", customerEmail: `pepe-${stamp}@example.com`, customerPhone: "5512345678", address: null, notes: null, paymentMethod: "on_delivery", expectedTotalCents: 12000 };

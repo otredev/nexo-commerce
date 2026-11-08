@@ -36,7 +36,7 @@ Nexo reúne lo que un negocio necesita para vender en mostrador y en internet si
 | **Catálogo e inventario** | Productos con variantes, imágenes, SKU y código de barras, unidades a granel, importación desde Excel (CSV), existencias por ubicación, Kardex, costo promedio, conteos físicos a ciegas y traspasos entre sucursales. |
 | **Punto de venta** | Caja para teclado y escáner, descuentos con límite por rol, promociones y cupones, pagos mixtos con cambio, cierre de caja ciego, ingresos y retiros, recibo térmico o por correo, anulaciones y devoluciones, y pantalla para el cliente (segundo monitor o tablet). |
 | **Abastecimiento** | Proveedores, órdenes de compra con recepciones parciales, sugerencias de reorden y cuentas por pagar. |
-| **Tienda en línea** | Catálogo público con existencias reales, carrito, recoger en tienda o envío, pago al recibir, transferencia o tarjeta (Stripe), seguimiento del pedido, políticas con aceptación, SEO, sitemaps y `llms.txt`, dominio propio, temas, banners, barra de avisos y píxeles de anuncios. |
+| **Tienda en línea** | Catálogo público con existencias reales, carrito, recoger en tienda o envío, pago al recibir, transferencia o tarjeta (Stripe), seguimiento del pedido, cuentas de clientes con «Mis pedidos» (pagar pide cuenta; navegar y el carrito no), políticas con aceptación, SEO, sitemaps y `llms.txt`, dominio propio, temas, banners, barra de avisos y píxeles de anuncios. |
 | **Clientes y reportes** | Clientes con historial en caja y en línea, ventas y utilidad por periodo, inventario valorizado y estadísticas de la tienda con fuentes, campañas y embudo. |
 | **Operación** | Usuarios con roles (propietario, administrador, cajero), actividad auditada, notificaciones push, panel instalable en el celular, buscador `Ctrl + K`, ayuda integrada con el manual de usuario y respaldos diarios. |
 | **Plataforma** | Planes con límites y suscripción en Stripe, cobro con tarjeta por negocio (Stripe Connect) y un **panel de administración aparte** (`/admin`) para el equipo que opera Nexo: métricas e ingreso recurrente, negocios, usuarios, tickets de soporte, entrar a un negocio para ayudar (con permiso y registro) y bitácora de todo lo que hace el equipo. |
@@ -125,8 +125,8 @@ docs/         Manual de usuario, referencia técnica y guía de despliegue.
 
 ## Calidad
 
-- **141 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
-- **13 suites de punta a punta** con **790 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial y el panel de administración (operadores, tickets y entrar como negocio con sus límites).
+- **144 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
+- **14 suites de punta a punta** con **834 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial el panel de administración (operadores, tickets y entrar como negocio con sus límites) y las cuentas de clientes de la tienda (aislamiento entre tiendas, bloqueo y recuperación).
 - GitHub Actions revisa tipos, ejecuta las pruebas y compila en cada pull request, y despliega a staging en cada push a `main`.
 
 ## Despliegue

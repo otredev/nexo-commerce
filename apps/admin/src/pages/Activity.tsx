@@ -15,6 +15,7 @@ const ACTIONS: Record<string, string> = {
   "user.create": "Creó un usuario",
   "user.update": "Editó un usuario",
   "support.access": "Soporte de Nexo entró a la cuenta",
+  "customer.signup": "Se registró en la tienda en línea",
 };
 
 const FIELD_LABELS: Record<string, string> = {

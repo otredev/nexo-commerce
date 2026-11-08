@@ -41,7 +41,7 @@ export function CustomerDetailPage() {
       <BackLink to="/clientes">Clientes</BackLink>
       <PageHeader
         title={c.name}
-        description={<span className="nx-row" style={{ gap: 8 }}>{c.archived && <Badge>Archivado</Badge>}<span>Cliente desde {dateFmt.format(new Date(c.createdAt))} · {SOURCE_LABEL[c.source]}</span></span>}
+        description={<span className="nx-row" style={{ gap: 8 }}>{c.archived && <Badge>Archivado</Badge>}<span>Cliente desde {dateFmt.format(new Date(c.createdAt))} · {SOURCE_LABEL[c.source]}</span>{c.accountSince && <Badge tone="accent">Cuenta en la tienda desde {dateFmt.format(new Date(c.accountSince))}</Badge>}</span>}
         actions={can("customers:write") && (
           <>
             <Button variant="ghost" loading={archive.pending} onClick={() => void archive.submit()}><Archive className="nx-icon" aria-hidden="true" />{c.archived ? "Restaurar" : "Archivar"}</Button>

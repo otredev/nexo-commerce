@@ -36,7 +36,7 @@ async function load(c: Context<AppEnv>): Promise<StoreSettings> {
   const base = row ?? {
     enabled: false, locationId: null, tagline: null, about: null, pickupEnabled: true, pickupInstructions: null, deliveryEnabled: false, deliveryFeeCents: 0,
     freeDeliveryFromCents: null, deliveryArea: null, minOrderCents: 0, payOnDelivery: true, transferEnabled: false, transferInstructions: null, cardEnabled: false, whatsapp: null,
-    notifyEmail: null, holdHours: 48, seoTitle: null, seoDescription: null, indexable: true, faq: [] as Array<{ q: string; a: string }>,
+    notifyEmail: null, holdHours: 48, seoTitle: null, seoDescription: null, indexable: true, faq: [] as Array<{ q: string; a: string }>, accountRequired: true,
   };
   return {
     enabled: base.enabled,
@@ -61,6 +61,7 @@ async function load(c: Context<AppEnv>): Promise<StoreSettings> {
     seoDescription: base.seoDescription,
     indexable: base.indexable,
     faq: base.faq,
+    accountRequired: base.accountRequired,
     slug: t.slug,
     url: `${c.env.STORE_URL.replace(/\/$/, "")}/${t.slug}`,
     publishedCount: counts?.published ?? 0,

@@ -63,4 +63,14 @@ export async function cleanupControl(env: Env) {
     env.DB_CONTROL.prepare("DELETE FROM password_resets WHERE expires_at < ?").bind(weekAgo),
     env.DB_CONTROL.prepare("DELETE FROM login_attempts WHERE created_at < ?").bind(weekAgo),
   ]);
+  // Store customers: expired sessions and old password links, in every business database.
+  for (const binding of tenantBindings(env)) {
+    const d1 = (env as unknown as Record<string, D1Database>)[binding]!;
+    await d1
+      .batch([
+        d1.prepare("DELETE FROM customer_sessions WHERE expires_at < ?").bind(now),
+        d1.prepare("DELETE FROM customer_password_resets WHERE expires_at < ?").bind(weekAgo),
+      ])
+      .catch((e) => console.error(`[cleanup] ${binding}`, e));
+  }
 }

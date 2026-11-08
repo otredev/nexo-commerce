@@ -138,7 +138,7 @@ check("probar envía un ping y devuelve la entrega", r.status === 200 && r.data.
 // Store order → order.created
 const settings = (await owner("GET", "/api/store-settings")).data;
 for (const k of ["slug", "url", "publishedCount", "activeCount"]) delete settings[k];
-await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true });
+await owner("PUT", "/api/store-settings", { ...settings, enabled: true, locationId: main, pickupEnabled: true, payOnDelivery: true, accountRequired: false });
 const orderBody = { clientId: `int-${stamp}`, items: [{ variantId: martillo.variants[0].id, quantity: 2 }], fulfillment: "pickup", customerName: "Olga Cliente", customerEmail: `olga-${stamp}@example.com`, customerPhone: "5512345678", address: null, notes: null, paymentMethod: "on_delivery", expectedTotalCents: 0 };
 mark = hook.received.length;
 r = await shopper("POST", `/api/store/${slug}/orders`, orderBody);

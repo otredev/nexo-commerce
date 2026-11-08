@@ -27,6 +27,7 @@ import { countRoutes } from "./routes/counts";
 import { orderRoutes } from "./routes/orders";
 import { storeAdminRoutes } from "./routes/storeAdmin";
 import { storeRoutes } from "./routes/store";
+import { storeAccountRoutes } from "./routes/storeAccount";
 import { expireOrders } from "./lib/orders";
 import { customerRoutes } from "./routes/customers";
 import { promotionRoutes } from "./routes/promotions";
@@ -88,6 +89,7 @@ const app = new Hono<AppEnv>()
   .get("/api/health", (c) => c.json({ ok: true, env: c.env.APP_ENV, time: new Date().toISOString() }))
   .route("/api/auth", authRoutes)
   // Public online store (no session). Must be mounted before the protected API.
+  .route("/api/store", storeAccountRoutes)
   .route("/api/store", storeRoutes)
   // Stripe webhooks (platform and Connect endpoints). The signature is the authentication.
   .post("/api/webhooks/stripe", async (c) => {

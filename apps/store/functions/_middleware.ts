@@ -27,7 +27,7 @@ interface Env {
 }
 
 const RESERVED = new Set(["api", "files", "assets"]);
-const PRIVATE = new Set(["pagar", "pedido"]);
+const PRIVATE = new Set(["pagar", "pedido", "entrar", "cuenta"]);
 
 /** Hostname the customer typed. The SaaS router Worker passes it in x-nexo-host. */
 const visibleHost = (request: Request) => (request.headers.get("x-nexo-host") ?? new URL(request.url).hostname).toLowerCase();

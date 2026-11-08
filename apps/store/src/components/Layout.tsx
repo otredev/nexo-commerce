@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { MessageCircle, ShoppingBag } from "lucide-react";
+import { MessageCircle, ShoppingBag, UserRound } from "lucide-react";
 import { POLICY_INFO, whatsappLink } from "@nexo/shared";
 import { Button } from "@nexo/ui";
 import { imageUrl, track } from "../lib/api";
 import { useStore } from "../lib/store";
+import { firstName, useAccount } from "../lib/account";
 import { CartDrawer } from "./CartDrawer";
 import { AnnouncementBar, ConsentBanner, useConsent, useThemeStyle } from "./Appearance";
 
 export function StoreLayout() {
   const { store, error, slug, link, count, setCartOpen } = useStore();
+  const { account, ready } = useAccount();
   const location = useLocation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -55,6 +57,17 @@ export function StoreLayout() {
                 <input className="nx-input" type="search" placeholder="Buscar productos" aria-label="Buscar productos" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
             </form>
+          )}
+          {ready && (
+            <Link
+              to={link(account ? "/cuenta" : "/entrar")}
+              className="st-account-btn"
+              aria-label={account ? `Mi cuenta, ${account.name}` : "Entrar o crear cuenta"}
+              style={checkout ? { marginLeft: "auto" } : undefined}
+            >
+              <UserRound size={17} strokeWidth={1.6} aria-hidden="true" />
+              <span className="st-account-btn__label">{account ? firstName(account.name) : "Entrar"}</span>
+            </Link>
           )}
           {!checkout && (
             <button type="button" className="st-cart-btn" onClick={() => setCartOpen(true)} aria-label={`Carrito, ${count} ${count === 1 ? "producto" : "productos"}`}>
