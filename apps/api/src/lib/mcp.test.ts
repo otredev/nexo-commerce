@@ -25,13 +25,16 @@ describe("MCP tools", () => {
   });
   it("appearance: read tools for read-only keys, changes only with a full key, code marked destructive", () => {
     const ro = toolsFor(key("admin", true)).map((t) => t.name);
-    expect(ro).toEqual(expect.arrayContaining(["ver_apariencia", "ver_codigo_tienda"]));
+    expect(ro).toEqual(expect.arrayContaining(["ver_apariencia", "ver_seccion", "ver_codigo_tienda"]));
+    expect(ro).not.toContain("editar_seccion");
     expect(ro).not.toContain("editar_codigo_tienda");
     const full = toolsFor(key("admin", false)).map((t) => t.name);
-    expect(full).toEqual(expect.arrayContaining(["cambiar_tema", "barra_de_avisos", "editar_banner", "ordenar_banners", "editar_codigo_tienda"]));
+    expect(full).toEqual(expect.arrayContaining(["cambiar_tema", "barra_de_avisos", "agregar_seccion", "editar_seccion", "ordenar_secciones", "editar_codigo_tienda"]));
+    expect(full).not.toContain("editar_banner");
     expect(MCP_TOOLS.find((t) => t.name === "editar_codigo_tienda")?.destructive).toBe(true);
     const cashier = toolsFor(key("cashier", false)).map((t) => t.name);
     expect(cashier).not.toContain("editar_codigo_tienda");
     expect(cashier).not.toContain("cambiar_tema");
+    expect(cashier).not.toContain("agregar_seccion");
   });
 });

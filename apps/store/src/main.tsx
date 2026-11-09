@@ -5,6 +5,7 @@ import { ToastProvider } from "@nexo/ui";
 import "@nexo/ui/styles.css";
 import "@nexo/ui/theme-fonts.css";
 import "./store.css";
+import "./blocks.css";
 import { StoreProvider } from "./lib/store";
 import { StoreLayout } from "./components/Layout";
 import { CatalogPage } from "./pages/Catalog";

@@ -1,33 +1,33 @@
 /**
- * Tienda en línea → Apariencia (Phase 9): theme, announcement bar, banners, ad pixels and custom code,
- * with a live preview built from the same theme tokens the store uses.
+ * Tienda en línea → Apariencia: the home page sections (block editor), theme, announcement bar, ad pixels
+ * and custom CSS, with the real store as a live preview of the unsaved changes.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import {
-  ANNOUNCEMENT_TONES, CODE_LIMITS, MAX_BANNERS, resolveTheme, THEME_FONT_IDS, THEME_FONTS, THEME_PRESET_IDS, THEME_PRESETS, THEME_RADII, THEME_RADIUS_IDS,
+  ANNOUNCEMENT_TONES, CODE_LIMITS, resolveTheme, THEME_FONT_IDS, THEME_FONTS, THEME_PRESET_IDS, THEME_PRESETS, THEME_RADII, THEME_RADIUS_IDS,
   themeTokens, themeWarnings,
-  type AnnouncementTone, type StoreAppearance, type StoreAppearanceSettings, type StoreBanner, type StoreSettings, type StoreTheme, type ThemeFont, type ThemeRadius,
+  type AnnouncementTone, type CategoryItem, type StoreAppearance, type StoreAppearanceSettings, type StoreSettings, type StoreTheme, type ThemeFont, type ThemeRadius,
 } from "@nexo/shared";
-import { Alert, Badge, Button, Card, Checkbox, PageHeader, Segmented, Switch, Tabs, TextAreaField, TextField, useToast } from "@nexo/ui";
+import { Alert, Badge, Button, Card, Checkbox, PageHeader, Segmented, Switch, Tabs, TextField, useToast } from "@nexo/ui";
 import "@nexo/ui/theme-fonts.css";
-import { get, post, put } from "../lib/api";
+import { get, put } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useLoad, useSubmit } from "../lib/hooks";
 import { useBusiness } from "../lib/business";
+import { BlocksEditor } from "./appearance/BlocksEditor";
+import { CodeArea, ColorField, DateRange } from "./appearance/fields";
+import { LivePreview } from "./appearance/LivePreview";
 
-type Tab = "tema" | "avisos" | "banners" | "pixeles" | "codigo";
+type Tab = "pagina" | "tema" | "avisos" | "pixeles" | "codigo";
 const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "pagina", label: "Página principal" },
   { id: "tema", label: "Tema" },
   { id: "avisos", label: "Barra de avisos" },
-  { id: "banners", label: "Banners" },
   { id: "pixeles", label: "Píxeles" },
-  { id: "codigo", label: "Código" },
+  { id: "codigo", label: "CSS" },
 ];
-
-const newId = () => Math.random().toString(36).slice(2, 10);
-const today = () => new Date().toLocaleDateString("en-CA");
 
 export function StoreAppearancePage() {
   const { can } = useAuth();
@@ -35,15 +35,16 @@ export function StoreAppearancePage() {
   const toast = useToast();
   const writable = can("store:write");
   const load = useLoad(() => Promise.all([get<StoreAppearanceSettings>("/store-settings/appearance"), get<StoreSettings>("/store-settings")]));
+  const categories = useLoad(() => (can("catalog:read") ? get<CategoryItem[]>("/categories") : Promise.resolve([] as CategoryItem[])));
   const [form, setForm] = useState<StoreAppearance | null>(null);
-  const [tab, setTab] = useState<Tab>("tema");
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [tab, setTab] = useState<Tab>("pagina");
+  const [selected, setSelected] = useState<string | null>(null);
   const saved = useRef<string>("");
 
   useEffect(() => {
     if (!load.data) return;
-    const { theme, announcement, banners, pixels, code } = load.data[0];
-    const f = { theme, announcement, banners, pixels, code };
+    const { theme, announcement, blocks, pixels, code } = load.data[0];
+    const f = { theme, announcement, blocks, pixels, code };
     saved.current = JSON.stringify(f);
     setForm(f);
   }, [load.data]);
@@ -65,49 +66,46 @@ export function StoreAppearancePage() {
 
   if (load.error) return <Alert tone="danger">{load.error.message}</Alert>;
   if (!form || !load.data) return <div className="nx-page-loading"><span className="nx-spinner" aria-label="Cargando" /></div>;
-  const [settings, store] = load.data;
+  const [, store] = load.data;
   const f = save.fields;
   const set = <K extends keyof StoreAppearance>(k: K, v: StoreAppearance[K]) => { setForm({ ...form, [k]: v }); save.clearFields(k); };
   const errorsIn = (prefix: string) => Object.keys(f).some((k) => k === prefix || k.startsWith(`${prefix}.`));
+  const ctx = { theme: form.theme, storeName: biz?.tradeName ?? storeName(store), tagline: store.tagline, address: biz?.address ?? null, categories: categories.data ?? [] };
 
   return (
     <>
       <PageHeader
         title="Apariencia de la tienda"
-        description="Colores, letras, avisos, banners y herramientas de anuncios de tu tienda en línea."
+        description="Arma tu página principal con secciones y elige colores, letras, avisos y herramientas de anuncios."
         actions={
           <>
             <a className="nx-btn nx-btn--ghost" href={store.url} target="_blank" rel="noreferrer"><ExternalLink className="nx-icon" aria-hidden="true" />Ver tienda</a>
+            {writable && dirty && <Button variant="ghost" onClick={() => { setForm(JSON.parse(saved.current) as StoreAppearance); save.clearFields("blocks", "theme", "announcement", "pixels", "code"); }}>Descartar cambios</Button>}
             {writable && <Button variant="primary" loading={save.pending} disabled={!dirty} onClick={() => void save.submit()}>{dirty ? "Guardar cambios" : "Guardado"}</Button>}
           </>
         }
       />
-      {!store.enabled && <Alert tone="info">Tu tienda aún no está activa. Puedes prepararla aquí y activarla en <Link className="nx-link" to="/tienda">Ajustes de la tienda</Link>.</Alert>}
+      {!store.enabled && <Alert tone="info">Tu tienda aún no está activa. Puedes prepararla aquí (la vista previa ya funciona) y activarla en <Link className="nx-link" to="/tienda">Ajustes de la tienda</Link>.</Alert>}
       {save.message && <Alert tone="danger">{save.message}</Alert>}
       {Object.keys(f).length > 0 && !save.message && <Alert tone="danger">Revisa los campos marcados{TABS.filter((t) => errorsIn(tabKey(t.id))).map((t) => ` · ${t.label}`).join("")}.</Alert>}
       <Tabs label="Secciones de apariencia" tabs={TABS} value={tab} onChange={setTab} />
-      <div className="nx-appearance">
+      <div className="nx-appearance nx-appearance--live">
         <fieldset className="nx-appearance__editor" disabled={!writable}>
+          {tab === "pagina" && <BlocksEditor blocks={form.blocks} onChange={(b) => set("blocks", b)} errors={f} clearErrors={() => save.clearFields("blocks")} ctx={ctx} selected={selected} onSelect={setSelected} />}
           {tab === "tema" && <ThemeEditor theme={form.theme} onChange={(t) => set("theme", t)} errors={f} />}
           {tab === "avisos" && <AnnouncementEditor value={form.announcement} onChange={(a) => set("announcement", a)} errors={f} />}
-          {tab === "banners" && <BannersEditor value={form.banners} onChange={(b) => set("banners", b)} errors={f} />}
           {tab === "pixeles" && <PixelsEditor value={form.pixels} onChange={(p) => set("pixels", p)} errors={f} />}
-          {tab === "codigo" && <CodeEditor value={form.code} onChange={(c) => set("code", c)} errors={f} settings={settings} />}
+          {tab === "codigo" && <CodeEditor value={form.code} onChange={(c) => set("code", c)} errors={f} />}
         </fieldset>
         <aside className="nx-appearance__preview" aria-label="Vista previa">
-          <div className="nx-row" style={{ justifyContent: "space-between" }}>
-            <span className="nx-label">Vista previa</span>
-            <Segmented label="Dispositivo" value={device} onChange={setDevice} options={[{ id: "desktop", label: "Computadora" }, { id: "mobile", label: "Celular" }]} />
-          </div>
-          <StorePreview appearance={form} name={biz?.tradeName ?? storeName(store)} logo={biz?.logoKey ?? null} tagline={store.tagline} device={device} />
-          <p className="nx-help" style={{ margin: 0 }}>Aproximada: los productos son de ejemplo. Guarda y abre <em>Ver tienda</em> para verla real.</p>
+          <LivePreview appearance={form} storeUrl={store.url} selected={tab === "pagina" ? selected : null} />
         </aside>
       </div>
     </>
   );
 }
 
-const tabKey = (t: Tab) => ({ tema: "theme", avisos: "announcement", banners: "banners", pixeles: "pixels", codigo: "code" })[t];
+const tabKey = (t: Tab) => ({ pagina: "blocks", tema: "theme", avisos: "announcement", pixeles: "pixels", codigo: "code" })[t];
 const storeName = (s: StoreSettings) => s.slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 /* ---------------- Theme ---------------- */
@@ -176,31 +174,6 @@ function ThemeEditor({ theme, onChange, errors }: { theme: StoreTheme; onChange:
   );
 }
 
-function ColorField({ label, value, fallback, onChange, error }: { label: string; value: string | null; fallback: string; onChange: (v: string | null) => void; error?: string }) {
-  const [text, setText] = useState(value ?? fallback);
-  useEffect(() => { setText(value ?? fallback); }, [value, fallback]);
-  const id = useMemo(() => `c-${newId()}`, []);
-  return (
-    <div className="nx-field">
-      <label className="nx-label" htmlFor={id}>{label}</label>
-      <div className="nx-color">
-        <input type="color" aria-label={`${label}: elegir`} value={value ?? fallback} onChange={(e) => onChange(e.target.value)} />
-        <input
-          id={id}
-          className="nx-input nx-mono"
-          value={text}
-          maxLength={7}
-          spellCheck={false}
-          onChange={(e) => { setText(e.target.value); if (/^#[0-9a-f]{6}$/i.test(e.target.value)) onChange(e.target.value.toLowerCase()); }}
-          onBlur={() => setText(value ?? fallback)}
-        />
-        {value && <button type="button" className="nx-color__reset" aria-label={`${label}: volver al del estilo`} title="Volver al del estilo" onClick={() => onChange(null)}><X className="nx-icon" aria-hidden="true" /></button>}
-      </div>
-      {error && <span className="nx-help" style={{ color: "var(--danger)" }}>{error}</span>}
-    </div>
-  );
-}
-
 /* ---------------- Announcement ---------------- */
 
 function AnnouncementEditor({ value: a, onChange, errors }: { value: StoreAppearance["announcement"]; onChange: (a: StoreAppearance["announcement"]) => void; errors: Record<string, string> }) {
@@ -245,120 +218,6 @@ function AnnouncementEditor({ value: a, onChange, errors }: { value: StoreAppear
   );
 }
 
-function DateRange({ value, onChange, error }: { value: { startsOn: string | null; endsOn: string | null }; onChange: (r: { startsOn: string | null; endsOn: string | null }) => void; error?: string }) {
-  return (
-    <div className="nx-grid-2">
-      <TextField label="Desde" optional type="date" value={value.startsOn ?? ""} onChange={(e) => onChange({ ...value, startsOn: e.target.value || null })} />
-      <TextField label="Hasta" optional type="date" value={value.endsOn ?? ""} min={value.startsOn ?? undefined} onChange={(e) => onChange({ ...value, endsOn: e.target.value || null })} error={error} help={!error ? "Sin fechas se muestra siempre." : undefined} />
-    </div>
-  );
-}
-
-/* ---------------- Banners ---------------- */
-
-async function uploadImage(file: File) {
-  const fd = new FormData();
-  fd.append("file", file);
-  return (await post<{ key: string }>("/uploads", fd)).key;
-}
-
-function ImagePick({ label, value, onPick, onClear, hint }: { label: string; value: string | null; onPick: (key: string) => void; onClear?: () => void; hint: string }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const up = useSubmit(async (file: File) => onPick(await uploadImage(file)));
-  return (
-    <div className="nx-field">
-      <span className="nx-label">{label}</span>
-      <div className="nx-row" style={{ gap: 8 }}>
-        <input ref={ref} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void up.submit(file); e.target.value = ""; }} />
-        <Button size="sm" loading={up.pending} onClick={() => ref.current?.click()}><ImagePlus className="nx-icon" aria-hidden="true" />{value ? "Cambiar" : "Subir"}</Button>
-        {value && onClear && <Button size="sm" variant="ghost" onClick={onClear}>Quitar</Button>}
-      </div>
-      <span className="nx-help">{up.fields.file ?? up.message ?? hint}</span>
-    </div>
-  );
-}
-
-function BannersEditor({ value, onChange, errors }: { value: StoreBanner[]; onChange: (b: StoreBanner[]) => void; errors: Record<string, string> }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const add = useSubmit(async (file: File) => {
-    const image = await uploadImage(file);
-    onChange([...value, { id: newId(), enabled: true, image, imageMobile: null, heading: null, text: null, cta: null, link: null, textColor: "light", align: "left", startsOn: null, endsOn: null }]);
-  });
-  const patch = (i: number, p: Partial<StoreBanner>) => onChange(value.map((b, k) => (k === i ? { ...b, ...p } : b)));
-  const move = (i: number, d: -1 | 1) => { const next = [...value]; [next[i], next[i + d]] = [next[i + d]!, next[i]!]; onChange(next); };
-  const now = today();
-  return (
-    <div className="nx-stack" style={{ gap: 16 }}>
-      <Card
-        title="Banners de la portada"
-        description="Imágenes grandes arriba del catálogo, que pasan solas cada 6 segundos. Úsalas para temporadas, lanzamientos o promociones."
-        actions={value.length < MAX_BANNERS && (
-          <>
-            <input ref={ref} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void add.submit(file); e.target.value = ""; }} />
-            <Button size="sm" loading={add.pending} onClick={() => ref.current?.click()}><Plus className="nx-icon" aria-hidden="true" />Agregar banner</Button>
-          </>
-        )}
-      >
-        {(add.fields.file || add.message) && <Alert tone="danger">{add.fields.file ?? add.message}</Alert>}
-        {value.length === 0 ? (
-          <p className="nx-muted" style={{ margin: 0 }}>Aún no hay banners. Medida recomendada: <strong>2100 × 800 px</strong> (horizontal) y, si quieres, otra de <strong>1080 × 1350 px</strong> para celular. JPG, PNG o WebP de hasta 5 MB.</p>
-        ) : (
-          <p className="nx-help" style={{ margin: 0 }}>Medida recomendada: 2100 × 800 px; para celular, 1080 × 1350 px. Hasta {MAX_BANNERS} banners.</p>
-        )}
-      </Card>
-      {value.map((b, i) => {
-        const e = (k: string) => errors[`banners.${i}.${k}`];
-        const scheduled = (b.startsOn && b.startsOn > now) || (b.endsOn && b.endsOn < now);
-        return (
-          <Card
-            key={b.id}
-            title={`Banner ${i + 1}`}
-            actions={
-              <div className="nx-row" style={{ gap: 4 }}>
-                {!b.enabled ? <Badge>Oculto</Badge> : scheduled ? <Badge tone="warning">Fuera de fechas</Badge> : <Badge tone="success">Visible</Badge>}
-                <Button size="sm" variant="ghost" disabled={i === 0} aria-label="Subir" onClick={() => move(i, -1)}><ArrowUp className="nx-icon" aria-hidden="true" /></Button>
-                <Button size="sm" variant="ghost" disabled={i === value.length - 1} aria-label="Bajar" onClick={() => move(i, 1)}><ArrowDown className="nx-icon" aria-hidden="true" /></Button>
-                <Button size="sm" variant="ghost" aria-label={`Eliminar banner ${i + 1}`} onClick={() => onChange(value.filter((_, k) => k !== i))}><Trash2 className="nx-icon" aria-hidden="true" /></Button>
-              </div>
-            }
-          >
-            <div className="nx-banner-edit">
-              <div className="nx-banner-edit__media">
-                <img src={`/files/${b.image}`} alt="" />
-                {b.imageMobile && <img className="nx-banner-edit__mobile" src={`/files/${b.imageMobile}`} alt="" />}
-              </div>
-              <div className="nx-stack" style={{ gap: 14 }}>
-                <Switch label="Mostrar en la tienda" checked={b.enabled} onChange={(v) => patch(i, { enabled: v })} />
-                <div className="nx-grid-2">
-                  <ImagePick label="Imagen" value={b.image} onPick={(k) => patch(i, { image: k })} hint={e("image") ?? "2100 × 800 px"} />
-                  <ImagePick label="Imagen para celular" value={b.imageMobile} onPick={(k) => patch(i, { imageMobile: k })} onClear={() => patch(i, { imageMobile: null })} hint={e("imageMobile") ?? "Opcional · 1080 × 1350 px"} />
-                </div>
-                <TextField label="Título" optional maxLength={80} value={b.heading ?? ""} onChange={(ev) => patch(i, { heading: ev.target.value || null })} error={e("heading")} placeholder="Nueva colección de otoño" />
-                <TextAreaField label="Texto" optional maxLength={160} rows={2} value={b.text ?? ""} onChange={(ev) => patch(i, { text: ev.target.value || null })} error={e("text")} />
-                <div className="nx-grid-2">
-                  <TextField label="Botón" optional maxLength={30} value={b.cta ?? ""} onChange={(ev) => patch(i, { cta: ev.target.value || null })} error={e("cta")} placeholder="Ver colección" />
-                  <TextField label="Enlace" optional value={b.link ?? ""} onChange={(ev) => patch(i, { link: ev.target.value || null })} error={e("link")} placeholder="?categoria=… o /p/…" help={!e("link") ? "Todo el banner lleva ahí." : undefined} />
-                </div>
-                <div className="nx-grid-2">
-                  <div className="nx-field">
-                    <span className="nx-label">Color del texto</span>
-                    <Segmented label="Color del texto" value={b.textColor} onChange={(v) => patch(i, { textColor: v as StoreBanner["textColor"] })} options={[{ id: "light", label: "Claro" }, { id: "dark", label: "Oscuro" }]} />
-                  </div>
-                  <div className="nx-field">
-                    <span className="nx-label">Alineación</span>
-                    <Segmented label="Alineación" value={b.align} onChange={(v) => patch(i, { align: v as StoreBanner["align"] })} options={[{ id: "left", label: "Izquierda" }, { id: "center", label: "Centro" }]} />
-                  </div>
-                </div>
-                <DateRange value={b} onChange={(r) => patch(i, r)} error={e("endsOn")} />
-              </div>
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ---------------- Pixels ---------------- */
 
 function PixelsEditor({ value: p, onChange, errors }: { value: StoreAppearance["pixels"]; onChange: (p: StoreAppearance["pixels"]) => void; errors: Record<string, string> }) {
@@ -376,125 +235,20 @@ function PixelsEditor({ value: p, onChange, errors }: { value: StoreAppearance["
   );
 }
 
-/* ---------------- Custom code ---------------- */
+/* ---------------- Custom CSS ---------------- */
 
-function CodeEditor({ value: c, onChange, errors, settings }: { value: StoreAppearance["code"]; onChange: (c: StoreAppearance["code"]) => void; errors: Record<string, string>; settings: StoreAppearanceSettings }) {
-  const counter = (v: string, max: number) => `${v.length.toLocaleString("es-MX")} / ${max.toLocaleString("es-MX")}`;
-  const htmlLocked = !settings.codeAllowed && !c.headHtml && !c.bodyHtml && !c.js;
+function CodeEditor({ value: c, onChange, errors }: { value: StoreAppearance["code"]; onChange: (c: StoreAppearance["code"]) => void; errors: Record<string, string> }) {
   return (
     <div className="nx-stack" style={{ gap: 20 }}>
       <Card title="CSS personalizado" description="Ajusta detalles del diseño. Se aplica en todas las páginas de la tienda, después del tema.">
-        <CodeArea label="CSS" value={c.css} max={CODE_LIMITS.css} onChange={(css) => onChange({ ...c, css })} error={errors["code.css"]} counter={counter(c.css, CODE_LIMITS.css)} placeholder={".st-card__name {\n  text-transform: uppercase;\n}"} />
-        <p className="nx-help" style={{ margin: "8px 0 0" }}>Las clases de la tienda empiezan con <code>.st-</code> y los colores son variables como <code>--primary</code> o <code>--bg</code>.</p>
+        <CodeArea label="CSS" value={c.css} max={CODE_LIMITS.css} rows={14} onChange={(css) => onChange({ ...c, css })} error={errors["code.css"]} placeholder={".st-card__name {\n  text-transform: uppercase;\n}"} />
+        <p className="nx-help" style={{ margin: "8px 0 0" }}>
+          Las clases de la tienda empiezan con <code>.st-</code> (cada sección es <code>.st-block</code>, p. ej. <code>.st-block--hero</code>, y con ancla, <code>#tu-ancla</code>) y los colores son variables como <code>--primary</code> o <code>--bg</code>.
+        </p>
       </Card>
-      <Card
-        title="HTML y JavaScript"
-        description="Para widgets de chat, reseñas, verificación de dominio u otras herramientas que te den un código para pegar."
-        actions={!settings.codeAllowed ? <Badge tone="accent">Plan Pro</Badge> : settings.domain ? <Badge tone="success">Activo en {settings.domain}</Badge> : <Badge tone="warning">Falta dominio propio</Badge>}
-      >
-        <div className="nx-stack" style={{ gap: 16 }}>
-          {!settings.codeAllowed ? (
-            <Alert tone="info">El HTML y JavaScript propios están disponibles desde el plan Pro, con tu tienda en tu dominio. <Link className="nx-link" to="/configuracion?tab=plan">Ver planes</Link></Alert>
-          ) : !settings.domain ? (
-            <Alert tone="warning">Por seguridad, este código solo se ejecuta cuando la tienda abre en <strong>tu propio dominio</strong> (en el dominio compartido conviven todas las tiendas). Conéctalo en <Link className="nx-link" to="/tienda">Ajustes de la tienda → Dominio propio</Link>.</Alert>
-          ) : (
-            <Alert tone="info">Se ejecuta en {settings.domain}, en todas las páginas excepto el pago y el seguimiento del pedido (ahí el cliente escribe sus datos).</Alert>
-          )}
-          {!htmlLocked && <Alert tone="warning" title="Pega solo código de fuentes en las que confíes">Un script puede cambiar tu tienda o leer lo que el cliente hace en ella. Si algo deja de funcionar, borra el código y guarda.</Alert>}
-          {!htmlLocked && <>
-          <CodeArea label="Antes de </head>" value={c.headHtml} max={CODE_LIMITS.headHtml} disabled={htmlLocked} onChange={(headHtml) => onChange({ ...c, headHtml })} error={errors["code.headHtml"]} counter={counter(c.headHtml, CODE_LIMITS.headHtml)} placeholder={'<meta name="facebook-domain-verification" content="…" />'} />
-          <CodeArea label="Antes de </body>" value={c.bodyHtml} max={CODE_LIMITS.bodyHtml} disabled={htmlLocked} onChange={(bodyHtml) => onChange({ ...c, bodyHtml })} error={errors["code.bodyHtml"]} counter={counter(c.bodyHtml, CODE_LIMITS.bodyHtml)} placeholder={'<script src="https://widget.ejemplo.com/chat.js" async></script>'} />
-          <CodeArea label="JavaScript" value={c.js} max={CODE_LIMITS.js} disabled={htmlLocked} onChange={(js) => onChange({ ...c, js })} error={errors["code.js"]} counter={counter(c.js, CODE_LIMITS.js)} placeholder={"// Se ejecuta al final de cada página\nconsole.log('Hola');"} help="Sin las etiquetas <script>." />
-          </>}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function CodeArea({ label, value, max, onChange, error, counter, placeholder, disabled, help }: { label: string; value: string; max: number; onChange: (v: string) => void; error?: string; counter: string; placeholder?: string; disabled?: boolean; help?: string }) {
-  return (
-    <TextAreaField
-      label={label}
-      value={value}
-      maxLength={max}
-      rows={8}
-      spellCheck={false}
-      disabled={disabled}
-      className="nx-code"
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        // Tab inserts two spaces instead of leaving the field (Esc then Tab still moves focus).
-        if (e.key !== "Tab" || e.shiftKey) return;
-        const el = e.currentTarget;
-        if (el.dataset.escaped === "1") { el.dataset.escaped = ""; return; }
-        e.preventDefault();
-        const { selectionStart: s, selectionEnd: t } = el;
-        onChange(value.slice(0, s) + "  " + value.slice(t));
-        requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2; });
-      }}
-      onKeyUp={(e) => { if (e.key === "Escape") e.currentTarget.dataset.escaped = "1"; }}
-      error={error}
-      help={error ? undefined : [help, counter].filter(Boolean).join(" · ")}
-    />
-  );
-}
-
-/* ---------------- Live preview ---------------- */
-
-const SAMPLE = [
-  { name: "Playera de algodón", price: "$349.00", hue: 28 },
-  { name: "Taza de barro", price: "$189.00", hue: 150 },
-  { name: "Bolsa de mano", price: "$520.00", hue: 340 },
-  { name: "Vela aromática", price: "$210.00", hue: 210 },
-];
-
-function StorePreview({ appearance: a, name, logo, tagline, device }: { appearance: StoreAppearance; name: string; logo: string | null; tagline: string | null; device: "desktop" | "mobile" }) {
-  const r = resolveTheme(a.theme);
-  const vars = themeTokens(r) as CSSProperties;
-  const now = today();
-  const banner = a.banners.find((b) => b.enabled && (!b.startsOn || b.startsOn <= now) && (!b.endsOn || b.endsOn >= now)) ?? null;
-  const ann = a.announcement.enabled ? a.announcement.messages.find((m) => m.text.trim()) : null;
-  const img = banner ? (device === "mobile" && banner.imageMobile ? banner.imageMobile : banner.image) : null;
-  return (
-    <div className="nx-sp" data-device={device} data-scheme={r.scheme} style={vars}>
-      {ann && <div className="nx-sp__ann" data-tone={a.announcement.tone}>{ann.text}</div>}
-      <div className="nx-sp__header">
-        <span className="nx-sp__brand">{logo && <img src={`/files/${logo}`} alt="" />}{name}</span>
-        {device === "desktop" && <span className="nx-sp__search">Buscar productos</span>}
-        <span className="nx-sp__cart"><ShoppingBag size={13} aria-hidden="true" />{device === "desktop" && " Carrito"}</span>
-      </div>
-      <div className="nx-sp__body">
-        {banner && img ? (
-          <div className="nx-sp__banner" data-text={banner.textColor} data-align={banner.align} data-mobile={banner.imageMobile ? "" : undefined}>
-            <img src={`/files/${img}`} alt="" />
-            {(banner.heading || banner.text || banner.cta) && (
-              <div className="nx-sp__banner-copy">
-                {banner.heading && <strong>{banner.heading}</strong>}
-                {banner.text && <span>{banner.text}</span>}
-                {banner.cta && <em>{banner.cta}</em>}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="nx-sp__hero">
-            <strong>{name}</strong>
-            {tagline && <span>{tagline}</span>}
-          </div>
-        )}
-        <div className="nx-sp__chips"><span data-on="true">Todo</span><span>Novedades</span><span>Ofertas</span></div>
-        <div className="nx-sp__grid">
-          {SAMPLE.map((p) => (
-            <div key={p.name} className="nx-sp__card">
-              <div className="nx-sp__img" style={{ background: `linear-gradient(135deg, hsl(${p.hue} 35% 82%), hsl(${p.hue + 30} 30% 68%))` }} />
-              <div className="nx-sp__name">{p.name}</div>
-              <div className="nx-sp__price">{p.price}</div>
-            </div>
-          ))}
-        </div>
-        <div className="nx-sp__btn">Agregar al carrito</div>
-      </div>
+      <Alert tone="info" title="¿HTML o JavaScript?">
+        Ahora van en una sección <strong>HTML personalizado</strong> de la Página principal: corre en un marco aislado, así funciona en cualquier plan y dominio sin poner en riesgo tu tienda ni a tus clientes.
+      </Alert>
     </div>
   );
 }

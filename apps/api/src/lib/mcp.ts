@@ -9,8 +9,8 @@
  */
 import type { Context } from "hono";
 import {
-  ANNOUNCEMENT_TONES, can, CODE_LIMITS, MOVEMENT_REASONS, PAYMENT_CODES, resolveTheme, THEME_FONT_IDS, THEME_FONTS, THEME_PRESET_IDS, THEME_PRESETS, THEME_RADIUS_IDS,
-  themeWarnings, type Permission, type StoreAppearance, type StoreAppearanceSettings,
+  ANNOUNCEMENT_TONES, BLOCK_TYPE_IDS, BLOCK_TYPES, blockSummary, can, CODE_LIMITS, MOVEMENT_REASONS, PAYMENT_CODES, resolveTheme, THEME_FONT_IDS, THEME_FONTS, THEME_PRESET_IDS,
+  THEME_PRESETS, THEME_RADIUS_IDS, themeWarnings, type BlockType, type Permission, type StoreAppearance, type StoreAppearanceSettings, type StoreBlock,
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
 import { bearerKey, loadApiKey, type KeySession } from "./apiKeys";
@@ -18,9 +18,9 @@ import { bearerKey, loadApiKey, type KeySession } from "./apiKeys";
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const SERVER_INFO = { name: "nexo", title: "Nexo", version: "1.0.0" };
 const INSTRUCTIONS =
-  "Herramientas de Nexo para el negocio conectado: catálogo, existencias, ventas, reportes, pedidos de la tienda en línea, clientes y la apariencia de la tienda (tema, avisos, banners y código). " +
+  "Herramientas de Nexo para el negocio conectado: catálogo, existencias, ventas, reportes, pedidos de la tienda en línea, clientes y la apariencia de la tienda (tema, avisos, secciones de la página principal y CSS). " +
   "Las cantidades de dinero vienen en centavos (…Cents): divide entre 100. Las fechas son AAAA-MM-DD en la zona horaria del negocio. " +
-  "Antes de cambiar algo (existencias, pedidos, apariencia o código de la tienda), confirma con la persona; para el código, muéstrale exactamente lo que vas a guardar.";
+  "Antes de cambiar algo (existencias, pedidos, apariencia, secciones o CSS de la tienda), confirma con la persona; para el CSS o el HTML de una sección, muéstrale exactamente lo que vas a guardar.";
 
 type Call = (method: "GET" | "POST" | "PUT", path: string, body?: unknown) => Promise<Response>;
 type Args = Record<string, unknown>;
@@ -32,7 +32,7 @@ interface Tool {
   description: string;
   permission: Permission;
   write?: boolean;
-  /** Can break what customers see (custom HTML/JS): clients should ask before running it. */
+  /** Can break what customers see (custom CSS): clients should ask before running it. */
   destructive?: boolean;
   inputSchema: JsonSchema;
   run: (args: Args, call: Call) => Promise<Response>;
@@ -63,7 +63,7 @@ async function updateAppearance(call: Call, change: (a: StoreAppearance) => stri
   const res = await call("GET", APPEARANCE);
   if (!res.ok) return res;
   const cur = (await res.json()) as StoreAppearanceSettings;
-  const next: StoreAppearance = structuredClone({ theme: cur.theme, announcement: cur.announcement, banners: cur.banners, pixels: cur.pixels, code: cur.code });
+  const next: StoreAppearance = structuredClone({ theme: cur.theme, announcement: cur.announcement, blocks: cur.blocks, pixels: cur.pixels, code: cur.code });
   const problem = change(next);
   if (problem) return new Response(JSON.stringify({ error: { message: problem } }), { status: 422, headers: { "content-type": "application/json" } });
   const saved = await call("PUT", APPEARANCE, next);
@@ -80,13 +80,31 @@ const themeSummary = (s: StoreAppearanceSettings) => {
   };
 };
 const announcementSummary = (s: StoreAppearanceSettings) => s.announcement;
-const bannersSummary = (s: StoreAppearanceSettings) => s.banners.map((b, i) => ({ posicion: i + 1, id: b.id, visible: b.enabled, titulo: b.heading, texto: b.text, boton: b.cta, enlace: b.link, color_texto: b.textColor, alineacion: b.align, desde: b.startsOn, hasta: b.endsOn, imagen: b.image, imagen_celular: b.imageMobile }));
+const sectionsSummary = (s: Pick<StoreAppearanceSettings, "blocks">) => s.blocks.map((b, i) => ({
+  posicion: i + 1, id: b.id, tipo: b.type, tipo_nombre: BLOCK_TYPES[b.type].label, nombre: b.name, visible: b.enabled, resumen: blockSummary(b),
+  dispositivo: b.device, ancla: b.anchor, desde: b.startsOn, hasta: b.endsOn,
+}));
 const codeSummary = (s: StoreAppearanceSettings) => ({
-  css: s.code.css, html_head: s.code.headHtml, html_body: s.code.bodyHtml, javascript: s.code.js,
-  limites: { css: CODE_LIMITS.css, html_head: CODE_LIMITS.headHtml, html_body: CODE_LIMITS.bodyHtml, javascript: CODE_LIMITS.js },
-  html_y_js_permitidos: s.codeAllowed,
-  donde_se_ejecutan_html_y_js: s.domain ? `Solo en el dominio propio ${s.domain}, excepto en el pago y el seguimiento del pedido.` : "En ningún lado todavía: el HTML y el JavaScript solo corren cuando la tienda abre en su dominio propio. El CSS sí se aplica en todas las páginas.",
+  css: s.code.css,
+  limite: CODE_LIMITS.css,
+  nota: "El CSS se aplica en todas las páginas de la tienda. El HTML y JavaScript propios van en secciones «HTML personalizado» (marco aislado), con agregar_seccion o editar_seccion.",
 });
+
+/** A section by its id or its position (1 = the first). */
+function findBlock(blocks: StoreBlock[], key: unknown) {
+  const i = typeof key === "number" || /^\d+$/.test(String(key)) ? Number(key) - 1 : blocks.findIndex((b) => b.id === key);
+  return blocks[i] ? i : -1;
+}
+const notFoundBlock = (key: unknown, blocks: StoreBlock[]) => `No hay una sección «${String(key)}». La página tiene ${blocks.length} ${blocks.length === 1 ? "sección" : "secciones"} (ver_apariencia).`;
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const SECTION_FIELDS = {
+  datos: { type: "object", description: "Contenido de la sección (campos según el tipo; ver ver_seccion). Solo cambia los campos que mandes; las listas se reemplazan completas." },
+  estilo: { type: "object", description: "Diseño: background, text, accent (#RRGGBB o null = del tema), backgroundImage, overlay (0–90), font, radius, paddingTop/paddingBottom (none, sm, md, lg, xl), width (narrow, normal, wide, full), align (left, center, right), frame (none, card, outline), edgeTop/edgeBottom (none, slant, curve, wave, zigzag)." },
+  nombre: { type: ["string", "null"], maxLength: 60, description: "Nombre en el editor" },
+  visible: { type: "boolean" },
+  dispositivo: { type: "string", enum: ["all", "desktop", "mobile"], description: "all = siempre, desktop = solo computadora, mobile = solo celular" },
+  ancla: { type: ["string", "null"], description: "id para enlazar con #ancla desde el menú (minúsculas, números y guiones)" },
+};
 
 const optStr = (v: unknown) => (v === undefined ? undefined : v === null || v === "" ? null : String(v).trim());
 const DATE_OR_NULL = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "AAAA-MM-DD, o null para quitar la fecha" };
@@ -202,18 +220,19 @@ export const MCP_TOOLS: Tool[] = [
   },
   {
     name: "ver_apariencia", title: "Ver la apariencia de la tienda", permission: "settings:read",
-    description: "Tema (estilo, colores, letra, esquinas), barra de avisos y banners de la tienda en línea, más los estilos y letras disponibles. El código personalizado se ve con ver_codigo_tienda.",
+    description: "Tema (estilo, colores, letra, esquinas), barra de avisos y las secciones de la página principal en orden (portada, banners, catálogo, galería, horarios, mapa, HTML…), más los tipos de sección, estilos y letras disponibles. El detalle de una sección se ve con ver_seccion y el CSS con ver_codigo_tienda.",
     inputSchema: obj({}),
     run: async (_a, call) => {
       const res = await call("GET", APPEARANCE);
       if (!res.ok) return res;
       const s = (await res.json()) as StoreAppearanceSettings;
       return json200({
-        tema: themeSummary(s), barra_de_avisos: announcementSummary(s), banners: bannersSummary(s),
+        tema: themeSummary(s), barra_de_avisos: announcementSummary(s), secciones: sectionsSummary(s),
+        tipos_de_seccion: BLOCK_TYPE_IDS.map((id) => ({ tipo: id, nombre: BLOCK_TYPES[id].label, descripcion: BLOCK_TYPES[id].description, solo_una: BLOCK_TYPES[id].single })),
         estilos_disponibles: THEME_PRESET_IDS.map((id) => ({ id, nombre: THEME_PRESETS[id].label, descripcion: THEME_PRESETS[id].description })),
         letras_disponibles: THEME_FONT_IDS.map((id) => ({ id, nombre: THEME_FONTS[id].label, uso: THEME_FONTS[id].hint })),
         esquinas_disponibles: THEME_RADIUS_IDS, colores_de_barra: Object.keys(ANNOUNCEMENT_TONES),
-        codigo_personalizado: { caracteres: { css: s.code.css.length, html_head: s.code.headHtml.length, html_body: s.code.bodyHtml.length, javascript: s.code.js.length } },
+        css_caracteres: s.code.css.length,
       });
     },
   },
@@ -261,52 +280,67 @@ export const MCP_TOOLS: Tool[] = [
     }, announcementSummary),
   },
   {
-    name: "editar_banner", title: "Editar un banner de la tienda", permission: "store:write", write: true,
-    description: "Cambia un banner que ya existe (por su id o su posición, ver ver_apariencia): mostrarlo u ocultarlo, título, texto, botón, enlace, color del texto, alineación y fechas. Solo cambia lo que mandes. Las imágenes nuevas se suben desde el panel.",
-    inputSchema: obj({
-      banner: { type: ["string", "integer"], description: "id del banner o su posición (1 = el primero)" },
-      visible: { type: "boolean" },
-      titulo: { type: ["string", "null"], maxLength: 80 },
-      texto: { type: ["string", "null"], maxLength: 160 },
-      boton: { type: ["string", "null"], maxLength: 30, description: "Texto del botón; necesita enlace" },
-      enlace: LINK,
-      color_texto: { type: "string", enum: ["light", "dark"], description: "light = texto blanco sobre la imagen, dark = texto oscuro" },
-      alineacion: { type: "string", enum: ["left", "center"] },
-      desde: DATE_OR_NULL,
-      hasta: DATE_OR_NULL,
-    }, ["banner"]),
+    name: "ver_seccion", title: "Ver una sección de la página principal", permission: "settings:read",
+    description: "Todo el contenido (datos) y el diseño (estilo) de una sección, por su id o su posición. Úsalo antes de editar_seccion para ver los campos de ese tipo.",
+    inputSchema: obj({ seccion: { type: ["string", "integer"], description: "id de la sección o su posición (1 = la primera)" } }, ["seccion"]),
+    run: async (a, call) => {
+      const res = await call("GET", APPEARANCE);
+      if (!res.ok) return res;
+      const s = (await res.json()) as StoreAppearanceSettings;
+      const i = findBlock(s.blocks, a.seccion);
+      if (i < 0) return new Response(JSON.stringify({ error: { message: notFoundBlock(a.seccion, s.blocks) } }), { status: 404, headers: { "content-type": "application/json" } });
+      return json200({ posicion: i + 1, tipo_nombre: BLOCK_TYPES[s.blocks[i]!.type].label, ...s.blocks[i] });
+    },
+  },
+  {
+    name: "agregar_seccion", title: "Agregar una sección a la página principal", permission: "store:write", write: true,
+    description: "Agrega una sección del tipo indicado (ver tipos_de_seccion en ver_apariencia), al final o en una posición. Lo que no mandes toma su valor por defecto. Las imágenes nuevas se suben desde el panel. Para «html», el HTML corre en un marco aislado (sandbox, sin acceso a la tienda): muestra el código a la persona antes de guardarlo.",
+    inputSchema: obj({ tipo: { type: "string", enum: [...BLOCK_TYPE_IDS] }, posicion: { type: "integer", minimum: 1, description: "1 = arriba de todo. Sin posición, al final." }, ...SECTION_FIELDS }, ["tipo"]),
     run: (a, call) => updateAppearance(call, (n) => {
-      const key = a.banner;
-      const i = typeof key === "number" || /^\d+$/.test(String(key)) ? Number(key) - 1 : n.banners.findIndex((b) => b.id === key);
-      const b = n.banners[i];
-      if (!b) return `No hay un banner «${String(key)}». La tienda tiene ${n.banners.length} ${n.banners.length === 1 ? "banner" : "banners"}.`;
+      const type = str(a.tipo) as BlockType;
+      if (!BLOCK_TYPE_IDS.includes(type)) return `Tipo de sección desconocido: ${String(a.tipo)}.`;
+      if (BLOCK_TYPES[type].single && n.blocks.some((b) => b.type === type)) return `Ya hay una sección «${BLOCK_TYPES[type].label}»; solo puede haber una. Edítala con editar_seccion.`;
+      const block = { id: `${type.toLowerCase()}-${Math.random().toString(36).slice(2, 8)}`, type, enabled: a.visible === undefined ? true : Boolean(a.visible), name: optStr(a.nombre) ?? null, device: a.dispositivo ?? "all", anchor: optStr(a.ancla) ?? null, data: isObj(a.datos) ? a.datos : {}, style: isObj(a.estilo) ? a.estilo : {} } as unknown as StoreBlock;
+      const at = typeof a.posicion === "number" ? Math.min(Math.max(1, a.posicion), n.blocks.length + 1) - 1 : n.blocks.length;
+      n.blocks.splice(at, 0, block);
+      return null;
+    }, sectionsSummary),
+  },
+  {
+    name: "editar_seccion", title: "Editar una sección de la página principal", permission: "store:write", write: true,
+    description: "Cambia una sección por su id o posición: contenido (datos), diseño (estilo), mostrarla u ocultarla, nombre, dispositivo, ancla y fechas. Solo cambia lo que mandes. Lee la sección con ver_seccion antes. Para el HTML de una sección «html», muestra el código a la persona antes de guardarlo.",
+    inputSchema: obj({ seccion: { type: ["string", "integer"], description: "id de la sección o su posición (1 = la primera)" }, ...SECTION_FIELDS, desde: DATE_OR_NULL, hasta: DATE_OR_NULL }, ["seccion"]),
+    run: (a, call) => updateAppearance(call, (n) => {
+      const i = findBlock(n.blocks, a.seccion);
+      if (i < 0) return notFoundBlock(a.seccion, n.blocks);
+      const b = n.blocks[i]! as StoreBlock & { data: Record<string, unknown>; style: Record<string, unknown> };
+      if (a.datos !== undefined) { if (!isObj(a.datos)) return "«datos» debe ser un objeto."; b.data = { ...b.data, ...a.datos }; }
+      if (a.estilo !== undefined) { if (!isObj(a.estilo)) return "«estilo» debe ser un objeto."; b.style = { ...b.style, ...a.estilo }; }
       if (a.visible !== undefined) b.enabled = Boolean(a.visible);
-      if (a.titulo !== undefined) b.heading = optStr(a.titulo) ?? null;
-      if (a.texto !== undefined) b.text = optStr(a.texto) ?? null;
-      if (a.boton !== undefined) b.cta = optStr(a.boton) ?? null;
-      if (a.enlace !== undefined) b.link = optStr(a.enlace) ?? null;
-      if (a.color_texto !== undefined) b.textColor = a.color_texto as "light" | "dark";
-      if (a.alineacion !== undefined) b.align = a.alineacion as "left" | "center";
+      if (a.nombre !== undefined) b.name = optStr(a.nombre) ?? null;
+      if (a.dispositivo !== undefined) b.device = a.dispositivo as StoreBlock["device"];
+      if (a.ancla !== undefined) b.anchor = optStr(a.ancla) ?? null;
       if (a.desde !== undefined) b.startsOn = optStr(a.desde) ?? null;
       if (a.hasta !== undefined) b.endsOn = optStr(a.hasta) ?? null;
       return null;
-    }, bannersSummary),
+    }, sectionsSummary),
   },
   {
-    name: "ordenar_banners", title: "Ordenar o quitar banners", permission: "store:write", write: true,
-    description: "Define el orden de los banners con la lista de sus ids. Los ids que no pongas se eliminan de la tienda (pide confirmación antes de quitar alguno).",
-    inputSchema: obj({ orden: { type: "array", items: { type: "string" }, maxItems: 6, description: "ids en el orden deseado" } }, ["orden"]),
+    name: "ordenar_secciones", title: "Ordenar o quitar secciones", permission: "store:write", write: true,
+    description: "Define el orden de las secciones de la página principal con la lista de sus ids. Las que no pongas se eliminan (pide confirmación antes de quitar alguna; para esconderla sin borrarla usa editar_seccion con visible: false).",
+    inputSchema: obj({ orden: { type: "array", items: { type: "string" }, maxItems: 40, description: "ids en el orden deseado" } }, ["orden"]),
     run: (a, call) => updateAppearance(call, (n) => {
       const ids = (a.orden as unknown[]).map(String);
-      const unknown = ids.filter((id) => !n.banners.some((b) => b.id === id));
-      if (unknown.length) return `Banners que no existen: ${unknown.join(", ")}.`;
-      n.banners = ids.map((id) => n.banners.find((b) => b.id === id)!);
+      const unknown = ids.filter((id) => !n.blocks.some((b) => b.id === id));
+      if (unknown.length) return `Secciones que no existen: ${unknown.join(", ")}.`;
+      if (new Set(ids).size !== ids.length) return "Hay ids repetidos.";
+      n.blocks = ids.map((id) => n.blocks.find((b) => b.id === id)!);
       return null;
-    }, bannersSummary),
+    }, sectionsSummary),
   },
   {
-    name: "ver_codigo_tienda", title: "Ver el código personalizado de la tienda", permission: "settings:read",
-    description: "CSS, HTML (antes de </head> y antes de </body>) y JavaScript personalizados de la tienda, con sus límites y dónde se ejecutan.",
+    name: "ver_codigo_tienda", title: "Ver el CSS personalizado de la tienda", permission: "settings:read",
+    description: "El CSS personalizado de la tienda y su límite. Se aplica en todas las páginas, después del tema.",
     inputSchema: obj({}),
     run: async (_a, call) => {
       const res = await call("GET", APPEARANCE);
@@ -314,20 +348,11 @@ export const MCP_TOOLS: Tool[] = [
     },
   },
   {
-    name: "editar_codigo_tienda", title: "Editar el código personalizado de la tienda", permission: "store:write", write: true, destructive: true,
-    description: "Reemplaza el CSS, el HTML de <head>, el HTML del final de <body> o el JavaScript de la tienda (cada campo que mandes sustituye al actual; \"\" lo borra). El CSS aplica en todas las páginas; HTML y JavaScript requieren plan Pro y solo corren en el dominio propio. Un error puede romper la tienda: muestra el código a la persona y pide confirmación antes de guardarlo. Lee el actual con ver_codigo_tienda antes de editar.",
-    inputSchema: obj({
-      css: { type: "string", maxLength: CODE_LIMITS.css },
-      html_head: { type: "string", maxLength: CODE_LIMITS.headHtml },
-      html_body: { type: "string", maxLength: CODE_LIMITS.bodyHtml },
-      javascript: { type: "string", maxLength: CODE_LIMITS.js, description: "Sin etiquetas <script>" },
-    }),
+    name: "editar_codigo_tienda", title: "Editar el CSS personalizado de la tienda", permission: "store:write", write: true, destructive: true,
+    description: "Reemplaza el CSS personalizado de la tienda (\"\" lo borra). Aplica en todas las páginas: un error puede descomponer el diseño. Muestra el CSS a la persona y pide confirmación antes de guardarlo. Lee el actual con ver_codigo_tienda antes de editar.",
+    inputSchema: obj({ css: { type: "string", maxLength: CODE_LIMITS.css } }, ["css"]),
     run: (a, call) => updateAppearance(call, (n) => {
-      if (a.css === undefined && a.html_head === undefined && a.html_body === undefined && a.javascript === undefined) return "Manda al menos uno: css, html_head, html_body o javascript.";
-      if (a.css !== undefined) n.code.css = String(a.css);
-      if (a.html_head !== undefined) n.code.headHtml = String(a.html_head);
-      if (a.html_body !== undefined) n.code.bodyHtml = String(a.html_body);
-      if (a.javascript !== undefined) n.code.js = String(a.javascript);
+      n.code.css = String(a.css ?? "");
       return null;
     }, codeSummary),
   },

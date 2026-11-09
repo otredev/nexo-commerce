@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatMoney, priceCart, promotionFor, promoUnitPrice, shippingFor, unitInfo, type CouponRule, type Fulfillment, type StoreInfo, type UnitCode } from "@nexo/shared";
 import { api, RequestError, track } from "./api";
+import { usePreviewDraft } from "./preview";
 
 export interface CartLine {
   variantId: string;
@@ -43,6 +44,8 @@ interface StoreState {
   totals: (fulfillment: Fulfillment) => { itemsCents: number; subtotalCents: number; discountCents: number; couponDiscountCents: number; couponError: string | null; taxCents: number; shippingCents: number; totalCents: number };
   /** What the customer pays per unit for a cart line, after its promotion. */
   linePrice: (line: CartLine) => number;
+  /** Only inside the editor's live preview: the section selected there. */
+  preview: { selected: string | null } | null;
 }
 
 const Ctx = createContext<StoreState | null>(null);
@@ -59,7 +62,7 @@ function readCart(slug: string): CartLine[] {
 }
 
 export function StoreProvider({ slug, base, children }: { slug: string; base: string; children: ReactNode }) {
-  const [store, setStore] = useState<StoreInfo | null>(null);
+  const [saved, setStore] = useState<StoreInfo | null>(null);
   const [error, setError] = useState<RequestError | null>(null);
   const [cart, setCart] = useState<CartLine[]>(() => readCart(slug));
   const [cartOpen, setCartOpen] = useState(false);
@@ -72,6 +75,10 @@ export function StoreProvider({ slug, base, children }: { slug: string; base: st
     api<StoreInfo>("GET", `/${slug}`).then(setStore, (e: RequestError) => setError(e));
   }, [slug]);
   const reload = useCallback(async () => { setStore(await api<StoreInfo>("GET", `/${slug}`)); }, [slug]);
+  // In the editor's preview the draft appearance replaces the saved one.
+  const { draft, selected } = usePreviewDraft(saved);
+  const store = useMemo(() => (saved && draft ? { ...saved, appearance: draft } : saved), [saved, draft]);
+  const preview = useMemo(() => (saved?.previewOrigin ? { selected } : null), [saved?.previewOrigin, selected]);
   useEffect(() => {
     try { localStorage.setItem(key(slug), JSON.stringify(cart)); } catch { /* private mode: the cart lives in memory */ }
   }, [cart, slug]);
@@ -117,7 +124,8 @@ export function StoreProvider({ slug, base, children }: { slug: string; base: st
       return { itemsCents: t.totalCents, subtotalCents: gross, discountCents: t.discountCents, couponDiscountCents: p.couponDiscountCents, couponError: p.couponError, taxCents: t.taxCents, shippingCents, totalCents: t.totalCents + shippingCents };
     },
     linePrice: (line) => promoUnitPrice(line.displayPriceCents, promotionFor(store?.promotions ?? [], line.productId, line.categoryId ?? null)),
-  }), [slug, base, store, error, money, cart, cartOpen, coupon, reload]);
+    preview,
+  }), [slug, base, store, error, money, cart, cartOpen, coupon, reload, preview]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Store appearance (Phase 9): theme, announcement bar, banners, tracking pixels and custom code.
+ * Store appearance (Phase 9): theme, announcement bar and tracking pixels. Home page sections are in blocks.ts.
  * The theme turns into CSS custom properties over the same tokens the store already uses, so the
  * server (Pages middleware, no flash) and the app produce exactly the same CSS from the same data.
  */
@@ -169,37 +169,20 @@ export interface StoreAnnouncement {
 }
 export const DEFAULT_ANNOUNCEMENT: StoreAnnouncement = { enabled: false, messages: [{ text: "", link: null }], tone: "primary", dismissible: true, startsOn: null, endsOn: null };
 
-/* ---------- Banners ---------- */
-
-export interface StoreBanner {
-  id: string;
-  enabled: boolean;
-  image: string;
-  /** Optional portrait image for phones. */
-  imageMobile: string | null;
-  heading: string | null;
-  text: string | null;
-  cta: string | null;
-  link: string | null;
-  /** Text color over the image. */
-  textColor: "light" | "dark";
-  align: "left" | "center";
-  startsOn: string | null;
-  endsOn: string | null;
-}
-export const MAX_BANNERS = 6;
+/* ---------- Links and schedules ---------- */
 
 /** Dates are YYYY-MM-DD in the business's time zone (inclusive). */
 export const activeOn = (item: { startsOn: string | null; endsOn: string | null }, today: string) =>
   (!item.startsOn || item.startsOn <= today) && (!item.endsOn || item.endsOn >= today);
 
 /**
- * Links in banners and the announcement: a path inside the store ("/p/123", "?categoria=…")
- * or an https address. Nothing else (no javascript:, no data:).
+ * Links in sections, menus and the announcement: a path inside the store ("/p/123", "?categoria=…"),
+ * a section of the home ("#horarios"), an https address, a phone (tel:) or an email (mailto:).
+ * Nothing else (no javascript:, no data:, no protocol-relative //).
  */
-export const STORE_LINK = /^(?:\/(?!\/)[^\s<>"]*|\?[^\s<>"]*|https:\/\/[^\s<>"]+)$/;
+export const STORE_LINK = /^(?:\/(?!\/)[^\s<>"]*|\?[^\s<>"]*|#[a-z0-9-]{1,40}|https:\/\/[^\s<>"]+|tel:\+?[\d\s()-]{3,25}|mailto:[^\s<>"@/:]+@[^\s<>"@/:]+)$/;
 
-/* ---------- Tracking pixels and custom code ---------- */
+/* ---------- Tracking pixels ---------- */
 
 export interface StorePixels {
   metaPixelId: string | null;
@@ -214,56 +197,6 @@ export const PIXEL_PATTERNS = {
   tiktokPixelId: /^[A-Z0-9]{15,25}$/,
 } as const;
 export const hasPixels = (p: StorePixels | null | undefined) => Boolean(p && (p.metaPixelId || p.googleTagId || p.tiktokPixelId));
-
-export const CODE_LIMITS = { css: 50_000, headHtml: 20_000, bodyHtml: 20_000, js: 50_000 } as const;
-
-export interface StoreCustomCode { css: string; headHtml: string; bodyHtml: string; js: string }
-export const NO_CODE: StoreCustomCode = { css: "", headHtml: "", bodyHtml: "", js: "" };
-
-/** Everything the "Apariencia" editor saves. */
-export interface StoreAppearance {
-  theme: StoreTheme;
-  announcement: StoreAnnouncement;
-  banners: StoreBanner[];
-  pixels: StorePixels;
-  code: StoreCustomCode;
-}
-
-/** For the editor: what the plan allows and where custom HTML/JS runs. */
-export interface StoreAppearanceSettings extends StoreAppearance {
-  /** Custom HTML and JavaScript need the store on its own domain (Pro and up). */
-  codeAllowed: boolean;
-  domain: string | null;
-  updatedAt: string | null;
-}
-
-/** What the public store gets (only what is active today; custom code is injected by the server, not here). */
-export interface PublicAppearance {
-  theme: StoreTheme;
-  announcement: { id: string; messages: Array<{ text: string; link: string | null }>; tone: AnnouncementTone; dismissible: boolean } | null;
-  banners: Array<Omit<StoreBanner, "enabled" | "startsOn" | "endsOn">>;
-  pixels: StorePixels;
-}
-
-/** Stable id of an announcement's content, so "close" is remembered until the text changes. */
-export function announcementId(a: Pick<StoreAnnouncement, "messages">) {
-  let h = 5381;
-  for (const ch of JSON.stringify(a.messages)) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
-  return (h >>> 0).toString(36);
-}
-
-export function publicAppearance(a: Pick<StoreAppearance, "theme" | "announcement" | "banners" | "pixels">, today: string): PublicAppearance {
-  const ann = a.announcement;
-  const messages = ann.messages.filter((m) => m.text.trim());
-  return {
-    theme: a.theme,
-    announcement: ann.enabled && messages.length && activeOn(ann, today) ? { id: announcementId({ messages }), messages, tone: ann.tone, dismissible: ann.dismissible } : null,
-    banners: a.banners
-      .filter((b) => b.enabled && activeOn(b, today))
-      .map(({ id, image, imageMobile, heading, text, cta, link, textColor, align }) => ({ id, image, imageMobile, heading, text, cta, link, textColor, align })),
-    pixels: a.pixels,
-  };
-}
 
 /** Text safe inside <style>…</style> and <script>…</script>: no sequence can close the element early. */
 export const safeStyleText = (css: string) => css.replace(/<\/(style)/gi, "<\\/$1");

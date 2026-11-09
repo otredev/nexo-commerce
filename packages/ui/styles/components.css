@@ -839,3 +839,64 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-tags__tag button:hover { color: var(--ink); background: var(--border); }
 .nx-tags__input { flex: 1; min-width: 140px; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 4px 2px; }
 .nx-tags__input::-webkit-calendar-picker-indicator { display: none !important; }
+
+/* ---------- Appearance: home page sections editor and live preview ---------- */
+.nx-appearance--live { grid-template-columns: minmax(380px, 1fr) minmax(0, 1.15fr); }
+@media (max-width: 1100px) { .nx-appearance--live { grid-template-columns: minmax(0, 1fr); } }
+.nx-live { display: flex; flex-direction: column; gap: var(--space-3); }
+.nx-live__viewport { position: relative; height: calc(100vh - var(--topbar-height) - 170px); min-height: 420px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); box-shadow: var(--shadow-md); }
+.nx-live__viewport[data-device="mobile"] { width: min(100%, 400px); margin: 0 auto; border: 8px solid #1c1c1a; border-radius: 30px; }
+.nx-live__frame { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #fff; }
+.nx-live__loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--surface) 70%, transparent); }
+@media (max-width: 1100px) { .nx-live__viewport { height: 70vh; } }
+
+.nx-block-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.nx-block-item { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); transition: border-color .15s, box-shadow .15s; }
+.nx-block-item[data-open] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.nx-block-item[data-hidden] .nx-block-item__main { opacity: .6; }
+.nx-block-item[data-over] { box-shadow: 0 -3px 0 0 var(--primary); }
+.nx-block-item--ghost { border-style: dashed; background: none; }
+.nx-block-item__row { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 6px 8px 6px 6px; }
+.nx-block-item__grip { display: grid; place-items: center; width: 22px; color: var(--ink-subtle); cursor: grab; flex: none; }
+.nx-block-item[draggable="true"]:active .nx-block-item__grip { cursor: grabbing; }
+.nx-block-item__main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 6px; border: 0; border-radius: var(--radius-md); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nx-block-item__main:hover { background: var(--surface-muted); }
+.nx-block-item__main:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+.nx-block-item__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent-text); }
+.nx-block-item__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.nx-block-item__name { font-weight: 600; font-size: 14px; }
+.nx-block-item__summary { overflow: hidden; color: var(--ink-muted); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.nx-block-item__badges { display: flex; gap: 4px; flex: none; }
+.nx-block-item__actions { display: flex; gap: 0; flex: none; }
+.nx-block-item__panel { display: flex; flex-direction: column; gap: 18px; padding: 14px 16px 18px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) { .nx-block-item__row { flex-wrap: wrap; } .nx-block-item__actions { width: 100%; justify-content: flex-end; } }
+
+.nx-block-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.nx-block-type { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.nx-block-type:hover:not(:disabled) { border-color: var(--primary); }
+.nx-block-type:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
+.nx-block-type:disabled { opacity: .5; cursor: not-allowed; }
+.nx-block-type__name { font-weight: 600; font-size: 14px; }
+.nx-block-type__desc { color: var(--ink-muted); font-size: 12.5px; line-height: 1.4; }
+
+.nx-group { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-muted); }
+.nx-group__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.nx-group__title { font-weight: 600; font-size: 13.5px; }
+.nx-group .nx-group { background: var(--surface); }
+.nx-list-item { display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.nx-image-pick { display: flex; align-items: center; gap: 10px; }
+.nx-image-pick img { width: 64px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.nx-color[data-inherited] .nx-input { color: var(--ink-muted); }
+.nx-gallery-edit { display: flex; flex-direction: column; gap: 8px; }
+.nx-gallery-edit__item { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.nx-gallery-edit__item img { width: 84px; height: 84px; flex: none; object-fit: cover; border-radius: var(--radius-sm); }
+.nx-hours-edit { display: flex; flex-direction: column; gap: 6px; }
+.nx-hours-edit__row { display: grid; grid-template-columns: 96px 100px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nx-hours-edit__day { font-weight: 600; font-size: 14px; }
+.nx-hours-edit__ranges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.nx-hours-edit__ranges .nx-input { width: 112px; }
+@media (max-width: 640px) { .nx-hours-edit__row { grid-template-columns: 1fr 1fr; } .nx-hours-edit__ranges { grid-column: 1 / -1; } }
+/* Many options in a narrow editor column: segmented controls wrap instead of overflowing. */
+.nx-appearance__editor .nx-segmented { width: auto; max-width: 100%; flex-wrap: wrap; }
+.nx-appearance__editor .nx-segmented button { height: auto; min-height: 28px; }
+.nx-appearance__editor .nx-grid-3 { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }

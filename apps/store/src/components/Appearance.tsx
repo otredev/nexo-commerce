@@ -1,16 +1,17 @@
 /**
- * Store appearance in the app (Phase 9): theme style sheet, announcement bar, banner carousel and the
- * cookie banner for ad pixels. The server already injects the theme CSS (no flash); the app keeps it in
+ * Store appearance in the app (Phase 9): theme style sheet, announcement bar, the banner carousel of the
+ * "Banners" sections and the cookie banner for ad pixels. The server already injects the theme CSS (no flash); the app keeps it in
  * sync when the store data changes and covers local development without the Pages middleware.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { hasPixels, POLICY_INFO, resolveTheme, themeCss, type PublicAppearance } from "@nexo/shared";
+import { hasPixels, POLICY_INFO, resolveTheme, themeCss, type BlockOf, type PublicAppearance } from "@nexo/shared";
 import { Button } from "@nexo/ui";
 import { imageUrl } from "../lib/api";
 import { pixelEvent, readConsent, saveConsent, startPixels, type Consent } from "../lib/pixels";
 import { useStore } from "../lib/store";
+import { inPreview } from "../lib/preview";
 
 /** Writes the theme into <style id="nx-theme"> and the color-scheme meta. */
 export function useThemeStyle(appearance: PublicAppearance | undefined) {
@@ -29,12 +30,16 @@ export function useThemeStyle(appearance: PublicAppearance | undefined) {
   }, [appearance]);
 }
 
-/** A link from banners or the announcement: inside the store (router) or out (https). */
+/**
+ * A link from sections, the menu or the announcement: inside the store (router), a section of the home
+ * (#horarios), or out (https, tel:, mailto:).
+ */
 export function StoreLinkTo({ href, className, children, label }: { href: string; className?: string; children: ReactNode; label?: string }) {
   const { link } = useStore();
   if (href.startsWith("https://")) return <a className={className} href={href} rel="noopener" aria-label={label}>{children}</a>;
+  if (href.startsWith("tel:") || href.startsWith("mailto:")) return <a className={className} href={href} aria-label={label}>{children}</a>;
   const home = link();
-  const to = href.startsWith("?") ? (home === "/" ? `/${href}` : `${home}${href}`) : link(href);
+  const to = href.startsWith("?") || href.startsWith("#") ? (home === "/" ? `/${href}` : `${home}${href}`) : link(href);
   return <Link className={className} to={to} aria-label={label}>{children}</Link>;
 }
 
@@ -77,22 +82,24 @@ export function AnnouncementBar() {
 
 /* ---------- Banners ---------- */
 
-export function BannerCarousel() {
-  const { store } = useStore();
-  const banners = store?.appearance.banners ?? [];
+export function BannerCarousel({ block }: { block: BlockOf<"banners"> }) {
+  const d = block.data;
+  const banners = d.slides;
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
   const n = banners.length;
   useEffect(() => {
-    if (n < 2 || paused || reduceMotion()) return;
-    const id = setInterval(() => setI((x) => (x + 1) % n), 6000);
+    if (n < 2 || paused || !d.interval || reduceMotion()) return;
+    const id = setInterval(() => setI((x) => (x + 1) % n), d.interval * 1000);
     return () => clearInterval(id);
-  }, [n, paused]);
+  }, [n, paused, d.interval]);
+  useEffect(() => { if (i >= n) setI(0); }, [i, n]);
   if (!n) return null;
   const go = (to: number) => setI(((to % n) + n) % n);
   return (
-    <section
+    <div
       className="st-banners"
+      data-height={d.height}
       aria-roledescription="carrusel"
       aria-label="Promociones"
       onMouseEnter={() => setPaused(true)}
@@ -127,14 +134,14 @@ export function BannerCarousel() {
       </div>
       {n > 1 && (
         <>
-          <button type="button" className="st-banners__arrow" data-dir="prev" aria-label="Anterior" onClick={() => go(i - 1)}><ChevronLeft size={20} aria-hidden="true" /></button>
-          <button type="button" className="st-banners__arrow" data-dir="next" aria-label="Siguiente" onClick={() => go(i + 1)}><ChevronRight size={20} aria-hidden="true" /></button>
-          <div className="st-banners__dots">
+          {d.arrows && <button type="button" className="st-banners__arrow" data-dir="prev" aria-label="Anterior" onClick={() => go(i - 1)}><ChevronLeft size={20} aria-hidden="true" /></button>}
+          {d.arrows && <button type="button" className="st-banners__arrow" data-dir="next" aria-label="Siguiente" onClick={() => go(i + 1)}><ChevronRight size={20} aria-hidden="true" /></button>}
+          {d.dots && <div className="st-banners__dots">
             {banners.map((b, k) => <button key={b.id} type="button" aria-label={`Ir a la promoción ${k + 1}`} aria-current={k === i} onClick={() => go(k)} />)}
-          </div>
+          </div>}
         </>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -146,7 +153,7 @@ export function useConsent() {
   const [consent, setConsent] = useState<Consent>(() => readConsent(slug));
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (store && pixels && hasPixels(pixels) && consent === "granted") {
+    if (!inPreview && store && pixels && hasPixels(pixels) && consent === "granted") {
       startPixels(pixels, store.currency);
       pixelEvent("page_view");
     }
@@ -158,7 +165,7 @@ export function useConsent() {
     setConsent(v);
     setOpen(false);
   };
-  return { needed: Boolean(pixels && hasPixels(pixels)), consent, show: open || consent === null, reopen: () => setOpen(true), decide };
+  return { needed: !inPreview && Boolean(pixels && hasPixels(pixels)), consent, show: open || consent === null, reopen: () => setOpen(true), decide };
 }
 
 export function ConsentBanner({ c }: { c: ReturnType<typeof useConsent> }) {

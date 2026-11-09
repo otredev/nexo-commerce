@@ -85,6 +85,13 @@
       "when": 1794179449564,
       "tag": "0011_subcategories_keywords",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794188085827,
+      "tag": "0012_store_blocks",
+      "breakpoints": true
     }
   ]
 }

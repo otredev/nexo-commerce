@@ -7,14 +7,13 @@
  * 3. For pages (store front, products, legal pages) writes the real title, description, canonical URL,
  *    structured data (schema.org) and a readable copy of the content into the HTML, so search engines and
  *    AI crawlers that don't run JavaScript see the store. React replaces that copy when it loads.
- * 4. Applies the store's look (Phase 9): theme CSS and custom CSS on every page; custom HTML and JavaScript
- *    only on the store's own domain (its own browser origin), never on the shared domain where every store
- *    shares one origin, and never on checkout or order pages.
+ * 4. Applies the store's look (Phase 9): theme CSS and custom CSS on every page. Custom HTML never reaches
+ *    the page itself: it runs in sandboxed frames of the home page sections (see @nexo/shared blocks.ts).
  * Any failure falls back to the plain page.
  */
 import {
   breadcrumbJsonLd, clip, faqJsonLd, formatMoney, jsonLd, llmsTxt, markdownToHtml, policyByPath, POLICY_INFO, productJsonLd, robotsTxt,
-  sitemapIndex, staticPage, storeJsonLd, urlset, websiteJsonLd, escapeHtml, resolveTheme, safeScriptText, safeStyleText, themeCss,
+  sitemapIndex, staticPage, storeJsonLd, urlset, websiteJsonLd, escapeHtml, resolveTheme, safeStyleText, themeCss,
   type StoreCustomCode, type StoreIndexEntry, type StoreInfo, type StoreProduct, type StoreProductCard,
 } from "@nexo/shared";
 
@@ -236,9 +235,6 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, next }) => {
       theme ? `<style id="nx-theme">${safeStyleText(theme)}</style>` : "",
       code?.css.trim() ? `<style id="nx-custom-css">${safeStyleText(code.css)}</style>` : "",
     ].join("");
-    // Own HTML/JS: only where the store is its own origin, and not where the customer types personal data.
-    const runCode = ownDomain && !isPrivate && code;
-    const bodyEnd = runCode ? `${code.bodyHtml}${code.js.trim() ? `<script>${safeScriptText(code.js)}</script>` : ""}` : "";
 
     const rewritten = new HTMLRewriter()
       .on('meta[name="color-scheme"]', { element: (el) => { if (scheme !== "auto") el.setAttribute("content", scheme); } })
@@ -251,10 +247,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, next }) => {
         el.prepend(head, { html: true });
         // After the app's own CSS so the theme and the owner's CSS win.
         el.append(styles, { html: true });
-        if (runCode && code.headHtml.trim()) el.append(code.headHtml, { html: true });
       } })
       .on("#root", { element: (el) => { if (body && !isPrivate) el.setInnerContent(body, { html: true }); } })
-      .on("body", { element: (el) => { if (bodyEnd) el.append(bodyEnd, { html: true }); } })
       .transform(response);
     if (ownDomain) return rewritten;
     // Shared domain: every store shares this origin, so no store may install a service worker on it.

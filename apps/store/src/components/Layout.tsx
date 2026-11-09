@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { MessageCircle, ShoppingBag, UserRound } from "lucide-react";
-import { POLICY_INFO, whatsappLink } from "@nexo/shared";
+import { blockStyleVars, POLICY_INFO, whatsappLink, type BlockOf } from "@nexo/shared";
 import { Button } from "@nexo/ui";
 import { imageUrl, track } from "../lib/api";
 import { useStore } from "../lib/store";
 import { firstName, useAccount } from "../lib/account";
 import { CartDrawer } from "./CartDrawer";
-import { AnnouncementBar, ConsentBanner, useConsent, useThemeStyle } from "./Appearance";
+import { AnnouncementBar, ConsentBanner, StoreLinkTo, useConsent, useThemeStyle } from "./Appearance";
 
 export function StoreLayout() {
-  const { store, error, slug, link, count, setCartOpen } = useStore();
+  const { store, error, slug, link, count, setCartOpen, preview } = useStore();
   const { account, ready } = useAccount();
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,6 +26,10 @@ export function StoreLayout() {
   useEffect(() => { setQ(params.get("q") ?? ""); }, [params]);
   useThemeStyle(store?.appearance);
   const consent = useConsent();
+  // "Encabezado y menú" section: drawn here, on every page.
+  const header = store?.appearance.blocks.find((b): b is BlockOf<"header"> => b.type === "header") ?? null;
+  const theme = store?.appearance.theme;
+  const headerVars = useMemo(() => (header && theme ? blockStyleVars(theme, header.style) : null), [header, theme]);
 
   if (error) {
     return (
@@ -38,19 +42,27 @@ export function StoreLayout() {
   }
   if (!store) return <div className="nx-page-loading" style={{ minHeight: "60vh" }}><span className="nx-spinner" aria-label="Cargando" /></div>;
   const whatsapp = store.whatsapp ? whatsappLink(store.whatsapp) : null;
+  const h = header?.data ?? { logo: "logo_name", layout: "inline", search: true, account: true, sticky: true, links: [] };
   const checkout = location.pathname.endsWith("/pagar");
 
   return (
     <>
       <a className="nx-sr-only" href="#contenido">Ir al contenido</a>
       {!checkout && <AnnouncementBar />}
-      <header className="st-header">
+      <header
+        className="st-header"
+        data-layout={h.layout}
+        data-sticky={h.sticky ? undefined : "off"}
+        data-paint={headerVars && "--bg" in headerVars.vars ? "" : undefined}
+        data-selected={header && preview?.selected === header.id ? "" : undefined}
+        style={headerVars ? ({ ...headerVars.vars, ...(headerVars.scheme && { colorScheme: headerVars.scheme }) } as CSSProperties) : undefined}
+      >
         <div className="st-wrap st-header__row">
           <Link to={link()} className="st-brand" aria-label={`${store.name}, inicio`}>
-            {store.logo && <img src={imageUrl(store.logo)!} alt="" />}
-            <span className="st-brand__name">{store.name}</span>
+            {store.logo && h.logo !== "name" && <img src={imageUrl(store.logo)!} alt="" data-big={h.logo === "logo" ? "" : undefined} />}
+            {(h.logo !== "logo" || !store.logo) && <span className="st-brand__name">{store.name}</span>}
           </Link>
-          {!checkout && (
+          {!checkout && h.search && (
             <form className="st-search" role="search" onSubmit={(e) => { e.preventDefault(); navigate(link(q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "")); }}>
               <div className="nx-input-group">
                 <svg className="nx-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -58,25 +70,33 @@ export function StoreLayout() {
               </div>
             </form>
           )}
-          {ready && (
-            <Link
-              to={link(account ? "/cuenta" : "/entrar")}
-              className="st-account-btn"
-              aria-label={account ? `Mi cuenta, ${account.name}` : "Entrar o crear cuenta"}
-              style={checkout ? { marginLeft: "auto" } : undefined}
-            >
-              <UserRound size={17} strokeWidth={1.6} aria-hidden="true" />
-              <span className="st-account-btn__label">{account ? firstName(account.name) : "Entrar"}</span>
-            </Link>
-          )}
-          {!checkout && (
-            <button type="button" className="st-cart-btn" onClick={() => setCartOpen(true)} aria-label={`Carrito, ${count} ${count === 1 ? "producto" : "productos"}`}>
-              <ShoppingBag size={17} strokeWidth={1.6} aria-hidden="true" />
-              <span className="st-cart-btn__label">Carrito</span>
-              {count > 0 && <span className="st-cart-btn__count">{count}</span>}
-            </button>
-          )}
+          <div className="st-header__actions" style={checkout || !h.search ? { marginLeft: "auto" } : undefined}>
+            {ready && h.account && (
+              <Link
+                to={link(account ? "/cuenta" : "/entrar")}
+                className="st-account-btn"
+                aria-label={account ? `Mi cuenta, ${account.name}` : "Entrar o crear cuenta"}
+              >
+                <UserRound size={17} strokeWidth={1.6} aria-hidden="true" />
+                <span className="st-account-btn__label">{account ? firstName(account.name) : "Entrar"}</span>
+              </Link>
+            )}
+            {!checkout && (
+              <button type="button" className="st-cart-btn" onClick={() => setCartOpen(true)} aria-label={`Carrito, ${count} ${count === 1 ? "producto" : "productos"}`}>
+                <ShoppingBag size={17} strokeWidth={1.6} aria-hidden="true" />
+                <span className="st-cart-btn__label">Carrito</span>
+                {count > 0 && <span className="st-cart-btn__count">{count}</span>}
+              </button>
+            )}
+          </div>
         </div>
+        {!checkout && h.links.length > 0 && (
+          <nav className="st-menu" aria-label="Menú">
+            <div className="st-wrap st-menu__row">
+              {h.links.map((l, i) => <StoreLinkTo key={i} href={l.link} className="st-menu__link">{l.label}</StoreLinkTo>)}
+            </div>
+          </nav>
+        )}
       </header>
       <main id="contenido">
         <Outlet />

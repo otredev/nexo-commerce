@@ -120,7 +120,7 @@ Los cambios a un rol se aplican al instante a quien lo tenga. Nadie puede dar pe
 | Usuarios | 2 | 10 | Sin límite |
 | Productos | 100 | 5 000 | Sin límite |
 | Cobro con tarjeta en la tienda | — | ✓ | ✓ |
-| Dominio propio y HTML/JS en la tienda | — | ✓ | ✓ |
+| Dominio propio para la tienda | — | ✓ | ✓ |
 | Llaves de API / webhooks | 2 / 1 | 10 / 10 | Sin límite |
 
 Bajar de plan no borra nada: solo impide agregar más de lo que el plan permite.
@@ -384,13 +384,28 @@ En **Ajustes de la tienda → Formas de pago → Conectar con Stripe**, el propi
 
 ### Apariencia
 
-**Tienda en línea → Apariencia**, con vista previa en computadora y celular:
+**Tienda en línea → Apariencia**, con tu tienda real como vista previa en vivo (computadora o celular): ves cada cambio al momento y nadie más lo ve hasta que guardas. Funciona aunque tu tienda todavía no esté activa.
 
+- **Página principal**: arma tu portada con **secciones** que agregas, ordenas (arrastrándolas o con las flechas), duplicas, ocultas o eliminas:
+  - **Encabezado y menú** (arriba de todas las páginas): logo, buscador, botón de cuenta y hasta 8 enlaces de menú.
+  - **Portada**: título grande, texto, imagen de fondo o al lado y hasta 2 botones.
+  - **Banners**: hasta 8 imágenes que pasan solas, con título, botón, enlace y fechas. Medida recomendada: 2100 × 800 px; para celular, 1080 × 1350 px.
+  - **Catálogo**: todos tus productos con categorías, palabras clave y orden (solo puede haber uno).
+  - **Productos destacados**: una fila o cuadrícula de novedades, una categoría o una palabra clave.
+  - **Texto**, **Imagen y texto** y **Galería** (cuadrícula, mosaico o carrusel).
+  - **Preguntas frecuentes**: las de Ajustes de la tienda o unas propias.
+  - **Horarios**: días y horas, con «Abierto ahora / Cerrado ahora».
+  - **Mapa**: Google Maps con tu dirección y botón «Cómo llegar».
+  - **Tarjeta de lealtad**: tarjeta de sellos para invitar a tus clientes a volver (los sellos se llevan en tu tienda).
+  - **Video o contenido embebido**: YouTube, Vimeo, Spotify, TikTok, Instagram, Google Maps, Calendly o Formularios de Google.
+  - **HTML personalizado**: tu propio HTML y JavaScript (widgets, reseñas, chat…), en cualquier plan. Corre en un marco aislado, sin acceso a tu tienda ni a los datos de tus clientes.
+  - **Divisor**: una línea, ola, zigzag o un espacio.
+
+  En **Diseño**, cada sección tiene sus propios colores (fondo, texto y botones), imagen de fondo, letra, esquinas, ancho, alineación, marco, espacio arriba y abajo, y forma de los bordes (inclinado, curva, ola o zigzag). En **Visibilidad** eliges si se ve siempre, solo en computadora o solo en celular, sus fechas y un **ancla** para enlazarla desde el menú (por ejemplo `#horarios`).
 - **Tema**: elige un estilo (Nexo, Boutique, Fresco, Minimal, Mercado, Nocturno) y, si quieres, tus colores, la letra de los títulos y las esquinas. Te avisamos si algún color se lee mal.
 - **Barra de avisos**: hasta 3 mensajes arriba de la tienda (envío gratis, horarios, un cupón), con fechas.
-- **Banners**: hasta 6 imágenes grandes que se van alternando, con título, botón y enlace. Medida recomendada: 2100 × 800 px; para celular, 1080 × 1350 px.
 - **Píxeles**: Meta (Facebook e Instagram), Google y TikTok para medir tus anuncios. La tienda pide permiso de cookies al cliente antes de activarlos.
-- **Código**: CSS propio; HTML y JavaScript con plan Pro en tu dominio propio.
+- **CSS**: estilos propios para toda la tienda. El HTML y el JavaScript van en una sección **HTML personalizado**.
 
 Al terminar, presiona **Guardar cambios**. También puedes pedirle estos cambios a un asistente de IA (ver [Asistentes de IA](#asistentes-de-ia-mcp)).
 
@@ -498,13 +513,13 @@ Conecta Claude u otro asistente compatible con MCP para preguntarle, por ejemplo
 
 | Puedes pedirle | Ejemplo |
 |---|---|
-| Ver la apariencia actual | «¿Qué tema y banners tiene mi tienda?» |
+| Ver la apariencia actual | «¿Qué tema y qué secciones tiene mi página principal?» |
 | Cambiar el tema | «Pon el estilo Boutique con la letra Moderna y esquinas redondas.» Si un color se lee mal, te avisa. |
 | La barra de avisos | «Activa un aviso de "Envío gratis desde $999" hasta el 31 de diciembre.» |
-| Los banners que ya subiste | «Oculta el segundo banner», «cambia el título del banner de otoño», «pon el de herramientas primero». Las imágenes nuevas se suben desde el panel. |
-| El código personalizado | «Muéstrame el CSS de la tienda», «haz los botones más redondos con CSS», «agrega este script de chat antes de `</body>`». |
+| Las secciones de la página principal | «Agrega una sección de horarios debajo del catálogo», «pon la portada con fondo azul y borde de ola», «oculta los banners», «sube la galería arriba». Las imágenes nuevas se suben desde el panel. |
+| El CSS y el HTML personalizado | «Muéstrame el CSS de la tienda», «haz los botones más redondos con CSS», «agrega una sección con este widget de reseñas». |
 
-El CSS se puede editar en cualquier plan. El HTML y el JavaScript necesitan el plan **Pro** y solo corren en tu dominio propio, igual que en el panel. Como un error en el código puede romper la tienda, el asistente te muestra el código y te pide confirmación antes de guardarlo. Cada cambio queda en **Actividad** con el nombre de la llave.
+Todo esto funciona en cualquier plan. Como un error en el CSS puede descomponer el diseño, el asistente te muestra el código (y el HTML de una sección) y te pide confirmación antes de guardarlo. Cada cambio queda en **Actividad** con el nombre de la llave.
 
 > Para empezar, usa una llave de **Solo lectura**.
 

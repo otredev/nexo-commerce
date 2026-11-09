@@ -3,7 +3,8 @@ import { ASSIGNABLE_PERMISSIONS, ROLES } from "./roles";
 import { REASON_CODES, UNIT_CODES } from "./catalog";
 import { PAYMENT_CODES } from "./sales";
 import { API_KEY_ACCESS_IDS, WEBHOOK_EVENT_TYPES, type ApiKeyAccess, type WebhookEventType } from "./integrations";
-import { CODE_LIMITS, MAX_BANNERS, PIXEL_PATTERNS, STORE_LINK, THEME_FONT_IDS, THEME_PRESET_IDS, THEME_RADIUS_IDS, type ThemeFont, type ThemePreset, type ThemeRadius } from "./appearance";
+import { PIXEL_PATTERNS, STORE_LINK, THEME_FONT_IDS, THEME_PRESET_IDS, THEME_RADIUS_IDS, type ThemeFont, type ThemePreset, type ThemeRadius } from "./appearance";
+import { blockListSchema, CODE_LIMITS } from "./blocks";
 
 const email = z.string().trim().toLowerCase().email("Correo no válido").max(254);
 const password = z
@@ -585,7 +586,6 @@ const scheduleRange = {
   endsOn: isoDate.nullable().default(null),
 };
 const rangeOk = (v: { startsOn: string | null; endsOn: string | null }) => !v.startsOn || !v.endsOn || v.startsOn <= v.endsOn;
-const imageKey = z.string().min(1).max(200).regex(/^t\/[A-Za-z0-9_-]+\/[A-Za-z0-9._/-]+$/, "Imagen no válida");
 const pixelId = (re: RegExp, message: string) =>
   z.string().trim().max(40).nullable().default(null).transform((v) => (v ? v.toUpperCase() : null)).refine((v) => v === null || re.test(v), message);
 
@@ -608,26 +608,8 @@ export const storeAppearanceSchema = z.object({
     })
     .refine(rangeOk, { message: "La fecha final es antes de la inicial", path: ["endsOn"] })
     .refine((a) => !a.enabled || a.messages.some((m) => m.text), { message: "Escribe el mensaje", path: ["messages"] }),
-  banners: z
-    .array(
-      z
-        .object({
-          id: z.string().min(1).max(40),
-          enabled: z.boolean(),
-          image: imageKey,
-          imageMobile: imageKey.nullable().default(null),
-          heading: optText(80),
-          text: optText(160),
-          cta: optText(30),
-          link: storeLink,
-          textColor: z.enum(["light", "dark"]),
-          align: z.enum(["left", "center"]),
-          ...scheduleRange,
-        })
-        .refine(rangeOk, { message: "La fecha final es antes de la inicial", path: ["endsOn"] })
-        .refine((b) => !b.cta || b.link, { message: "El botón necesita un enlace", path: ["link"] }),
-    )
-    .max(MAX_BANNERS, `Hasta ${MAX_BANNERS} banners`),
+  /** The home page sections, top to bottom. */
+  blocks: blockListSchema,
   pixels: z.object({
     metaPixelId: pixelId(PIXEL_PATTERNS.metaPixelId, "El ID del píxel de Meta son solo números (10 a 20)"),
     googleTagId: pixelId(PIXEL_PATTERNS.googleTagId, "Usa el ID de Google: G-…, AW-… o GTM-…"),
@@ -635,9 +617,6 @@ export const storeAppearanceSchema = z.object({
   }),
   code: z.object({
     css: z.string().max(CODE_LIMITS.css, `Máximo ${CODE_LIMITS.css.toLocaleString("es-MX")} caracteres`).default(""),
-    headHtml: z.string().max(CODE_LIMITS.headHtml, `Máximo ${CODE_LIMITS.headHtml.toLocaleString("es-MX")} caracteres`).default(""),
-    bodyHtml: z.string().max(CODE_LIMITS.bodyHtml, `Máximo ${CODE_LIMITS.bodyHtml.toLocaleString("es-MX")} caracteres`).default(""),
-    js: z.string().max(CODE_LIMITS.js, `Máximo ${CODE_LIMITS.js.toLocaleString("es-MX")} caracteres`).default(""),
   }),
 });
 export type StoreAppearanceInput = z.infer<typeof storeAppearanceSchema>;

@@ -728,21 +728,29 @@ export const storeSettings = sqliteTable("store_settings", {
 
 /**
  * Phase 9: how the store looks. One row per business; the editor saves it whole.
- * Custom HTML and JavaScript are only injected on the store's own domain (its own browser origin).
- * JSON shapes: StoreTheme, StoreAnnouncement, StoreBanner[] and StorePixels in @nexo/shared (appearance.ts).
+ * JSON shapes: StoreTheme, StoreAnnouncement and StorePixels in @nexo/shared (appearance.ts); the home page
+ * sections in blocks.ts (null = never arranged: the default home). Custom HTML lives in sandboxed sections.
  */
 export const storeAppearance = sqliteTable("store_appearance", {
   tenantId: text("tenant_id").primaryKey(),
   theme: text("theme", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
   announcement: text("announcement", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
-  banners: text("banners", { mode: "json" }).$type<Array<Record<string, unknown>>>().notNull().default(sql`'[]'`),
+  blocks: text("blocks", { mode: "json" }).$type<unknown[]>(),
   pixels: text("pixels", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
   customCss: text("custom_css").notNull().default(""),
-  headHtml: text("head_html").notNull().default(""),
-  bodyHtml: text("body_html").notNull().default(""),
-  customJs: text("custom_js").notNull().default(""),
   updatedAt: text("updated_at").notNull().default(now),
 });
+
+/** Live preview of the store in the editor: lets the store's API answer a business whose store is not on yet. id = SHA-256 of the token. */
+export const storePreviewTokens = sqliteTable(
+  "store_preview_tokens",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (t) => [index("store_preview_tokens_tenant_idx").on(t.tenantId, t.expiresAt)],
+);
 
 /**
  * The store's legal pages (privacy notice, terms, returns). Each save that changes the text is a new

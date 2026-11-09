@@ -1,5 +1,6 @@
 import type { ApiError } from "@nexo/shared";
 import { pixelEvent } from "./pixels";
+import { inPreview, previewToken } from "./preview";
 
 export class RequestError extends Error {
   constructor(public status: number, public code: string, message: string, public fields: Record<string, string> = {}) {
@@ -17,7 +18,7 @@ export async function api<T>(method: "GET" | "POST" | "PUT", path: string, body?
     res = await fetch(`/api/store${path}`, {
       method,
       credentials: "same-origin",
-      headers: body === undefined ? {} : { "content-type": "application/json" },
+      headers: { ...(body !== undefined && { "content-type": "application/json" }), ...(previewToken && { "x-nexo-preview": previewToken }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -42,6 +43,7 @@ let landingReferrer: string | null = typeof document !== "undefined" ? document.
 
 /** Fire-and-forget event for the store's traffic report. Never blocks or fails the page. */
 export function track(slug: string, type: TrackType, extra: { productId?: string; name?: string; valueCents?: number } = {}) {
+  if (inPreview) return; // the editor's preview is not a visit
   pixelEvent(type, { id: extra.productId, name: extra.name, valueCents: extra.valueCents });
   try {
     if (utm === null) {

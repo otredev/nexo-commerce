@@ -2,13 +2,13 @@ import { Hono, type Context } from "hono";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { tenant } from "@nexo/db";
 import {
-  domainSchema, planOf, POLICY_INFO, storeAppearanceSchema, type StoreAppearanceSettings, POLICY_KINDS, policySchema, policyTemplate, publishProductsSchema, storeSettingsSchema,
+  blockImages, domainSchema, planOf, POLICY_INFO, storeAppearanceSchema, type StoreAppearance, type StoreAppearanceSettings, POLICY_KINDS, policySchema, policyTemplate, publishProductsSchema, storeSettingsSchema,
   type PolicyKind, type StoreDomain, type StorePolicy, type StoreSettings,
 } from "@nexo/shared";
 import { control, controlDb } from "@nexo/db";
 import { addDomain, domainsConfigured, refreshDomain, removeDomain, toStoreDomain } from "../lib/domains";
 import { assertFeature } from "../lib/plan";
-import { loadAppearance } from "../lib/appearance";
+import { createPreviewToken, loadAppearance } from "../lib/appearance";
 import type { AppEnv } from "../env";
 import { auditEntry, diff } from "../lib/audit";
 import { AppError } from "../lib/errors";
@@ -71,16 +71,17 @@ async function load(c: Context<AppEnv>): Promise<StoreSettings> {
 
 async function appearanceSettings(c: Context<AppEnv>): Promise<StoreAppearanceSettings> {
   const { db, tenant: t } = c.var.auth;
-  const [a, domain] = await Promise.all([
-    loadAppearance(db, t.id),
-    controlDb(c.env.DB_CONTROL)
-      .select({ hostname: control.tenantDomains.hostname })
-      .from(control.tenantDomains)
-      .where(and(eq(control.tenantDomains.tenantId, t.id), eq(control.tenantDomains.status, "active")))
-      .get(),
-  ]);
-  return { ...a, codeAllowed: planOf(t.plan).limits.customDomain, domain: domain?.hostname ?? null };
+  return loadAppearance(db, t.id);
 }
+
+/** Audit summary: what changed, without whole HTML sections or images. */
+const appearanceSummary = (a: StoreAppearance) => ({
+  theme: a.theme,
+  announcement: a.announcement.enabled ? a.announcement.messages.map((m) => m.text) : null,
+  blocks: a.blocks.map((b) => `${b.type}:${b.id}${b.enabled ? "" : " (oculta)"}`),
+  pixels: a.pixels,
+  cssChars: a.code.css.length,
+});
 
 export const storeAdminRoutes = new Hono<AppEnv>()
   /* ---------- Phase 9: appearance ---------- */
@@ -92,31 +93,15 @@ export const storeAdminRoutes = new Hono<AppEnv>()
     // Images must be this business's own uploads.
     const own = `t/${t.id}/`;
     const fields: Record<string, string> = {};
-    input.banners.forEach((b, i) => {
-      if (!b.image.startsWith(own)) fields[`banners.${i}.image`] = "Sube la imagen desde aquí";
-      if (b.imageMobile && !b.imageMobile.startsWith(own)) fields[`banners.${i}.imageMobile`] = "Sube la imagen desde aquí";
+    input.blocks.forEach((b, i) => {
+      for (const img of blockImages(b)) if (!img.key.startsWith(own)) fields[`blocks.${i}.${img.path}`] = "Sube la imagen desde aquí";
     });
-    if (new Set(input.banners.map((b) => b.id)).size !== input.banners.length) fields.banners = "Banners repetidos";
     if (Object.keys(fields).length) throw new AppError(422, "validation_error", "Revisa los campos marcados", fields);
 
     const before = await loadAppearance(db, t.id);
-    // Custom HTML/JS only runs on an own domain (Pro and up). Leaving what was already saved is fine after a downgrade.
-    const codeChanged = input.code.headHtml !== before.code.headHtml || input.code.bodyHtml !== before.code.bodyHtml || input.code.js !== before.code.js;
-    if (codeChanged && (input.code.headHtml.trim() || input.code.bodyHtml.trim() || input.code.js.trim())) {
-      if (!planOf(t.plan).limits.customDomain) {
-        throw new AppError(402, "plan_feature", "El HTML y JavaScript personalizados están disponibles desde el plan Pro (se ejecutan en tu dominio propio). Mejora tu plan en Configuración › Plan.", { feature: "customCode" });
-      }
-    }
     const now = new Date().toISOString();
-    const values = {
-      theme: input.theme, announcement: input.announcement, banners: input.banners, pixels: input.pixels,
-      customCss: input.code.css, headHtml: input.code.headHtml, bodyHtml: input.code.bodyHtml, customJs: input.code.js, updatedAt: now,
-    };
-    const summary = (a: typeof before | typeof input) => ({
-      theme: a.theme, announcement: a.announcement.enabled ? a.announcement.messages.map((m) => m.text) : null, banners: a.banners.length, pixels: a.pixels,
-      codeChars: { css: a.code.css.length, headHtml: a.code.headHtml.length, bodyHtml: a.code.bodyHtml.length, js: a.code.js.length },
-    });
-    const change = diff(summary(before) as Record<string, unknown>, summary(input) as Record<string, unknown>);
+    const values = { theme: input.theme, announcement: input.announcement, blocks: input.blocks, pixels: input.pixels, customCss: input.code.css, updatedAt: now };
+    const change = diff(appearanceSummary(before) as Record<string, unknown>, appearanceSummary(input) as Record<string, unknown>);
     await d1.batch([
       toStatement(d1, db.insert(storeAppearance).values({ tenantId: t.id, ...values }).onConflictDoUpdate({ target: storeAppearance.tenantId, set: values })),
       toStatement(d1, auditEntry(c, { action: "store.appearance", entity: "store_appearance", entityId: t.id, before: change.before, after: change.after })),
@@ -124,6 +109,12 @@ export const storeAdminRoutes = new Hono<AppEnv>()
       d1.prepare("UPDATE store_settings SET updated_at = ?2 WHERE tenant_id = ?1").bind(t.id, now),
     ]);
     return c.json(await appearanceSettings(c));
+  })
+
+  /** Live preview in the editor: a short-lived token the store sends to its API (works before the store is on). */
+  .post("/appearance/preview", requirePermission("settings:read"), async (c) => {
+    const { db, tenant: t } = c.var.auth;
+    return c.json(await createPreviewToken(db, t.id));
   })
 
   .get("/", requirePermission("settings:read"), async (c) => c.json(await load(c)))

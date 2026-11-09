@@ -663,8 +663,12 @@ export interface StoreInfo {
   indexable: boolean;
   /** Active own domain, when the store has one (canonical URLs point there). */
   domain: string | null;
-  /** Theme, announcement bar, banners and pixels (Phase 9). */
-  appearance: import("./appearance").PublicAppearance;
+  /** Theme, announcement bar, home page sections and pixels (Phase 9). */
+  appearance: import("./blocks").PublicAppearance;
+  /** IANA time zone of the business ("Abierto ahora" in the hours section). */
+  timezone: string;
+  /** Only in the editor's live preview: origin of the dashboard allowed to send the draft. */
+  previewOrigin?: string;
   /** Paying needs a customer account (browsing and the cart do not). */
   accountRequired: boolean;
 }

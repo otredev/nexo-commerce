@@ -40,7 +40,7 @@ import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatemen
 import { cancelStatements, loadOrderRows, notifyOrder, sendOrderEmail, toPublicOrder } from "../lib/orders";
 import { couponUseStatement, customerForOrder, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
 import { getTenantDb } from "../lib/tenant";
-import { loadAppearance } from "../lib/appearance";
+import { loadAppearance, validPreviewToken } from "../lib/appearance";
 import { emitEvent, orderData } from "../lib/outbound";
 import { createOrderCheckout, markOrderPaid, notifyPaid, type CheckoutSession } from "../lib/cardPayments";
 import { stripe, stripeConfigured } from "../lib/stripe";
@@ -89,6 +89,9 @@ export async function storeBase(c: Context<AppEnv>, t: TenantRef) {
 const notFound = () => new AppError(404, "store_not_found", "Esta tienda no existe o no está disponible.");
 
 /** Resolves the business behind a store slug, with its settings. 404 when missing or disabled. */
+/** Sent by the store while it is shown in the editor's live preview (see POST /store-settings/appearance/preview). */
+export const PREVIEW_HEADER = "x-nexo-preview";
+
 export async function resolveStore(c: Context<AppEnv>) {
   const slug = c.req.param("slug")?.toLowerCase() ?? "";
   if (!/^[a-z0-9-]{1,60}$/.test(slug)) throw notFound();
@@ -107,12 +110,15 @@ export async function resolveStore(c: Context<AppEnv>) {
     db.select().from(storeSettings).where(eq(storeSettings.tenantId, t.id)).get(),
     db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get(),
   ]);
-  if (!store?.enabled || !store.locationId || !biz) throw notFound();
+  if (!store?.locationId || !biz) throw notFound();
+  // The editor's live preview may read (never order from) a store that is not on yet.
+  const preview = c.req.method === "GET" && (await validPreviewToken(db, t.id, c.req.header(PREVIEW_HEADER)));
+  if (!store.enabled && !preview) throw notFound();
   const today = businessDate(biz.timezone);
   // Card payments: enabled by the business, allowed by its plan, and its Stripe account can charge.
   const cardAccount =
     store.cardEnabled && t.stripeAccountId && t.chargesEnabled && planOf(effectivePlan(t.plan, t.planStatus)).limits.cardPayments && stripeConfigured(c.env) ? t.stripeAccountId : null;
-  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz, today, cardAccount };
+  return { tenant: ref, db, d1, store: { ...store, locationId: store.locationId }, biz, today, cardAccount, preview };
 }
 
 /** Tax rate of each product: its own or the business default. */
@@ -145,9 +151,15 @@ const eventSchema = z.object({
 });
 
 export const storeRoutes = new Hono<AppEnv>()
+  // Answers to the editor's preview are private and never shared through a cache with the public ones.
+  .use("*", async (c, next) => {
+    await next();
+    c.res.headers.append("Vary", PREVIEW_HEADER);
+    if (c.req.header(PREVIEW_HEADER)) c.res.headers.set("Cache-Control", "private, no-store");
+  })
   /* ---------- Store front: name, logo, rules, categories ---------- */
   .get("/:slug", async (c) => {
-    const { tenant: t, d1, db, store, biz, today, cardAccount } = await resolveStore(c);
+    const { tenant: t, d1, db, store, biz, today, cardAccount, preview } = await resolveStore(c);
     const pub = PUBLISHED.replaceAll("p.tenant_id = ?1", "p.tenant_id = c.tenant_id");
     const [catRes, kwRes] = await d1.batch([
       d1
@@ -208,6 +220,8 @@ export const storeRoutes = new Hono<AppEnv>()
       domain: await activeDomain(c, t.id),
       appearance: publicAppearance(appearance, today),
       accountRequired: store.accountRequired,
+      timezone: biz.timezone,
+      ...(preview && { previewOrigin: new URL(c.env.APP_URL).origin }),
     };
     return c.json(body, 200, short);
   })
@@ -544,13 +558,13 @@ export const storeRoutes = new Hono<AppEnv>()
   })
 
   /**
-   * Custom CSS/HTML/JS of the store, for the Pages middleware that injects it into the HTML.
+   * Custom CSS of the store, for the Pages middleware that injects it into the HTML.
    * Public on purpose: it is exactly what every visitor's browser receives anyway.
    */
   .get("/:slug/custom-code", async (c) => {
     const { tenant: t, db } = await resolveStore(c);
     const a = await loadAppearance(db, t.id);
-    return c.json(a.code, 200, short);
+    return c.json({ css: a.code.css }, 200, short);
   })
 
   /* ---------- Legal pages and sitemap data ---------- */
