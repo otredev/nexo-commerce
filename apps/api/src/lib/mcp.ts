@@ -14,39 +14,18 @@ import {
 } from "@nexo/shared";
 import type { AppEnv } from "../env";
 import { bearerKey, loadApiKey, type KeySession } from "./apiKeys";
+import { COLOR, DATE, DATE_OR_NULL, json200, LINK, obj, optStr, qs, str, type Args, type Call, type Tool } from "./mcpKit";
+import { CATALOG_TOOLS } from "./mcpCatalog";
+import { INVENTORY_TOOLS } from "./mcpInventory";
+import { STORE_TOOLS } from "./mcpStore";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const SERVER_INFO = { name: "nexo", title: "Nexo", version: "1.0.0" };
 const INSTRUCTIONS =
-  "Herramientas de Nexo para el negocio conectado: catálogo, existencias, ventas, reportes, pedidos de la tienda en línea, clientes y la apariencia de la tienda (tema, avisos, secciones de la página principal y CSS). " +
+  "Herramientas de Nexo para el negocio conectado: catálogo (productos, variantes, categorías, marcas, impuestos e imágenes), existencias, traspasos, conteos, proveedores y compras, ventas, reportes, pedidos de la tienda en línea, clientes, promociones y cupones, y la tienda en línea (ajustes, tema, avisos, secciones de la página principal, píxeles y CSS). " +
+  "Productos, categorías, marcas, ubicaciones y proveedores se pueden indicar por nombre o SKU además de por id. " +
   "Las cantidades de dinero vienen en centavos (…Cents): divide entre 100. Las fechas son AAAA-MM-DD en la zona horaria del negocio. " +
-  "Antes de cambiar algo (existencias, pedidos, apariencia, secciones o CSS de la tienda), confirma con la persona; para el CSS o el HTML de una sección, muéstrale exactamente lo que vas a guardar.";
-
-type Call = (method: "GET" | "POST" | "PUT", path: string, body?: unknown) => Promise<Response>;
-type Args = Record<string, unknown>;
-type JsonSchema = Record<string, unknown>;
-
-interface Tool {
-  name: string;
-  title: string;
-  description: string;
-  permission: Permission;
-  write?: boolean;
-  /** Can break what customers see (custom CSS): clients should ask before running it. */
-  destructive?: boolean;
-  inputSchema: JsonSchema;
-  run: (args: Args, call: Call) => Promise<Response>;
-}
-
-const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const qs = (o: Record<string, unknown>) => {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(o)) if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
-  const s = p.toString();
-  return s ? `?${s}` : "";
-};
-const DATE = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "AAAA-MM-DD" };
-const obj = (properties: Record<string, JsonSchema>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
+  "Antes de cambiar algo, confirma con la persona lo que vas a hacer; antes de eliminar o cancelar, pide confirmación explícita. Para el CSS o el HTML de una sección, muéstrale exactamente lo que vas a guardar.";
 
 const REASONS = [...MOVEMENT_REASONS.in, ...MOVEMENT_REASONS.out, ...MOVEMENT_REASONS.set].map((r) => r.code);
 const STATUS_MAP: Record<string, string> = { abiertos: "open", nuevos: "pending", aceptados: "confirmed", listos: "ready", entregados: "completed", cancelados: "cancelled", todos: "all" };
@@ -55,7 +34,6 @@ const STOCK_MAP: Record<string, string> = { todas: "all", pocas: "low", agotadas
 
 /* ---------- Store appearance (Phase 11+): read, change and save the whole document ---------- */
 
-const json200 = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
 const APPEARANCE = "/api/store-settings/appearance";
 
 /** Reads the appearance, lets `change` edit it, saves it (the API validates and checks the plan). */
@@ -106,10 +84,6 @@ const SECTION_FIELDS = {
   ancla: { type: ["string", "null"], description: "id para enlazar con #ancla desde el menú (minúsculas, números y guiones)" },
 };
 
-const optStr = (v: unknown) => (v === undefined ? undefined : v === null || v === "" ? null : String(v).trim());
-const DATE_OR_NULL = { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "AAAA-MM-DD, o null para quitar la fecha" };
-const LINK = { type: ["string", "null"], description: "Ruta de la tienda (/p/<id>, ?categoria=<id>, ?orden=new) o una dirección https://. null para quitarlo." };
-const COLOR = { type: ["string", "null"], pattern: "^#[0-9a-fA-F]{6}$", description: "#RRGGBB, o null para volver al color del estilo" };
 
 export const MCP_TOOLS: Tool[] = [
   {
@@ -280,6 +254,17 @@ export const MCP_TOOLS: Tool[] = [
     }, announcementSummary),
   },
   {
+    name: "pixeles", title: "Píxeles de anuncios", permission: "store:write", write: true,
+    description: "Configura los píxeles de Meta (Facebook e Instagram), Google (GA4 G-…, Ads AW-… o Tag Manager GTM-…) y TikTok. La tienda pide permiso de cookies al cliente antes de activarlos. Solo cambia lo que mandes; null quita uno.",
+    inputSchema: obj({ meta: { type: ["string", "null"], description: "ID del conjunto de datos (solo números)" }, google: { type: ["string", "null"] }, tiktok: { type: ["string", "null"] } }),
+    run: (a, call) => updateAppearance(call, (n) => {
+      if (a.meta !== undefined) n.pixels.metaPixelId = optStr(a.meta) ?? null;
+      if (a.google !== undefined) n.pixels.googleTagId = optStr(a.google) ?? null;
+      if (a.tiktok !== undefined) n.pixels.tiktokPixelId = optStr(a.tiktok) ?? null;
+      return null;
+    }, (s) => ({ meta: s.pixels.metaPixelId, google: s.pixels.googleTagId, tiktok: s.pixels.tiktokPixelId })),
+  },
+  {
     name: "ver_seccion", title: "Ver una sección de la página principal", permission: "settings:read",
     description: "Todo el contenido (datos) y el diseño (estilo) de una sección, por su id o su posición. Úsalo antes de editar_seccion para ver los campos de ese tipo.",
     inputSchema: obj({ seccion: { type: ["string", "integer"], description: "id de la sección o su posición (1 = la primera)" } }, ["seccion"]),
@@ -356,6 +341,9 @@ export const MCP_TOOLS: Tool[] = [
       return null;
     }, codeSummary),
   },
+  ...CATALOG_TOOLS,
+  ...INVENTORY_TOOLS,
+  ...STORE_TOOLS,
 ];
 
 /** Tools this key may use: role permission, and no writes for read-only keys. */

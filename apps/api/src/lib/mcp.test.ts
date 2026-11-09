@@ -37,4 +37,27 @@ describe("MCP tools", () => {
     expect(cashier).not.toContain("cambiar_tema");
     expect(cashier).not.toContain("agregar_seccion");
   });
+  it("every required argument is declared, and every tool that deletes or cancels is marked destructive", () => {
+    for (const t of MCP_TOOLS) {
+      const props = Object.keys((t.inputSchema.properties ?? {}) as object);
+      for (const r of (t.inputSchema.required as string[]) ?? []) expect(props, `${t.name}.${r}`).toContain(r);
+      if (/^(eliminar|cancelar_(traspaso|compra)|terminar_conteo)/.test(t.name)) expect(t.destructive, t.name).toBe(true);
+      if (t.destructive) expect(t.write, t.name).toBe(true);
+    }
+  });
+  it("catalog, inventory and store: reads for read-only keys, changes with a full key", () => {
+    const ro = toolsFor(key("admin", true)).map((t) => t.name);
+    expect(ro).toEqual(expect.arrayContaining(["listar_categorias", "listar_marcas", "listar_impuestos", "movimientos_inventario", "listar_traspasos", "listar_compras", "listar_promociones", "ver_ajustes_tienda"]));
+    expect(ro.some((n) => /^(crear|editar|eliminar|guardar|subir|recibir|capturar)_/.test(n))).toBe(false);
+    const full = toolsFor(key("admin", false)).map((t) => t.name);
+    expect(full).toEqual(expect.arrayContaining([
+      "crear_producto", "editar_producto", "archivar_producto", "eliminar_producto", "crear_categoria", "editar_categoria", "eliminar_categoria", "crear_marca", "editar_marca",
+      "eliminar_marca", "guardar_impuesto", "subir_imagen", "crear_traspaso", "recibir_traspaso", "crear_conteo", "capturar_conteo", "terminar_conteo", "crear_proveedor",
+      "crear_compra", "recibir_compra", "guardar_promocion", "guardar_cupon", "pixeles", "editar_ajustes_tienda",
+    ]));
+    const cashier = toolsFor(key("cashier", false)).map((t) => t.name);
+    expect(cashier).toContain("capturar_conteo");
+    expect(cashier).not.toContain("crear_producto");
+    expect(cashier).not.toContain("terminar_conteo");
+  });
 });

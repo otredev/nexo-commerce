@@ -507,9 +507,24 @@ Ninguna llave puede ver usuarios, tu plan ni las integraciones. Lo que haga una 
 
 ### Asistentes de IA (MCP)
 
-Conecta Claude u otro asistente compatible con MCP para preguntarle, por ejemplo, «¿cuánto vendí esta semana?», «¿qué tengo que resurtir?» o «¿qué pedidos están pendientes?». Con una llave de escritura también puede aceptar o entregar pedidos y ajustar existencias, y te pedirá confirmación antes de hacerlo. El panel te da el comando para Claude Code y la configuración para Claude Desktop, listos para copiar.
+Conecta Claude u otro asistente compatible con MCP para preguntarle, por ejemplo, «¿cuánto vendí esta semana?», «¿qué tengo que resurtir?» o «¿qué pedidos están pendientes?». Con una llave de escritura también puede hacer casi todo lo del panel, y te pedirá confirmación antes de cambiar algo (y confirmación explícita antes de eliminar o cancelar). El panel te da el comando para Claude Code y la configuración para Claude Desktop, listos para copiar.
 
-**Apariencia de la tienda.** El asistente también puede ver y cambiar lo mismo que la pantalla **Tienda en línea → Apariencia**:
+Puedes nombrar las cosas como las conoces: productos por nombre o SKU, categorías como «Aves > Pequeñas», ubicaciones y proveedores por su nombre, impuestos por porcentaje («16 %»).
+
+**Catálogo e inventario.**
+
+| Puedes pedirle | Ejemplo |
+|---|---|
+| Categorías y marcas | «Crea la categoría Aves con las subcategorías Pequeñas y Grandes», «renombra la marca Vega», «borra la categoría Temporada». |
+| Productos | «Da de alta el Cocotiel a $1,499 en Aves > Medianas, marca Vega, con 3 piezas», «crea la Jaula en tallas Chica, Mediana y Grande», «súbele 10 % a la jaula grande», «publica el periquito en la tienda», «archiva el bebedero viejo». |
+| Imágenes | «Usa esta foto para el cocotiel: https://…». El asistente la descarga (JPG, PNG o WebP de hasta 5 MB) y la guarda en Nexo; también sirve para banners y galerías. |
+| Impuestos y promociones | «Crea el impuesto IVA 8 %», «pon 15 % de descuento en Aves solo en línea hasta el domingo», «crea el cupón BIENVENIDA de $100 en compras desde $500». |
+| Existencias y movimientos | «Súbele 10 piezas al periquito en la tienda centro», «¿qué movimientos tuvo la jaula grande esta semana?». |
+| Traspasos | «Manda 5 periquitos de la tienda a la bodega», «ya llegó el traspaso, recíbelo». |
+| Conteos físicos | «Empieza un conteo de la categoría Semillas en la bodega», «conté 12 bolsas de mixta», «termina el conteo». |
+| Proveedores y compras | «Da de alta a Semillas del Norte, 30 días de crédito», «¿qué me conviene comprar?», «haz una orden de 20 bolsas a $85», «llegaron 15, recíbelas con la factura F-123». |
+
+**Apariencia de la tienda.** El asistente también puede ver y cambiar lo mismo que la pantalla **Tienda en línea → Apariencia** (además del lema, «acerca de», preguntas frecuentes, SEO, WhatsApp y píxeles):
 
 | Puedes pedirle | Ejemplo |
 |---|---|
