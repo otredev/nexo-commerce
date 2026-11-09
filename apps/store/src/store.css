@@ -178,10 +178,21 @@ img { display: block; max-width: 100%; }
 /* ---------- Footer ---------- */
 .st-footer { margin-top: 48px; border-top: 1px solid var(--border); padding: 32px 0 40px; font-size: 13px; color: var(--ink-muted); }
 .st-footer__row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 32px; }
-.st-footer__brand { font: var(--st-heading-weight, 400) 22px/1 var(--st-heading, var(--font-serif)); letter-spacing: var(--st-heading-tracking,-0.01em); color: var(--ink); margin-bottom: 8px; }
+.st-footer__brand { display: inline-flex; align-items: center; gap: 10px; font: var(--st-heading-weight, 400) 22px/1 var(--st-heading, var(--font-serif)); letter-spacing: var(--st-heading-tracking,-0.01em); color: var(--ink); margin-bottom: 8px; }
+.st-footer__brand img { height: 36px; width: auto; max-width: 160px; object-fit: contain; }
+.st-footer__brand img[data-big] { height: 56px; max-width: 220px; }
+.st-footer__about { display: grid; gap: 6px; align-content: start; max-width: 320px; }
+.st-footer__text { margin: 0; line-height: 1.55; }
+.st-footer__title { color: var(--ink); font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.st-footer__social { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.st-footer__social a { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--ink); font-size: 13px; }
+.st-footer__social a:hover { border-color: var(--border-strong); }
+.st-footer__note { margin: 16px 0 0; font-size: 12px; }
+.st-footer[data-paint] { background: var(--bg); color: var(--ink-muted); border-top-color: transparent; }
+.st-footer[data-selected] { outline: 2px dashed #2563eb; outline-offset: -4px; }
 .st-footer a { text-decoration: none; }
 .st-footer a:hover { color: var(--ink); }
-.st-footer__links { display: grid; gap: 6px; }
+.st-footer__links { display: grid; gap: 6px; align-content: start; }
 .st-powered { margin-top: 24px; font-size: 12px; color: var(--ink-subtle); }
 
 .st-empty { padding: 72px 0; text-align: center; }

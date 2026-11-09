@@ -40,6 +40,21 @@ describe("blocks: defaults and validation", () => {
     expect(err(DEFAULT_BLOCKS)).toEqual([]);
   });
 
+  it("footer: business data on by default, https-only social links, one per store", () => {
+    const f = newBlock("footer", "pie");
+    expect(f.data).toMatchObject({ logo: "name", address: true, phone: true, email: true, whatsapp: true, delivery: true, policies: true, columns: [], social: [], note: null });
+    const bad = (social: unknown) => blockSchema.safeParse({ id: "f", type: "footer", data: { social } }).success;
+    expect(bad([{ network: "instagram", url: "https://instagram.com/vega" }])).toBe(true);
+    expect(bad([{ network: "instagram", url: "http://instagram.com/vega" }])).toBe(false);
+    expect(bad([{ network: "instagram", url: "javascript:alert(1)" }])).toBe(false);
+    expect(bad([{ network: "myspace", url: "https://myspace.com/x" }])).toBe(false);
+    const cols = blockSchema.safeParse({ id: "f", type: "footer", data: { columns: [{ title: "Ayuda", links: [{ label: "Envíos", link: "javascript:x" }] }] } });
+    expect(cols.success).toBe(false);
+    expect(blockSchema.safeParse({ id: "f", type: "footer", data: { columns: Array.from({ length: 5 }, () => ({ links: [] })) } }).success).toBe(false);
+    const two = blockListSchema.safeParse([{ id: "a", type: "footer" }, { id: "b", type: "footer" }]);
+    expect(two.error?.issues.map((i) => i.message).join()).toContain("Pie de página");
+  });
+
   it("normalize: old rows and broken items don't take the store down", () => {
     expect(normalizeBlocks(null)).toEqual(DEFAULT_BLOCKS);
     const legacy = normalizeBlocks([

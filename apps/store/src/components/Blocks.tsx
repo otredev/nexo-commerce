@@ -93,7 +93,7 @@ export function HomeBlocks({ blocks }: { blocks: StoreBlock[] }) {
 
 function Block({ block: b, h1 }: { block: StoreBlock; h1: boolean }) {
   switch (b.type) {
-    case "header": return null; // drawn by the layout on every page
+    case "header": case "footer": return null; // drawn by the layout on every page
     case "hero": return <Hero b={b} h1={h1} />;
     case "banners": return <Section block={b} label="Promociones"><BannerCarousel block={b} /></Section>;
     case "catalog": return <Section block={b}><CatalogSection data={b.data} /></Section>;

@@ -4,17 +4,17 @@
  */
 import { useState, type ComponentType } from "react";
 import {
-  ArrowDown, ArrowUp, Award, CircleHelp, Clock, Code, Copy, Eye, EyeOff, Film, GalleryHorizontal, GripVertical, Image, Images, LayoutGrid, MapPin, Minus, PanelTop,
+  ArrowDown, ArrowUp, Award, CircleHelp, Clock, Code, Copy, Eye, EyeOff, Film, GalleryHorizontal, GripVertical, Image, Images, LayoutGrid, MapPin, Minus, PanelBottom, PanelTop,
   Plus, ShoppingBag, Sparkles, Trash2, Type,
 } from "lucide-react";
-import { BLOCK_LIMITS, BLOCK_TYPE_IDS, BLOCK_TYPES, blockSummary, newBlock, type BlockType, type StoreBlock } from "@nexo/shared";
+import { BLOCK_LIMITS, BLOCK_TYPE_IDS, BLOCK_TYPES, blockSummary, LAYOUT_BLOCKS, newBlock, type BlockType, type StoreBlock } from "@nexo/shared";
 import { Alert, Badge, Button, Modal, Segmented } from "@nexo/ui";
 import { ContentForm, StyleForm, VisibilityForm, type FormContext } from "./blockForms";
 import { moveItem, newId, today } from "./fields";
 
 export const BLOCK_ICONS: Record<BlockType, ComponentType<{ className?: string; "aria-hidden"?: boolean | "true" }>> = {
   header: PanelTop, hero: Sparkles, banners: GalleryHorizontal, catalog: LayoutGrid, products: ShoppingBag, text: Type, imageText: Image, gallery: Images,
-  faq: CircleHelp, hours: Clock, map: MapPin, loyalty: Award, embed: Film, html: Code, divider: Minus,
+  faq: CircleHelp, hours: Clock, map: MapPin, loyalty: Award, embed: Film, html: Code, divider: Minus, footer: PanelBottom,
 };
 
 /** A new section with friendly starting content. */
@@ -25,6 +25,7 @@ function starter(type: BlockType): StoreBlock {
   if (b.type === "imageText") b.data = { ...b.data, heading: "Hecho con cuidado", body: "Describe tu producto estrella, tu proceso o tu equipo." };
   if (b.type === "html") b.data = { ...b.data, html: '<div style="padding:24px;text-align:center">\n  <h2 style="margin:0 0 8px">¡Hola!</h2>\n  <p style="margin:0;color:var(--primary)">Escribe aquí tu HTML.</p>\n</div>' };
   if (b.type === "faq") b.data = { ...b.data, source: "own", items: [{ q: "¿Hacen envíos?", a: "Sí, enviamos a toda la ciudad." }] };
+  if (b.type === "footer") b.data = { ...b.data, logo: "logo_name" };
   return b;
 }
 
@@ -47,11 +48,12 @@ export function BlocksEditor({ blocks, onChange, errors, clearErrors, ctx, selec
   const now = today();
 
   const header = blocks.find((b) => b.type === "header") ?? null;
+  const footer = blocks.find((b) => b.type === "footer") ?? null;
   const update = (id: string, fn: (b: StoreBlock) => StoreBlock) => onChange(blocks.map((b) => (b.id === id ? fn(b) : b)));
   const move = (from: number, to: number) => { clearErrors(); onChange(moveItem(blocks, from, to)); };
   const add = (type: BlockType) => {
     const b = starter(type);
-    const at = type === "header" ? 0 : selected ? blocks.findIndex((x) => x.id === selected) + 1 : blocks.length;
+    const at = type === "header" ? 0 : type === "footer" ? blocks.length : selected ? blocks.findIndex((x) => x.id === selected) + 1 : blocks.length;
     const next = [...blocks];
     next.splice(at <= 0 && type !== "header" ? blocks.length : at, 0, b);
     clearErrors();
@@ -117,7 +119,7 @@ export function BlocksEditor({ blocks, onChange, errors, clearErrors, ctx, selec
             {!pinned && (
               <>
                 <Button size="sm" variant="ghost" icon disabled={i === 0 || (i === 1 && blocks[0]?.type === "header")} aria-label={`Subir ${label}`} title="Subir" onClick={() => move(i, i - 1)}><ArrowUp className="nx-icon" aria-hidden="true" /></Button>
-                <Button size="sm" variant="ghost" icon disabled={i === blocks.length - 1} aria-label={`Bajar ${label}`} title="Bajar" onClick={() => move(i, i + 1)}><ArrowDown className="nx-icon" aria-hidden="true" /></Button>
+                <Button size="sm" variant="ghost" icon disabled={i === blocks.length - 1 || (i === blocks.length - 2 && blocks[i + 1]?.type === "footer")} aria-label={`Bajar ${label}`} title="Bajar" onClick={() => move(i, i + 1)}><ArrowDown className="nx-icon" aria-hidden="true" /></Button>
                 {!BLOCK_TYPES[b.type].single && <Button size="sm" variant="ghost" icon disabled={blocks.length >= BLOCK_LIMITS.blocks} aria-label={`Duplicar ${label}`} title="Duplicar" onClick={() => duplicate(b)}><Copy className="nx-icon" aria-hidden="true" /></Button>}
               </>
             )}
@@ -155,10 +157,19 @@ export function BlocksEditor({ blocks, onChange, errors, clearErrors, ctx, selec
             </div>
           </li>
         )}
-        {blocks.map((b, i) => (b.type === "header" ? null : row(b, i)))}
+        {blocks.map((b, i) => (LAYOUT_BLOCKS.has(b.type) ? null : row(b, i)))}
+        {footer ? row(footer, blocks.indexOf(footer), true) : (
+          <li className="nx-block-item nx-block-item--ghost">
+            <div className="nx-block-item__row">
+              <span className="nx-block-item__icon"><PanelBottom className="nx-icon" aria-hidden="true" /></span>
+              <span className="nx-block-item__text"><span className="nx-block-item__name">Pie de página</span><span className="nx-block-item__summary">Nombre, datos de contacto, entrega y políticas (predeterminado)</span></span>
+              <Button size="sm" disabled={blocks.length >= BLOCK_LIMITS.blocks} onClick={() => add("footer")}>Personalizar</Button>
+            </div>
+          </li>
+        )}
       </ul>
-      {blocks.filter((b) => b.type !== "header").length === 0 && <Alert tone="warning">La página principal está vacía. Agrega al menos el catálogo para que se vean tus productos.</Alert>}
-      {!blocks.some((b) => b.type === "catalog") && blocks.some((b) => b.type !== "header") && <p className="nx-help" style={{ margin: 0 }}>Sin sección «Catálogo», tus productos se ven al buscar, al filtrar o desde «Productos destacados».</p>}
+      {blocks.filter((b) => !LAYOUT_BLOCKS.has(b.type)).length === 0 && <Alert tone="warning">La página principal está vacía. Agrega al menos el catálogo para que se vean tus productos.</Alert>}
+      {!blocks.some((b) => b.type === "catalog") && blocks.some((b) => !LAYOUT_BLOCKS.has(b.type)) && <p className="nx-help" style={{ margin: 0 }}>Sin sección «Catálogo», tus productos se ven al buscar, al filtrar o desde «Productos destacados».</p>}
 
       <Modal open={adding} title="Agregar sección" size="lg" onClose={() => setAdding(false)}>
         <div className="nx-block-types">

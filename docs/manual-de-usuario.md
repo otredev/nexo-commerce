@@ -388,6 +388,7 @@ En **Ajustes de la tienda → Formas de pago → Conectar con Stripe**, el propi
 
 - **Página principal**: arma tu portada con **secciones** que agregas, ordenas (arrastrándolas o con las flechas), duplicas, ocultas o eliminas:
   - **Encabezado y menú** (arriba de todas las páginas): logo, buscador, botón de cuenta y hasta 8 enlaces de menú.
+  - **Pie de página** (abajo de todas las páginas): eliges qué datos del negocio se muestran (dirección, teléfono, correo, WhatsApp, entrega y políticas; salen de Configuración › Negocio y de Tienda en línea), tu logo o nombre con una frase, hasta 4 columnas de enlaces (8 por columna), hasta 8 redes sociales y una línea final (por ejemplo, «© 2026 Mi tienda»). Siempre está fijo al final de la lista; si no lo personalizas, se ve el pie de siempre.
   - **Portada**: título grande, texto, imagen de fondo o al lado y hasta 2 botones.
   - **Banners**: hasta 8 imágenes que pasan solas, con título, botón, enlace y fechas. Medida recomendada: 2100 × 800 px; para celular, 1080 × 1350 px.
   - **Catálogo**: todos tus productos con categorías, palabras clave y orden (solo puede haber uno).

@@ -29,11 +29,15 @@ export const BLOCK_TYPES = {
   embed: { label: "Video o contenido embebido", description: "YouTube, Vimeo, Spotify, TikTok, Instagram, Google Maps, formularios…", single: false },
   html: { label: "HTML personalizado", description: "Tu propio HTML y JavaScript, aislado en un marco seguro.", single: false },
   divider: { label: "Divisor", description: "Una línea, una forma o un espacio entre secciones.", single: false },
+  footer: { label: "Pie de página", description: "Datos del negocio, columnas de enlaces y redes sociales abajo de todas las páginas.", single: true },
 } as const;
 export type BlockType = keyof typeof BLOCK_TYPES;
 export const BLOCK_TYPE_IDS = Object.keys(BLOCK_TYPES) as BlockType[];
 
-export const BLOCK_LIMITS = { blocks: 40, htmlBlocks: 10, html: 100_000, markdown: 5_000, slides: 8, images: 24, faq: 30, links: 8 } as const;
+export const BLOCK_LIMITS = { blocks: 40, htmlBlocks: 10, html: 100_000, markdown: 5_000, slides: 8, images: 24, faq: 30, links: 8, footerColumns: 4, social: 8 } as const;
+
+/** Sections drawn by the layout on every page (not in the home's flow). */
+export const LAYOUT_BLOCKS: ReadonlySet<BlockType> = new Set<BlockType>(["header", "footer"]);
 
 /* ---------- Field helpers ---------- */
 
@@ -52,6 +56,8 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida").nullabl
 const linkMessage = "Usa una ruta de tu tienda (/p/…, ?categoria=…, #seccion) o una dirección https://";
 const link = z.string().trim().max(500).nullable().default(null).transform((v) => (v ? v : null)).refine((v) => v === null || STORE_LINK.test(v), linkMessage);
 const requiredLink = z.string().trim().min(1, "Escribe el enlace").max(500).refine((v) => STORE_LINK.test(v), linkMessage);
+const httpsUrl = z.string().trim().min(1, "Escribe la dirección").max(500).regex(/^https:\/\/[^\s<>"'`]+$/i, "Usa una dirección https://");
+const linkItem = z.object({ label: req(30), link: requiredLink });
 const button = z.object({ label: req(30), link: requiredLink, variant: z.enum(["primary", "secondary"]).default("primary") });
 const fontEnum = z.enum(THEME_FONT_IDS as [ThemeFont, ...ThemeFont[]]);
 const radiusEnum = z.enum(THEME_RADIUS_IDS as [ThemeRadius, ...ThemeRadius[]]);
@@ -128,6 +134,10 @@ export const LOYALTY_ICONS = { star: "Estrella", heart: "Corazón", coffee: "Caf
 export const EMBED_RATIOS = { "16:9": "Horizontal 16:9", "4:3": "4:3", "1:1": "Cuadrado", "9:16": "Vertical 9:16", auto: "Altura fija" } as const;
 export const IMAGE_RATIOS = { square: "Cuadrada", portrait: "Vertical", landscape: "Horizontal", original: "Original" } as const;
 const ratio = z.enum(Object.keys(IMAGE_RATIOS) as [keyof typeof IMAGE_RATIOS, ...Array<keyof typeof IMAGE_RATIOS>]);
+export const SOCIAL_NETWORKS = {
+  instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube", x: "X", pinterest: "Pinterest", linkedin: "LinkedIn", website: "Sitio web",
+} as const;
+export type SocialNetwork = keyof typeof SOCIAL_NETWORKS;
 export const DIVIDER_KINDS = { line: "Línea", dashed: "Guiones", dotted: "Puntos", wave: "Ola", zigzag: "Zigzag", space: "Solo espacio" } as const;
 
 const data = {
@@ -258,6 +268,28 @@ const data = {
     forms: bool(false),
     popups: bool(false),
   }),
+  footer: z.object({
+    /** Brand at the top of the first column. */
+    logo: z.enum(["logo_name", "logo", "name", "none"]).default("name"),
+    /** A sentence under the brand. null = none. */
+    text: txt(300),
+    /** Business data, from Configuración › Negocio and Tienda en línea (shown only when filled in). */
+    address: bool(true),
+    phone: bool(true),
+    email: bool(true),
+    whatsapp: bool(true),
+    /** "Recoge en tienda" and "Envío a domicilio". */
+    delivery: bool(true),
+    /** Published legal pages. */
+    policies: bool(true),
+    columns: z
+      .array(z.object({ title: txt(40), links: z.array(linkItem).max(BLOCK_LIMITS.links, `Hasta ${BLOCK_LIMITS.links} enlaces por columna`).default([]) }))
+      .max(BLOCK_LIMITS.footerColumns, `Hasta ${BLOCK_LIMITS.footerColumns} columnas`)
+      .default([]),
+    social: z.array(z.object({ network: z.enum(Object.keys(SOCIAL_NETWORKS) as [SocialNetwork, ...SocialNetwork[]]), url: httpsUrl })).max(BLOCK_LIMITS.social, `Hasta ${BLOCK_LIMITS.social} redes`).default([]),
+    /** Last line, e.g. "© 2026 Mi tienda · Todos los derechos reservados". null = none. */
+    note: txt(200),
+  }),
   divider: z.object({
     kind: z.enum(Object.keys(DIVIDER_KINDS) as [keyof typeof DIVIDER_KINDS, ...Array<keyof typeof DIVIDER_KINDS>]).default("line"),
     thickness: int(1, 8, 1),
@@ -295,6 +327,7 @@ export const blockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("embed"), ...base, data: data.embed.prefault({}) }),
   z.object({ type: z.literal("html"), ...base, data: data.html.prefault({}) }),
   z.object({ type: z.literal("divider"), ...base, data: data.divider.prefault({}) }),
+  z.object({ type: z.literal("footer"), ...base, data: data.footer.prefault({}) }),
 ]);
 export type StoreBlock = z.infer<typeof blockSchema>;
 export type BlockOf<T extends BlockType> = Extract<StoreBlock, { type: T }>;
@@ -388,6 +421,10 @@ export function blockSummary(b: StoreBlock): string {
     case "embed": return b.data.url ? (embedSrc(b.data.url)?.label ?? "Contenido") : "Sin enlace";
     case "html": return `${b.data.html.length.toLocaleString("es-MX")} caracteres`;
     case "divider": return DIVIDER_KINDS[b.data.kind];
+    case "footer": {
+      const links = b.data.columns.reduce((n, c) => n + c.links.length, 0);
+      return [b.data.columns.length ? `${b.data.columns.length} ${b.data.columns.length === 1 ? "columna" : "columnas"} · ${links} enlaces` : "Datos del negocio", b.data.social.length ? `${b.data.social.length} redes` : null].filter(Boolean).join(" · ");
+    }
   }
 }
 
@@ -576,7 +613,7 @@ export const NO_CODE: StoreCustomCode = { css: "" };
 export interface StoreAppearance {
   theme: StoreTheme;
   announcement: StoreAnnouncement;
-  /** The home page, top to bottom (the header block, if any, is drawn on every page). */
+  /** The home page, top to bottom (the header and footer blocks, if any, are drawn on every page). */
   blocks: StoreBlock[];
   pixels: StorePixels;
   code: StoreCustomCode;

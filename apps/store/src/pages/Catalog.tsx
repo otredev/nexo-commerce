@@ -4,6 +4,7 @@
  */
 import { useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { LAYOUT_BLOCKS } from "@nexo/shared";
 import { useStore } from "../lib/store";
 import { HomeBlocks } from "../components/Blocks";
 import { CatalogSection, DEFAULT_CATALOG } from "../components/CatalogSection";
@@ -43,5 +44,5 @@ export function CatalogPage() {
       </div>
     );
   }
-  return <HomeBlocks blocks={store.appearance.blocks.filter((b) => b.type !== "header")} />;
+  return <HomeBlocks blocks={store.appearance.blocks.filter((b) => !LAYOUT_BLOCKS.has(b.type))} />;
 }

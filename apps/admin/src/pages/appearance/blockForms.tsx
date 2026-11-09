@@ -5,9 +5,9 @@
 import type { ReactNode } from "react";
 import { Plus } from "lucide-react";
 import {
-  BLOCK_EDGES, BLOCK_FRAMES, BLOCK_LIMITS, BLOCK_WIDTHS, contrast, DIVIDER_KINDS, EMBED_RATIOS, embedSrc, IMAGE_RATIOS, LOYALTY_ICONS, PRODUCT_SORTS, resolveTheme,
+  BLOCK_EDGES, BLOCK_FRAMES, BLOCK_LIMITS, BLOCK_WIDTHS, contrast, DIVIDER_KINDS, EMBED_RATIOS, embedSrc, IMAGE_RATIOS, LAYOUT_BLOCKS, LOYALTY_ICONS, PRODUCT_SORTS, resolveTheme, SOCIAL_NETWORKS,
   THEME_FONT_IDS, THEME_FONTS, THEME_RADII, THEME_RADIUS_IDS, WEEK_DAYS,
-  type BannerSlide, type BlockData, type BlockOf, type BlockStyle, type BlockType, type CategoryItem, type ProductSort, type StoreBlock, type StoreTheme,
+  type BannerSlide, type BlockData, type BlockOf, type BlockStyle, type BlockType, type CategoryItem, type ProductSort, type SocialNetwork, type StoreBlock, type StoreTheme,
 } from "@nexo/shared";
 import { Alert, Badge, Button, Checkbox, Segmented, SelectField, Switch, TextAreaField, TextField } from "@nexo/ui";
 import { CodeArea, ColorField, DateRange, Group, ImagePick, ItemActions, moveItem, MultiUpload, newId, NumberField, today } from "./fields";
@@ -49,6 +49,7 @@ export function ContentForm({ block, set, err, ctx }: { block: StoreBlock; set: 
     case "embed": return <EmbedForm block={block} set={set} err={err} ctx={ctx} />;
     case "html": return <HtmlForm block={block} set={set} err={err} ctx={ctx} />;
     case "divider": return <DividerForm block={block} set={set} err={err} ctx={ctx} />;
+    case "footer": return <FooterForm block={block} set={set} err={err} ctx={ctx} />;
   }
 }
 
@@ -79,6 +80,79 @@ function HeaderForm({ block: { data: d }, set, err }: FormProps<"header">) {
         ))}
         {d.links.length > 0 && <p className="nx-help" style={{ margin: 0 }}>{LINK_HELP}.</p>}
       </Group>
+    </div>
+  );
+}
+
+type LinkItem = { label: string; link: string };
+function LinksEditor({ value, onChange, err, path }: { value: LinkItem[]; onChange: (v: LinkItem[]) => void; err: Err; path: string }) {
+  return (
+    <div className="nx-stack" style={{ gap: 8 }}>
+      {value.map((l, i) => (
+        <div key={i} className="nx-list-item">
+          <div className="nx-grid-2" style={{ flex: 1 }}>
+            <TextField label="Texto" value={l.label} maxLength={30} onChange={(e) => onChange(value.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} error={err(`${path}.${i}.label`)} />
+            <TextField label="Enlace" value={l.link} placeholder="/envios o https://…" onChange={(e) => onChange(value.map((x, k) => (k === i ? { ...x, link: e.target.value } : x)))} error={err(`${path}.${i}.link`)} />
+          </div>
+          <ItemActions index={i} count={value.length} label={`enlace ${i + 1}`} onMove={(a, b) => onChange(moveItem(value, a, b))} onRemove={() => onChange(value.filter((_, k) => k !== i))} />
+        </div>
+      ))}
+      {value.length < BLOCK_LIMITS.links && <div><Button size="sm" onClick={() => onChange([...value, { label: "", link: "" }])}><Plus className="nx-icon" aria-hidden="true" />Agregar enlace</Button></div>}
+    </div>
+  );
+}
+
+function FooterForm({ block: { data: d }, set, err, ctx }: FormProps<"footer">) {
+  const networks = Object.keys(SOCIAL_NETWORKS) as SocialNetwork[];
+  return (
+    <div className="nx-stack" style={{ gap: 16 }}>
+      <Alert tone="info">El pie aparece abajo de todas las páginas de la tienda. Los datos del negocio salen de Configuración › Negocio (dirección, teléfono, correo) y de Tienda en línea (WhatsApp, entrega, políticas); si un dato está vacío, no se muestra.</Alert>
+      <Field label="Marca"><Segmented label="Marca" value={d.logo} onChange={(v) => set({ logo: v })} options={[{ id: "logo_name", label: "Logo y nombre" }, { id: "logo", label: "Solo logo" }, { id: "name", label: "Solo nombre" }, { id: "none", label: "Nada" }]} /></Field>
+      <TextAreaField label="Texto" optional rows={2} value={d.text ?? ""} maxLength={300} placeholder={ctx.tagline ?? "Una frase sobre tu negocio"} help="Debajo de la marca. Vacío = sin texto." onChange={(e) => set({ text: e.target.value || null })} error={err("data.text")} />
+      <Group title="Datos del negocio">
+        <div className="nx-grid-2">
+          <Switch label={`Dirección${ctx.address ? "" : " (vacía)"}`} checked={d.address} onChange={(v) => set({ address: v })} />
+          <Switch label="Teléfono" checked={d.phone} onChange={(v) => set({ phone: v })} />
+          <Switch label="Correo" checked={d.email} onChange={(v) => set({ email: v })} />
+          <Switch label="WhatsApp" checked={d.whatsapp} onChange={(v) => set({ whatsapp: v })} />
+          <Switch label="Recoge en tienda y envío a domicilio" checked={d.delivery} onChange={(v) => set({ delivery: v })} />
+          <Switch label="Políticas (términos, privacidad, devoluciones)" checked={d.policies} onChange={(v) => set({ policies: v })} />
+        </div>
+      </Group>
+      <Group
+        title={`Columnas de enlaces (${d.columns.length}/${BLOCK_LIMITS.footerColumns})`}
+        actions={d.columns.length < BLOCK_LIMITS.footerColumns && <Button size="sm" onClick={() => set({ columns: [...d.columns, { title: "", links: [] }] })}><Plus className="nx-icon" aria-hidden="true" />Agregar columna</Button>}
+      >
+        {d.columns.length === 0 && <p className="nx-help" style={{ margin: 0 }}>Sin columnas. Agrega, por ejemplo, «Ayuda» con «Envíos» → <code>#envios</code> y «Contacto» → <code>mailto:hola@tutienda.com</code>.</p>}
+        {d.columns.map((c, i) => (
+          <div key={i} className="nx-list-item" style={{ alignItems: "flex-start" }}>
+            <div className="nx-stack" style={{ gap: 10, flex: 1 }}>
+              <TextField label="Título" optional value={c.title ?? ""} maxLength={40} placeholder="Ayuda" onChange={(e) => set({ columns: d.columns.map((x, k) => (k === i ? { ...x, title: e.target.value || null } : x)) })} error={err(`data.columns.${i}.title`)} />
+              <LinksEditor value={c.links} onChange={(links) => set({ columns: d.columns.map((x, k) => (k === i ? { ...x, links } : x)) })} err={err} path={`data.columns.${i}.links`} />
+            </div>
+            <ItemActions index={i} count={d.columns.length} label={`columna ${i + 1}`} onMove={(a, b) => set({ columns: moveItem(d.columns, a, b) })} onRemove={() => set({ columns: d.columns.filter((_, k) => k !== i) })} />
+          </div>
+        ))}
+        {d.columns.length > 0 && <p className="nx-help" style={{ margin: 0 }}>{LINK_HELP}.</p>}
+      </Group>
+      <Group
+        title={`Redes sociales (${d.social.length}/${BLOCK_LIMITS.social})`}
+        actions={d.social.length < BLOCK_LIMITS.social && <Button size="sm" onClick={() => set({ social: [...d.social, { network: networks.find((n) => !d.social.some((x) => x.network === n)) ?? "website", url: "" }] })}><Plus className="nx-icon" aria-hidden="true" />Agregar red</Button>}
+      >
+        {d.social.length === 0 && <p className="nx-help" style={{ margin: 0 }}>Sin redes. Agrega tu Instagram, Facebook, TikTok…</p>}
+        {d.social.map((x, i) => (
+          <div key={i} className="nx-list-item">
+            <div className="nx-grid-2" style={{ flex: 1 }}>
+              <SelectField label="Red" value={x.network} onChange={(e) => set({ social: d.social.map((y, k) => (k === i ? { ...y, network: e.target.value as SocialNetwork } : y)) })}>
+                {networks.map((n) => <option key={n} value={n}>{SOCIAL_NETWORKS[n]}</option>)}
+              </SelectField>
+              <TextField label="Dirección" value={x.url} placeholder="https://instagram.com/tutienda" onChange={(e) => set({ social: d.social.map((y, k) => (k === i ? { ...y, url: e.target.value } : y)) })} error={err(`data.social.${i}.url`)} />
+            </div>
+            <ItemActions index={i} count={d.social.length} label={`red ${i + 1}`} onMove={(a, b) => set({ social: moveItem(d.social, a, b) })} onRemove={() => set({ social: d.social.filter((_, k) => k !== i) })} />
+          </div>
+        ))}
+      </Group>
+      <TextField label="Línea final" optional value={d.note ?? ""} maxLength={200} placeholder={`© ${new Date().getFullYear()} ${ctx.storeName}`} help="Por ejemplo, derechos reservados o tu razón social." onChange={(e) => set({ note: e.target.value || null })} error={err("data.note")} />
     </div>
   );
 }
@@ -434,7 +508,7 @@ export function StyleForm({ block, theme, set, err }: { block: StoreBlock; theme
   const r = resolveTheme(theme);
   const bg = s.background ?? r.background;
   const lowContrast = s.text && contrast(s.text, bg) < 4.5;
-  const isHeader = block.type === "header";
+  const isHeader = LAYOUT_BLOCKS.has(block.type);
   return (
     <div className="nx-stack" style={{ gap: 18 }}>
       <Group title="Colores">
@@ -494,7 +568,7 @@ export function StyleForm({ block, theme, set, err }: { block: StoreBlock; theme
 /* ---------- Visibility ---------- */
 
 export function VisibilityForm({ block, set, err }: { block: StoreBlock; set: (patch: Partial<Pick<StoreBlock, "enabled" | "name" | "device" | "anchor" | "startsOn" | "endsOn">>) => void; err: Err }) {
-  const isHeader = block.type === "header";
+  const isHeader = LAYOUT_BLOCKS.has(block.type);
   return (
     <div className="nx-stack" style={{ gap: 16 }}>
       <Switch label="Mostrar en la tienda" checked={block.enabled} onChange={(v) => set({ enabled: v })} />
