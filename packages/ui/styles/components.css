@@ -214,13 +214,13 @@ button.nx-nav__group .nx-nav__badge { margin-left: 0; }
 .nx-segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-xs); }
 
 /* ---------- Modal ---------- */
-.nx-overlay { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: var(--space-4); }
-.nx-modal { width: 100%; max-width: 480px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+.nx-overlay { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: var(--space-4); overflow-y: auto; }
+.nx-modal { width: 100%; max-width: 480px; max-height: calc(100vh - 2 * var(--space-4)); max-height: calc(100dvh - 2 * var(--space-4)); display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 .nx-modal--lg { max-width: 720px; }
-.nx-modal__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-6) var(--space-6) 0; }
+.nx-modal__header { flex-shrink: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-6) var(--space-6) 0; }
 .nx-modal__title { margin: 0; font: 600 18px/26px var(--font-sans); letter-spacing: -0.01em; }
-.nx-modal__body { padding: var(--space-3) var(--space-6) var(--space-6); color: var(--ink-muted); }
-.nx-modal__footer { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--border); }
+.nx-modal__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-3) var(--space-6) var(--space-6); color: var(--ink-muted); }
+.nx-modal__footer { flex-shrink: 0; display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--border); }
 
 /* ---------- Alert ---------- */
 .nx-alert { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--surface); font-size: 14px; }
