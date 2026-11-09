@@ -86,6 +86,7 @@ export function ProductPage() {
         <div>
           <nav className="st-crumbs" aria-label="Ruta">
             <Link to={link()}>Inicio</Link>
+            {p.parentCategoryName && <><span aria-hidden="true">/</span><Link to={link(`?categoria=${p.parentCategoryId}`)}>{p.parentCategoryName}</Link></>}
             {p.categoryName && <><span aria-hidden="true">/</span><Link to={link(`?categoria=${p.categoryId}`)}>{p.categoryName}</Link></>}
           </nav>
           <h1 className="st-product__title">{p.name}</h1>
@@ -142,6 +143,11 @@ export function ProductPage() {
           )}
           {soldOut && <div className="st-stock" data-tone="out">Esta opción está agotada.</div>}
           {p.description && <p className="st-product__desc">{p.description}</p>}
+          {p.keywords.length > 0 && (
+            <ul className="st-tags" aria-label="Palabras clave">
+              {p.keywords.map((k) => <li key={k}><Link className="st-tag" to={link(`?palabra=${encodeURIComponent(k)}`)}>{k}</Link></li>)}
+            </ul>
+          )}
           <div className="st-perks">
             {store.pickupEnabled && <div><Store size={16} strokeWidth={1.6} aria-hidden="true" /><span>Recógelo en tienda sin costo{store.pickupAddress ? ` · ${store.pickupAddress}` : ""}.</span></div>}
             {store.deliveryEnabled && (

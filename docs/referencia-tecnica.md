@@ -45,7 +45,9 @@ Cada fila de `tenants` guarda en `db_binding` qué base usa y `getTenantDb()` es
 - Búsqueda sin acentos ni mayúsculas sobre nombre, SKU, código de barras y opciones (`products.search_text`, mantenido en cada escritura).
 - Productos con existencias no se eliminan (se archivan). No se puede quitar una variante con stock, ni cambiar la unidad o dejar de controlar inventario mientras haya existencias.
 - El cajero ve productos y existencias, pero no costos, márgenes ni el valor del inventario (`costs:read`).
-- Importación CSV: el dashboard lee el archivo (coma o punto y coma, como lo exporta Excel en español), agrupa por nombre las filas con opciones como variantes y envía lotes de 25. El servidor valida cada producto, crea las categorías, marcas y tasas de impuesto que falten, y reporta los errores por número de fila. Plantilla descargable desde el propio diálogo.
+- Importación CSV: el dashboard lee el archivo (coma o punto y coma, como lo exporta Excel en español), agrupa por nombre las filas con opciones como variantes y envía lotes de 25. El servidor valida cada producto, crea las categorías, marcas y tasas de impuesto que falten, y reporta los errores por número de fila. Plantilla descargable desde el propio diálogo. La columna `categoria` acepta `Padre > Hija` (o `›`) y `palabras_clave` una lista separada por `;`.
+- **Subcategorías**: `categories.parent_id` (un solo nivel; el servidor rechaza sub-subcategorías, ciclos y volver subcategoría a una categoría que tiene hijas). El nombre es único por padre (índice `(tenant_id, coalesce(parent_id, ''), name)`), así que caben «Hombre › Camisas» y «Mujer › Camisas». Filtrar por una categoría principal incluye sus hijas en productos, inventario, caja, conteos y tienda; `livePromotions()` agrega las hijas a los `targetIds` de las promociones por categoría, así que caja, tienda y servidor siguen calculando igual. No se elimina una categoría con hijas (409 `has_subcategories`).
+- **Palabras clave**: `products.keywords` (JSON, minúsculas, sin `#`, sin repetir, máx. 20 de 40 caracteres; `normalizeKeyword`/`keywordsSchema` en `@nexo/shared`). Entran en `search_text` (búsqueda sin acentos) y se filtran exactas con `json_each`. `GET /api/products/keywords` lista las usadas con su conteo; la tienda devuelve las 30 más usadas entre los productos publicados en `StoreInfo.keywords`.
 
 ## Punto de venta
 
@@ -205,12 +207,13 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET/POST /api/users`, `PATCH /api/users/:id` | `users:read` / `users:write` |
 | `GET /api/audit?cursor=&entity=` | `audit:read` |
 | `POST /api/uploads` (multipart `file`) | `uploads:write` |
-| `GET /api/products?q=&categoryId=&brandId=&status=&stock=&page=` | `catalog:read` |
+| `GET /api/products?q=&categoryId=&keyword=&brandId=&status=&stock=&page=` | `catalog:read` |
+| `GET /api/products/keywords` | `catalog:read` |
 | `GET /api/products/:id` | `catalog:read` |
 | `POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id` | `catalog:write` |
 | `POST /api/products/:id/archive` · `restore` | `catalog:write` |
 | `POST /api/products/import` (hasta 25 productos) | `catalog:write` |
-| `GET/POST /api/categories`, `PUT/DELETE /api/categories/:id` (igual `/api/brands`) | `catalog:read` / `catalog:write` |
+| `GET/POST /api/categories`, `PUT/DELETE /api/categories/:id` (con `parentId`; igual `/api/brands` sin él) | `catalog:read` / `catalog:write` |
 | `GET /api/inventory?locationId=&q=&stock=&page=` | `inventory:read` |
 | `GET /api/inventory/summary` | `inventory:read` |
 | `POST /api/inventory/movements` (entrada, salida o conteo) | `inventory:write` |
@@ -238,7 +241,7 @@ Un cron diario (07:00 UTC) exporta todas las tablas de la base de control y de t
 | `GET /api/counts?status=&locationId=`, `GET /api/counts/:id` | `counts:read` |
 | `POST /api/counts`, `POST /api/counts/:id/complete` · `cancel` | `counts:write` |
 | `POST /api/counts/:id/entries` · `items` | `counts:count` |
-| `GET /api/store/:slug`, `GET /api/store/:slug/products?q=&categoryId=&sort=&page=`, `GET /api/store/:slug/products/:id` | público (tienda) |
+| `GET /api/store/:slug`, `GET /api/store/:slug/products?q=&categoryId=&keyword=&sort=&page=`, `GET /api/store/:slug/products/:id` | público (tienda) |
 | `POST /api/store/:slug/orders`, `GET /api/store/:slug/orders/:token`, `POST /api/store/:slug/orders/:token/cancel` | público (tienda) |
 | `GET/PUT /api/store-settings`, `POST /api/store-settings/publish` | `settings:read` / `store:write` |
 | `GET /api/orders?status=&q=&page=`, `GET /api/orders/counts`, `GET /api/orders/:id` | `orders:read` |

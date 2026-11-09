@@ -154,7 +154,7 @@ Si un producto viene en varias presentaciones, agrega **opciones** (hasta 3, por
 
 ### Importar desde Excel (CSV)
 
-**Productos → Importar CSV**. Descarga la plantilla desde el mismo diálogo, llénala en Excel y guárdala como CSV. Las filas con el mismo nombre se agrupan como variantes. Las categorías, marcas e impuestos que no existan se crean solos. Si alguna fila tiene un error, te decimos en qué fila está.
+**Productos → Importar CSV**. Descarga la plantilla desde el mismo diálogo, llénala en Excel y guárdala como CSV. Las filas con el mismo nombre se agrupan como variantes. Las categorías, marcas e impuestos que no existan se crean solos. Para una subcategoría escribe en **categoria** «Ropa > Camisas», y en **palabras_clave** sepáralas con punto y coma («regalo; cerámica»). Si alguna fila tiene un error, te decimos en qué fila está.
 
 ### Archivar o eliminar
 
@@ -163,7 +163,17 @@ Si un producto viene en varias presentaciones, agrega **opciones** (hasta 3, por
 
 ### Categorías y marcas
 
-En **Categorías y marcas** creas, renombras y eliminas las categorías y marcas. Las categorías también sirven de filtros en la caja y en la tienda.
+En **Categorías y marcas** creas, editas y eliminas las categorías y marcas. Las categorías también sirven de filtros en la caja y en la tienda.
+
+**Subcategorías.** Cada categoría puede tener subcategorías (un solo nivel), por ejemplo **Ropa → Camisas, Pantalones**. Usa **+ Subcategoría** en la fila de la categoría, o en **Editar** elige en **Dentro de** la categoría principal. También puedes crearlas desde el producto con **+ Nueva categoría o subcategoría…**. Al filtrar por una categoría principal (en Productos, Inventario, la caja, los conteos y la tienda) entran también sus subcategorías, y una promoción sobre la categoría principal cubre sus subcategorías. Una categoría con subcategorías no se elimina hasta que las quites o las muevas.
+
+### Palabras clave
+
+En el producto, en **Organización → Palabras clave**, escribe etiquetas libres como *sin gluten*, *vegano* o *regalo* (separa con coma o Enter; hasta 20). Sirven para:
+
+- **Buscar**: la búsqueda del panel, la caja y la tienda encuentra el producto por sus palabras clave.
+- **Filtrar**: en **Productos** elige una en el filtro **Palabra clave**, o toca una etiqueta debajo del nombre del producto.
+- **La tienda**: las palabras clave más usadas aparecen como filtros (#vegano) debajo de las categorías, y en la página del producto como enlaces.
 
 ---
 

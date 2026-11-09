@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Package, Plus, Upload } from "lucide-react";
-import { formatQty, type Named, type Paginated, type ProductListItem } from "@nexo/shared";
+import { formatQty, type CategoryItem, type Named, type Paginated, type ProductListItem } from "@nexo/shared";
 import { Alert, Button, EmptyState, PageHeader, Pagination, SearchInput, Segmented, Tabs, useDebounced } from "@nexo/ui";
 import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -9,6 +9,7 @@ import { useBusiness } from "../lib/business";
 import { useLoad } from "../lib/hooks";
 import { StockBadge, Thumb } from "../components/StockBadge";
 import { ImportProductsModal } from "../components/ImportProducts";
+import { CategoryOptions } from "../lib/categories";
 
 type StockFilter = "all" | "low" | "out";
 
@@ -24,6 +25,7 @@ export function ProductsPage() {
   const stock = (params.get("stock") ?? "all") as StockFilter;
   const categoryId = params.get("categoria") ?? "";
   const brandId = params.get("marca") ?? "";
+  const keyword = params.get("palabra") ?? "";
   const online = params.get("tienda") ?? "";
   const page = Number(params.get("pagina") ?? 1) || 1;
   const set = (key: string, value: string) => {
@@ -34,14 +36,18 @@ export function ProductsPage() {
   };
 
   const names = useLoad(async () => {
-    const [categories, brands] = await Promise.all([get<Named[]>("/categories"), get<Named[]>("/brands")]);
-    return { categories, brands };
+    const [categories, brands, keywords] = await Promise.all([
+      get<CategoryItem[]>("/categories"),
+      get<Named[]>("/brands"),
+      get<{ items: Array<{ keyword: string; count: number }> }>("/products/keywords"),
+    ]);
+    return { categories, brands, keywords: keywords.items };
   });
-  const search = new URLSearchParams({ status, stock, page: String(page), pageSize: "25", ...(query && { q: query }), ...(categoryId && { categoryId }), ...(brandId && { brandId }), ...(online && { online: online === "si" ? "yes" : "no" }) });
+  const search = new URLSearchParams({ status, stock, page: String(page), pageSize: "25", ...(query && { q: query }), ...(categoryId && { categoryId }), ...(keyword && { keyword }), ...(brandId && { brandId }), ...(online && { online: online === "si" ? "yes" : "no" }) });
   const { data, error, loading, reload } = useLoad(() => get<Paginated<ProductListItem>>(`/products?${search}`), [search.toString()]);
   const canWrite = can("catalog:write");
   const showValue = can("costs:read");
-  const filtered = Boolean(query || categoryId || brandId || online || stock !== "all");
+  const filtered = Boolean(query || categoryId || keyword || brandId || online || stock !== "all");
 
   return (
     <>
@@ -59,12 +65,19 @@ export function ProductsPage() {
       {error && <Alert tone="danger">{error.message}</Alert>}
       <div className="nx-table-wrap">
         <div className="nx-table-toolbar">
-          <SearchInput label="Buscar productos" placeholder="Nombre, SKU o código de barras" value={q} onChange={(v) => { setQ(v); set("q", v); }} />
+          <SearchInput label="Buscar productos" placeholder="Nombre, palabra clave, SKU o código" value={q} onChange={(v) => { setQ(v); set("q", v); }} />
           <div className="nx-filters">
             <select className="nx-select" aria-label="Categoría" value={categoryId} onChange={(e) => set("categoria", e.target.value)}>
               <option value="">Todas las categorías</option>
-              {names.data?.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {names.data && <CategoryOptions list={names.data.categories} />}
             </select>
+            {(names.data?.keywords.length || keyword) ? (
+              <select className="nx-select" aria-label="Palabra clave" value={keyword} onChange={(e) => set("palabra", e.target.value)}>
+                <option value="">Todas las palabras clave</option>
+                {keyword && !names.data?.keywords.some((k) => k.keyword === keyword) && <option value={keyword}>{keyword}</option>}
+                {names.data?.keywords.map((k) => <option key={k.keyword} value={k.keyword}>{k.keyword} ({k.count})</option>)}
+              </select>
+            ) : null}
             <select className="nx-select" aria-label="Marca" value={brandId} onChange={(e) => set("marca", e.target.value)}>
               <option value="">Todas las marcas</option>
               {names.data?.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -108,6 +121,14 @@ export function ProductsPage() {
                         <div>
                           <Link to={`/productos/${p.id}`} style={{ color: "inherit", textDecoration: "none" }} onClick={(e) => e.stopPropagation()}>{p.name}</Link>
                           <div className="nx-sub">{p.variantCount > 1 ? `${p.variantCount} variantes` : p.sku}{p.online && <span style={{ fontFamily: "var(--font-sans)", color: "var(--accent-text)" }}> · En tienda</span>}</div>
+                          {p.keywords.length > 0 && (
+                            <div className="nx-kw-list">
+                              {p.keywords.slice(0, 4).map((k) => (
+                                <button key={k} type="button" className="nx-kw" aria-pressed={k === keyword} title={`Filtrar por «${k}»`} onClick={(e) => { e.stopPropagation(); set("palabra", k === keyword ? "" : k); }}>{k}</button>
+                              ))}
+                              {p.keywords.length > 4 && <span className="nx-muted" style={{ fontSize: 12 }}>+{p.keywords.length - 4}</span>}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

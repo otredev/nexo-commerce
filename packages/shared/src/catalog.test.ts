@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { combinations, fromMilli, marginFor, normalizeSearch, quantityFitsUnit, stockStatus, toMilli } from "./catalog";
-import { productInputSchema } from "./schemas";
+import { categorySchema, importProductSchema, keywordsSchema, MAX_KEYWORDS, normalizeKeyword, productInputSchema } from "./schemas";
 
 describe("quantities", () => {
   it("stores thousandths without float errors", () => {
@@ -53,5 +53,33 @@ describe("product schema", () => {
   });
   it("requires exactly one variant without options", () => {
     expect(productInputSchema.safeParse({ name: "Taza", variants: [{ priceCents: 1 }, { priceCents: 2 }] }).success).toBe(false);
+  });
+});
+
+describe("keywords", () => {
+  it("normalizes: lowercase, no #, single spaces", () => {
+    expect(normalizeKeyword("  #Sin   Gluten ")).toBe("sin gluten");
+  });
+  it("accepts a list or a separated string, without repeats or empties", () => {
+    expect(keywordsSchema.parse(["Vegano", "vegano", " ", "#Orgánico"])).toEqual(["vegano", "orgánico"]);
+    expect(keywordsSchema.parse("regalo; Cerámica, regalo")).toEqual(["regalo", "cerámica"]);
+    expect(keywordsSchema.parse(undefined)).toEqual([]);
+  });
+  it("limits how many and how long", () => {
+    expect(keywordsSchema.safeParse(Array.from({ length: MAX_KEYWORDS + 1 }, (_, i) => `k${i}`)).success).toBe(false);
+    expect(keywordsSchema.safeParse(["x".repeat(41)]).success).toBe(false);
+  });
+  it("travels with the product and the import", () => {
+    const p = productInputSchema.parse({ name: "Pan", keywords: ["Sin Gluten"], variants: [{ priceCents: 100 }] });
+    expect(p.keywords).toEqual(["sin gluten"]);
+    const i = importProductSchema.parse({ name: "Pan", categoryName: "Panadería > Integral", keywords: "a; b", variants: [{ priceCents: 1 }] });
+    expect(i.keywords).toEqual(["a", "b"]);
+  });
+});
+
+describe("categories", () => {
+  it("are main categories unless a parent is given", () => {
+    expect(categorySchema.parse({ name: "Ropa" }).parentId).toBeNull();
+    expect(categorySchema.parse({ name: "Camisas", parentId: "c1" }).parentId).toBe("c1");
   });
 });

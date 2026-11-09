@@ -107,6 +107,11 @@ export interface Named {
   productCount: number;
 }
 
+/** A category; subcategories carry their parent's id (one level only). */
+export interface CategoryItem extends Named {
+  parentId: string | null;
+}
+
 /** Row of the products list. Cost fields are null for roles without "costs:read". */
 export interface ProductListItem {
   id: string;
@@ -115,6 +120,7 @@ export interface ProductListItem {
   sku: string;
   category: string | null;
   brand: string | null;
+  keywords: string[];
   unit: UnitCode;
   trackInventory: boolean;
   status: "active" | "archived";
@@ -167,6 +173,7 @@ export interface ProductDetail {
   seoDescription: string | null;
   optionNames: string[];
   images: string[];
+  keywords: string[];
   status: "active" | "archived";
   createdAt: string;
   updatedAt: string;
@@ -640,7 +647,10 @@ export interface StoreInfo {
   transferEnabled: boolean;
   /** Card payments through Stripe are available right now. */
   cardEnabled: boolean;
-  categories: Array<{ id: string; name: string; count: number }>;
+  /** Categories with published products; a parent's count includes its subcategories'. */
+  categories: Array<{ id: string; name: string; count: number; parentId: string | null }>;
+  /** Most used keywords among published products, for the filter chips. */
+  keywords: Array<{ keyword: string; count: number }>;
   /** Live online promotions, so the cart prices exactly like the server. */
   promotions: PromotionRule[];
   /** True when at least one coupon is active (shows the coupon field). */
@@ -731,7 +741,11 @@ export interface StoreProduct {
   images: string[];
   categoryId: string | null;
   categoryName: string | null;
+  /** When the category is a subcategory. */
+  parentCategoryId: string | null;
+  parentCategoryName: string | null;
   brandName: string | null;
+  keywords: string[];
   unit: UnitCode;
   optionNames: string[];
   taxRateBps: number;

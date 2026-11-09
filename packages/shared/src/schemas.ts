@@ -104,6 +104,19 @@ export const roleSchema = z.enum(ROLES);
 /* ---------------- Catalog (Phase 1) ---------------- */
 
 export const namedSchema = z.object({ name: z.string().trim().min(1, "Requerido").max(80) });
+/** A category, or a subcategory when it has a parent (one level only). */
+export const categorySchema = namedSchema.extend({ parentId: z.string().max(40).nullable().default(null) });
+export type CategoryInput = z.input<typeof categorySchema>;
+
+export const MAX_KEYWORDS = 20;
+/** "  #Sin Gluten " → "sin gluten". */
+export const normalizeKeyword = (k: string) => k.trim().replace(/^#+/, "").replace(/\s+/g, " ").trim().toLowerCase();
+/** Lowercase, no repeats, no empties. Accepts an array or "a, b; c". */
+export const keywordsSchema = z
+  .union([z.array(z.string().max(60)), z.string().max(2000)])
+  .default([])
+  .transform((v) => [...new Set((typeof v === "string" ? v.split(/[,;\n]/) : v).map(normalizeKeyword).filter(Boolean))])
+  .pipe(z.array(z.string().max(40, "Máximo 40 caracteres por palabra clave")).max(MAX_KEYWORDS, `Máximo ${MAX_KEYWORDS} palabras clave`));
 
 const cents = z.number().int("Usa centavos enteros").min(0, "No puede ser negativo").max(100_000_000_00);
 const qty = z.number().min(0, "No puede ser negativo").max(1_000_000_000);
@@ -141,6 +154,7 @@ export const productInputSchema = z
     /** Option names, e.g. ["Talla", "Color"]. Empty → simple product with one variant. */
     optionNames: z.array(z.string().trim().min(1, "Requerido").max(30)).max(3).default([]),
     images: z.array(z.string().max(300)).max(8).default([]),
+    keywords: keywordsSchema,
     variants: z.array(variantInputSchema).min(1, "Agrega al menos una variante").max(100, "Máximo 100 variantes"),
   })
   .superRefine((p, ctx) => {
@@ -193,7 +207,9 @@ export type StockMovementInput = z.input<typeof stockMovementSchema>;
 export const importProductSchema = z.object({
   name: z.string().trim().min(1, "Falta el nombre").max(160),
   description: z.string().trim().max(5000).nullable().default(null),
-  categoryName: z.string().trim().max(80).nullable().default(null),
+  /** "Ropa" or "Ropa > Camisas" (category and subcategory). */
+  categoryName: z.string().trim().max(170).nullable().default(null),
+  keywords: keywordsSchema,
   brandName: z.string().trim().max(80).nullable().default(null),
   /** Percentage, e.g. 16. null → default tax. */
   taxPercent: z.number().min(0).max(100).nullable().default(null),

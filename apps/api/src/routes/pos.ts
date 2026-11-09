@@ -26,7 +26,11 @@ export const posRoutes = new Hono<AppEnv>().get("/products", requirePermission("
     exact = `(v.barcode = ${code} OR v.sku = ${upper})`;
     where.push(`(${exact} OR instr(p.search_text, ${add(normalizeSearch(raw))}) > 0)`);
   }
-  if (input.categoryId) where.push(`p.category_id = ${add(input.categoryId)}`);
+  if (input.categoryId) {
+    // A main category includes its subcategories.
+    const cat = add(input.categoryId);
+    where.push(`(p.category_id = ${cat} OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ${cat}))`);
+  }
   const { results } = await d1
     .prepare(
       `SELECT v.id AS variant_id, p.id AS product_id, p.category_id, p.name, v.options, v.sku, v.barcode, p.unit, p.images, v.price_cents, p.track_inventory,

@@ -7,6 +7,7 @@ import {
   fromMilli,
   IMPORT_BATCH_SIZE,
   importProductSchema,
+  normalizeKeyword,
   normalizeSearch,
   productInputSchema,
   stockStatus,
@@ -41,7 +42,9 @@ const { products, variants, stockLevels, taxRates, categories, brands } = tenant
 
 const listQuery = z.object({
   q: z.string().max(100).optional(),
+  /** A main category includes its subcategories. */
   categoryId: z.string().max(40).optional(),
+  keyword: z.string().max(60).optional(),
   brandId: z.string().max(40).optional(),
   status: z.enum(["active", "archived"]).default("active"),
   stock: z.enum(["all", "low", "out"]).default("all"),
@@ -70,7 +73,7 @@ WITH st AS (
 )`;
 
 type ListRow = {
-  id: string; name: string; images: string; unit: string; track_inventory: number; online: number; status: "active" | "archived";
+  id: string; name: string; images: string; keywords: string; unit: string; track_inventory: number; online: number; status: "active" | "archived";
   category: string | null; brand: string | null; variant_count: number; price_min: number; price_max: number;
   stock: number; out_count: number; low_count: number; value_milli: number; sku: string;
 };
@@ -106,6 +109,7 @@ async function loadProduct(c: { var: AppEnv["Variables"] }, id: string): Promise
     seoDescription: p.seoDescription,
     optionNames: p.optionNames,
     images: p.images,
+    keywords: p.keywords,
     status: p.status,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
@@ -152,21 +156,24 @@ export const productRoutes = new Hono<AppEnv>()
     };
     const q = query.q ? normalizeSearch(query.q) : "";
     if (q) add("instr(p.search_text, ?) > 0", q);
-    if (query.categoryId) add("p.category_id = ?", query.categoryId);
+    if (query.categoryId) add("(p.category_id = ? OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ?))", query.categoryId);
+    const keyword = query.keyword ? normalizeKeyword(query.keyword) : "";
+    if (keyword) add("EXISTS (SELECT 1 FROM json_each(p.keywords) WHERE value = ?)", keyword);
     if (query.online) add("p.online = ?", query.online === "yes" ? 1 : 0);
     if (query.brandId) add("p.brand_id = ?", query.brandId);
     if (query.stock === "out") where.push("p.track_inventory = 1 AND agg.out_count > 0");
     if (query.stock === "low") where.push("p.track_inventory = 1 AND (agg.out_count > 0 OR agg.low_count > 0)");
 
     const from = `FROM products p JOIN agg ON agg.product_id = p.id
-      LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN categories pc ON pc.id = c.parent_id LEFT JOIN brands b ON b.id = p.brand_id
       WHERE ${where.join(" AND ")}`;
     const offset = (query.page - 1) * query.pageSize;
     const [countRes, rowsRes] = await d1.batch([
       d1.prepare(`${AGGREGATES} SELECT COUNT(*) AS total ${from}`).bind(...params),
       d1
         .prepare(
-          `${AGGREGATES} SELECT p.id, p.name, p.images, p.unit, p.track_inventory, p.online, p.status, c.name AS category, b.name AS brand,
+          `${AGGREGATES} SELECT p.id, p.name, p.images, p.keywords, p.unit, p.track_inventory, p.online, p.status,
+             CASE WHEN pc.name IS NOT NULL THEN pc.name || ' › ' || c.name ELSE c.name END AS category, b.name AS brand,
              agg.variant_count, agg.price_min, agg.price_max, agg.stock, agg.out_count, agg.low_count, agg.value_milli, agg.sku
            ${from} ORDER BY p.name COLLATE NOCASE, p.id LIMIT ${query.pageSize} OFFSET ${offset}`,
         )
@@ -182,6 +189,7 @@ export const productRoutes = new Hono<AppEnv>()
         sku: r.sku,
         category: r.category,
         brand: r.brand,
+        keywords: JSON.parse(r.keywords) as string[],
         unit: r.unit as UnitCode,
         trackInventory: Boolean(r.track_inventory),
         status: r.status,
@@ -196,6 +204,16 @@ export const productRoutes = new Hono<AppEnv>()
     });
     const body: Paginated<ProductListItem> = { items, total, page: query.page, pageSize: query.pageSize };
     return c.json(body);
+  })
+
+  /* ---------- Keywords in use (for the filter and the form's suggestions) ---------- */
+  .get("/keywords", requirePermission("catalog:read"), async (c) => {
+    const { d1, tenant: t } = c.var.auth;
+    const { results } = await d1
+      .prepare("SELECT k.value AS keyword, COUNT(*) AS count FROM products p, json_each(p.keywords) k WHERE p.tenant_id = ?1 AND p.deleted_at IS NULL GROUP BY k.value ORDER BY k.value LIMIT 500")
+      .bind(t.id)
+      .all<{ keyword: string; count: number }>();
+    return c.json({ items: results });
   })
 
   /* ---------- Detail ---------- */
@@ -324,6 +342,7 @@ export const productRoutes = new Hono<AppEnv>()
       seoDescription: input.seoDescription ?? null,
       optionNames: input.optionNames,
       images: input.images,
+      keywords: input.keywords,
     };
     const productDiff = diff(current as Record<string, unknown>, productValues);
     statements.push(
@@ -331,7 +350,7 @@ export const productRoutes = new Hono<AppEnv>()
         d1,
         db
           .update(products)
-          .set({ ...productValues, searchText: searchTextFor(input.name, finalVariants), updatedAt: now })
+          .set({ ...productValues, searchText: searchTextFor(input.name, finalVariants, input.keywords), updatedAt: now })
           .where(and(eq(products.id, id), eq(products.tenantId, t.id))),
       ),
     );
@@ -397,10 +416,28 @@ export const productRoutes = new Hono<AppEnv>()
       db.select().from(brands).where(eq(brands.tenantId, t.id)),
       db.select().from(taxRates).where(and(eq(taxRates.tenantId, t.id), eq(taxRates.active, true))),
     ]);
-    const catByName = new Map(cats.map((x) => [x.name.toLowerCase(), x.id]));
+    // Keyed by parent + name: "Ropa > Camisas" and "Camisas" are different categories.
+    const catKey = (parentId: string | null, name: string) => `${parentId ?? ""}\u0000${name.toLowerCase()}`;
+    const catByKey = new Map(cats.map((x) => [catKey(x.parentId, x.name), x.id]));
+    const resolveCategory = (path: string | null): string | null => {
+      const [parentName, childName] = (path ?? "").split(/\s*[>›]\s*/).map((x) => x.trim()).filter(Boolean);
+      if (!parentName) return null;
+      const ensure = (parentId: string | null, name: string) => {
+        const key = catKey(parentId, name);
+        let id = catByKey.get(key);
+        if (!id) {
+          id = newId();
+          catByKey.set(key, id);
+          newNamed.push(toStatement(d1, db.insert(categories).values({ id, tenantId: t.id, name: name.slice(0, 80), parentId })));
+        }
+        return id;
+      };
+      const parentId = ensure(null, parentName);
+      return childName ? ensure(parentId, childName) : parentId;
+    };
     const brandByName = new Map(brs.map((x) => [x.name.toLowerCase(), x.id]));
     const newNamed: D1PreparedStatement[] = [];
-    const resolveNamed = (name: string | null, map: Map<string, string>, table: typeof categories | typeof brands) => {
+    const resolveNamed = (name: string | null, map: Map<string, string>, table: typeof brands) => {
       if (!name) return null;
       const key = name.toLowerCase();
       let id = map.get(key);
@@ -441,7 +478,7 @@ export const productRoutes = new Hono<AppEnv>()
       }
       const input = productInputSchema.safeParse({
         name: p.name, description: p.description, taxRateId, unit: p.unit, trackInventory: p.trackInventory,
-        optionNames: p.optionNames, variants: p.variants, categoryId: null, brandId: null, images: [],
+        optionNames: p.optionNames, variants: p.variants, categoryId: null, brandId: null, images: [], keywords: p.keywords,
       });
       if (!input.success) {
         const issue = input.error.issues[0]!;
@@ -460,7 +497,7 @@ export const productRoutes = new Hono<AppEnv>()
         continue;
       }
       input.data.variants.forEach((v) => { if (v.sku) seenSkus.add(v.sku.toLowerCase()); if (v.barcode) seenBarcodes.add(v.barcode); });
-      ready.push({ index, rows, input: { ...input.data, categoryId: resolveNamed(p.categoryName, catByName, categories), brandId: resolveNamed(p.brandName, brandByName, brands) } });
+      ready.push({ index, rows, input: { ...input.data, categoryId: resolveCategory(p.categoryName), brandId: resolveNamed(p.brandName, brandByName, brands) } });
     }
 
     // SKUs and barcodes already used in the catalog.

@@ -84,9 +84,15 @@ export const categories = sqliteTable(
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
     name: text("name").notNull(),
+    /** Subcategory of this category (one level only: a subcategory has no children). */
+    parentId: text("parent_id"),
     createdAt: text("created_at").notNull().default(now),
   },
-  (t) => [uniqueIndex("categories_tenant_name_uq").on(t.tenantId, t.name)],
+  (t) => [
+    // Same name allowed under different parents ("Hombre › Camisas", "Mujer › Camisas").
+    uniqueIndex("categories_tenant_parent_name_uq").on(t.tenantId, sql`coalesce(${t.parentId}, '')`, t.name),
+    index("categories_parent_idx").on(t.tenantId, t.parentId),
+  ],
 );
 
 export const brands = sqliteTable(
@@ -117,13 +123,15 @@ export const products = sqliteTable(
     optionNames: text("option_names", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     /** R2 keys, first one is the main image. */
     images: text("images", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
+    /** Lowercase search/filter tags, e.g. ["sin gluten", "vegano"]. */
+    keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
     /** Shown in the online store (when the product is also active). */
     online: integer("online", { mode: "boolean" }).notNull().default(false),
     /** Search engines (Phase 7): null → the product name / description. */
     seoTitle: text("seo_title"),
     seoDescription: text("seo_description"),
-    /** Normalized name + SKUs + barcodes, maintained on every write, for accent-insensitive search. */
+    /** Normalized name + keywords + SKUs + barcodes, maintained on every write, for accent-insensitive search. */
     searchText: text("search_text").notNull().default(""),
     createdAt: text("created_at").notNull().default(now),
     updatedAt: text("updated_at").notNull().default(now),

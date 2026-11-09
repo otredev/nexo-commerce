@@ -64,7 +64,11 @@ export const inventoryRoutes = new Hono<AppEnv>()
     const stockFilter = query.locationId ? `AND location_id = ${add(query.locationId)}` : "";
     const where = ["v.tenant_id = ?1", "v.deleted_at IS NULL", "p.deleted_at IS NULL", "p.status = 'active'", "p.track_inventory = 1"];
     if (query.q) where.push(`instr(p.search_text, ${add(normalizeSearch(query.q))}) > 0`);
-    if (query.categoryId) where.push(`p.category_id = ${add(query.categoryId)}`);
+    if (query.categoryId) {
+      // A main category includes its subcategories.
+      const cat = add(query.categoryId);
+      where.push(`(p.category_id = ${cat} OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ${cat}))`);
+    }
     if (query.stock === "out") where.push("COALESCE(st.qty, 0) <= 0");
     if (query.stock === "low") where.push("(COALESCE(st.qty, 0) <= 0 OR (v.min_stock > 0 AND COALESCE(st.qty, 0) <= v.min_stock))");
     const from = `FROM variants v JOIN products p ON p.id = v.product_id

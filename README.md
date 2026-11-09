@@ -125,8 +125,8 @@ docs/         Manual de usuario, referencia técnica y guía de despliegue.
 
 ## Calidad
 
-- **149 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
-- **15 suites de punta a punta** con **889 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial el panel de administración (operadores, tickets y entrar como negocio con sus límites) las cuentas de clientes de la tienda (aislamiento entre tiendas, bloqueo y recuperación) y los permisos (roles personalizados sin escalar privilegios y permisos de operadores).
+- **154 pruebas unitarias** (precios, impuestos, promociones, temas, cifrado de Web Push, firmas de webhooks…).
+- **16 suites de punta a punta** con **935 comprobaciones** sobre la API real: ventas y devoluciones concurrentes, carreras por la última pieza, suscripciones y pagos con Stripe simulado, dominios, notificaciones push descifradas como lo haría el navegador, webhooks con verificación de firma, el servidor MCP probado con el SDK oficial el panel de administración (operadores, tickets y entrar como negocio con sus límites) las cuentas de clientes de la tienda (aislamiento entre tiendas, bloqueo y recuperación) los permisos (roles personalizados sin escalar privilegios y permisos de operadores) y las subcategorías y palabras clave (filtros, promociones e importación).
 - GitHub Actions revisa tipos, ejecuta las pruebas y compila en cada pull request, y despliega a staging en cada push a `main`.
 
 ## Despliegue

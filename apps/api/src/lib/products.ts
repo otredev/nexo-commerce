@@ -9,8 +9,8 @@ import { chunk, movementStatements, toStatement } from "./inventory";
 
 const { products, variants, taxRates, categories, brands, locations } = tenant;
 
-export function searchTextFor(name: string, vs: Array<{ sku: string; barcode: string | null; options?: string[] }>) {
-  const parts = [name, ...vs.flatMap((v) => [v.sku, v.barcode ?? "", ...(v.options ?? [])])];
+export function searchTextFor(name: string, vs: Array<{ sku: string; barcode: string | null; options?: string[] }>, keywords: readonly string[] = []) {
+  const parts = [name, ...keywords, ...vs.flatMap((v) => [v.sku, v.barcode ?? "", ...(v.options ?? [])])];
   return normalizeSearch(parts.filter(Boolean).join(" "));
 }
 
@@ -113,7 +113,8 @@ export function createProductStatements(
         seoDescription: input.seoDescription ?? null,
         optionNames: input.optionNames,
         images: input.images,
-        searchText: searchTextFor(input.name, vs),
+        keywords: input.keywords,
+        searchText: searchTextFor(input.name, vs, input.keywords),
         createdAt: now,
         updatedAt: now,
       }),

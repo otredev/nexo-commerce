@@ -191,7 +191,7 @@ export const countRoutes = new Hono<AppEnv>()
         .bind(id, t.id, input.locationId, input.scope, input.scope === "category" ? input.categoryId : null, input.note, user.id, user.name, now),
     ];
     if (input.scope === "all") statements.push(d1.prepare(`${SNAPSHOT_INSERT} ${SNAPSHOT_FROM}`).bind(id, t.id, input.locationId));
-    if (input.scope === "category") statements.push(d1.prepare(`${SNAPSHOT_INSERT} ${SNAPSHOT_FROM} AND p.category_id = ?4`).bind(id, t.id, input.locationId, input.categoryId));
+    if (input.scope === "category") statements.push(d1.prepare(`${SNAPSHOT_INSERT} ${SNAPSHOT_FROM} AND (p.category_id = ?4 OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ?4))`).bind(id, t.id, input.locationId, input.categoryId));
     statements.push(toStatement(d1, auditEntry(c, { action: "count.create", entity: "stock_count", entityId: id, after: { locationId: input.locationId, scope: input.scope } })));
     await d1.batch(statements);
     return c.json(await loadCount(c, id), 201);

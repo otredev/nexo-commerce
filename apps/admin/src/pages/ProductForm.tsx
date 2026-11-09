@@ -9,6 +9,7 @@ import {
   parseMoney,
   UNITS,
   unitInfo,
+  type CategoryItem,
   type Named,
   type ProductDetail,
   type ProductInput,
@@ -19,6 +20,8 @@ import { del, get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { centsToInput, useBusiness } from "../lib/business";
 import { SeoFields } from "../components/SeoFields";
+import { KeywordsInput } from "../components/KeywordsInput";
+import { CategoryOptions, categoryTree } from "../lib/categories";
 import { useLoad, useSubmit } from "../lib/hooks";
 import { ProductInventoryTab, ProductMovementsTab } from "./ProductInventory";
 
@@ -48,6 +51,7 @@ interface Form {
   seoTitle: string;
   seoDescription: string;
   images: string[];
+  keywords: string[];
   hasVariants: boolean;
   options: OptionRow[];
   variants: VariantRow[];
@@ -62,7 +66,7 @@ const emptyVariant = (options: string[] = [], base?: Partial<VariantRow>): Varia
 });
 
 const EMPTY: Form = {
-  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, online: false, seoTitle: "", seoDescription: "", images: [],
+  name: "", description: "", categoryId: "", brandId: "", taxRateId: "", unit: "unit", trackInventory: true, online: false, seoTitle: "", seoDescription: "", images: [], keywords: [],
   hasVariants: false, options: [{ name: "", values: "" }], variants: [emptyVariant()],
 };
 
@@ -79,6 +83,7 @@ function fromProduct(p: ProductDetail): Form {
     seoTitle: p.seoTitle ?? "",
     seoDescription: p.seoDescription ?? "",
     images: p.images,
+    keywords: p.keywords ?? [],
     hasVariants: p.optionNames.length > 0,
     options: p.optionNames.length
       ? p.optionNames.map((name, i) => ({ name, values: [...new Set(p.variants.map((v) => v.options[i] ?? ""))].filter(Boolean).join(", ") }))
@@ -149,6 +154,7 @@ function toInput(form: Form): ProductInput {
     seoDescription: form.seoDescription.trim() || null,
     optionNames,
     images: form.images,
+    keywords: form.keywords,
     variants,
   };
 }
@@ -263,8 +269,12 @@ function ProductEditor({ product, onSaved }: { product: ProductDetail | null; on
   const [form, setForm] = useState<Form>(initial);
   const [creating, setCreating] = useState<"category" | "brand" | null>(null);
   const names = useLoad(async () => {
-    const [categories, brands] = await Promise.all([get<Named[]>("/categories"), get<Named[]>("/brands")]);
-    return { categories, brands };
+    const [categories, brands, keywords] = await Promise.all([
+      get<CategoryItem[]>("/categories"),
+      get<Named[]>("/brands"),
+      get<{ items: Array<{ keyword: string }> }>("/products/keywords").catch(() => ({ items: [] })),
+    ]);
+    return { categories, brands, keywords: keywords.items.map((k) => k.keyword) };
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
@@ -427,14 +437,15 @@ function ProductEditor({ product, onSaved }: { product: ProductDetail | null; on
               <div className="nx-stack">
                 <SelectField label="Categoría" value={form.categoryId} onChange={(e) => (e.target.value === "__new" ? setCreating("category") : set("categoryId", e.target.value))} error={err("categoryId")}>
                   <option value="">Sin categoría</option>
-                  {names.data?.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  {editable && <option value="__new">+ Nueva categoría…</option>}
+                  {names.data && <CategoryOptions list={names.data.categories} />}
+                  {editable && <option value="__new">+ Nueva categoría o subcategoría…</option>}
                 </SelectField>
                 <SelectField label="Marca" value={form.brandId} onChange={(e) => (e.target.value === "__new" ? setCreating("brand") : set("brandId", e.target.value))} error={err("brandId")}>
                   <option value="">Sin marca</option>
                   {names.data?.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   {editable && <option value="__new">+ Nueva marca…</option>}
                 </SelectField>
+                <KeywordsInput label="Palabras clave" value={form.keywords} onChange={(v) => set("keywords", v)} suggestions={names.data?.keywords} error={err("keywords")} disabled={!editable} />
                 <SelectField label="Impuesto" value={form.taxRateId} onChange={(e) => set("taxRateId", e.target.value)} error={err("taxRateId")}>
                   <option value="">Predeterminado{defaultTax ? ` (${defaultTax.name})` : ""}</option>
                   {taxes.filter((t) => t.active || t.id === form.taxRateId).map((t) => <option key={t.id} value={t.id}>{t.name} — {bpsToPercent(t.rateBps)} %</option>)}
@@ -555,6 +566,7 @@ function ProductEditor({ product, onSaved }: { product: ProductDetail | null; on
 
       <QuickCreate
         kind={creating}
+        categories={names.data?.categories ?? []}
         onClose={() => setCreating(null)}
         onCreated={(kind, item) => {
           void names.reload();
@@ -583,12 +595,13 @@ function Cell({ value, onChange, error, label, placeholder, num, mono }: { value
   );
 }
 
-function QuickCreate({ kind, onClose, onCreated }: { kind: "category" | "brand" | null; onClose: () => void; onCreated: (kind: "category" | "brand", item: Named) => void }) {
+function QuickCreate({ kind, categories, onClose, onCreated }: { kind: "category" | "brand" | null; categories: CategoryItem[]; onClose: () => void; onCreated: (kind: "category" | "brand", item: Named) => void }) {
   const [name, setName] = useState("");
-  useEffect(() => setName(""), [kind]);
+  const [parentId, setParentId] = useState("");
+  useEffect(() => { setName(""); setParentId(""); }, [kind]);
   const save = useSubmit(async () => {
     if (!kind) return;
-    const item = await post<Named>(kind === "category" ? "/categories" : "/brands", { name });
+    const item = await post<Named>(kind === "category" ? "/categories" : "/brands", kind === "category" ? { name, parentId: parentId || null } : { name });
     onCreated(kind, item);
     onClose();
   });
@@ -599,8 +612,14 @@ function QuickCreate({ kind, onClose, onCreated }: { kind: "category" | "brand" 
       onClose={onClose}
       footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant="primary" loading={save.pending} onClick={() => void save.submit()}>Crear</Button></>}
     >
-      <form onSubmit={(e) => { e.preventDefault(); void save.submit(); }}>
-        <TextField label="Nombre" value={name} onChange={(e) => setName(e.target.value)} error={save.fields.name ?? save.message ?? undefined} />
+      <form className="nx-stack" onSubmit={(e) => { e.preventDefault(); void save.submit(); }}>
+        <TextField label="Nombre" autoFocus value={name} onChange={(e) => setName(e.target.value)} error={save.fields.name ?? save.message ?? undefined} />
+        {kind === "category" && (
+          <SelectField label="Dentro de" value={parentId} onChange={(e) => setParentId(e.target.value)} error={save.fields.parentId}>
+            <option value="">Ninguna (categoría principal)</option>
+            {categoryTree(categories).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </SelectField>
+        )}
       </form>
     </Modal>
   );

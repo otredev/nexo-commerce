@@ -20,6 +20,7 @@ import {
   formatQty,
   fromMilli,
   LOW_STOCK_BADGE,
+  normalizeKeyword,
   normalizeSearch,
   publicAppearance,
   quantityFitsUnit,
@@ -125,7 +126,9 @@ const PUBLISHED = "p.tenant_id = ?1 AND p.online = 1 AND p.status = 'active' AND
 
 const listQuery = z.object({
   q: z.string().max(100).optional(),
+  /** A main category includes its subcategories. */
   categoryId: z.string().max(40).optional(),
+  keyword: z.string().max(60).optional(),
   sort: z.enum(["featured", "new", "price_asc", "price_desc", "name"]).default("featured"),
   page: z.coerce.number().int().min(1).max(500).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
@@ -145,13 +148,24 @@ export const storeRoutes = new Hono<AppEnv>()
   /* ---------- Store front: name, logo, rules, categories ---------- */
   .get("/:slug", async (c) => {
     const { tenant: t, d1, db, store, biz, today, cardAccount } = await resolveStore(c);
-    const { results: cats } = await d1
-      .prepare(
-        `SELECT c.id, c.name, COUNT(p.id) AS count FROM categories c JOIN products p ON p.category_id = c.id AND ${PUBLISHED.replaceAll("p.tenant_id = ?1", "p.tenant_id = c.tenant_id")}
-         WHERE c.tenant_id = ?1 GROUP BY c.id ORDER BY c.name COLLATE NOCASE`,
-      )
-      .bind(t.id)
-      .all<{ id: string; name: string; count: number }>();
+    const pub = PUBLISHED.replaceAll("p.tenant_id = ?1", "p.tenant_id = c.tenant_id");
+    const [catRes, kwRes] = await d1.batch([
+      d1
+        .prepare(
+          `SELECT c.id, c.name, c.parent_id, COUNT(p.id) AS count FROM categories c LEFT JOIN products p ON p.category_id = c.id AND ${pub}
+           WHERE c.tenant_id = ?1 GROUP BY c.id ORDER BY c.name COLLATE NOCASE`,
+        )
+        .bind(t.id),
+      d1
+        .prepare(`SELECT k.value AS keyword, COUNT(*) AS count FROM products p, json_each(p.keywords) k WHERE ${PUBLISHED} GROUP BY k.value ORDER BY count DESC, k.value LIMIT 30`)
+        .bind(t.id),
+    ]);
+    // A main category counts its own products plus its subcategories'; empty ones are hidden.
+    const allCats = catRes!.results as Array<{ id: string; name: string; parent_id: string | null; count: number }>;
+    const cats = allCats
+      .map((x) => ({ id: x.id, name: x.name, parentId: x.parent_id, count: x.count + (x.parent_id ? 0 : allCats.filter((y) => y.parent_id === x.id).reduce((a, y) => a + y.count, 0)) }))
+      .filter((x) => x.count > 0 && (!x.parentId || allCats.some((y) => y.id === x.parentId)));
+    const keywords = (kwRes!.results as Array<{ keyword: string; count: number }>).sort((a, b) => a.keyword.localeCompare(b.keyword, "es"));
     const location = await d1.prepare("SELECT name, address FROM locations WHERE id = ?1").bind(store.locationId).first<{ name: string; address: string | null }>();
     const [promotions, appearance] = await Promise.all([livePromotions(db, t.id, today, "online"), loadAppearance(db, t.id)]);
     const coupon = await d1
@@ -183,6 +197,7 @@ export const storeRoutes = new Hono<AppEnv>()
       transferEnabled: store.transferEnabled,
       cardEnabled: Boolean(cardAccount),
       categories: cats,
+      keywords,
       promotions,
       couponsEnabled: Boolean(coupon),
       faq: store.faq,
@@ -208,7 +223,12 @@ export const storeRoutes = new Hono<AppEnv>()
     if (query.q?.trim()) {
       where.push(`instr(p.search_text, ${add(normalizeSearch(query.q))}) > 0`);
     }
-    if (query.categoryId) where.push(`p.category_id = ${add(query.categoryId)}`);
+    if (query.categoryId) {
+      const cat = add(query.categoryId);
+      where.push(`(p.category_id = ${cat} OR p.category_id IN (SELECT id FROM categories WHERE parent_id = ${cat}))`);
+    }
+    const keyword = query.keyword ? normalizeKeyword(query.keyword) : "";
+    if (keyword) where.push(`EXISTS (SELECT 1 FROM json_each(p.keywords) WHERE value = ${add(keyword)})`);
     const minPrice = "(SELECT MIN(price_cents) FROM variants v WHERE v.product_id = p.id AND v.active = 1 AND v.deleted_at IS NULL)";
     const order = {
       featured: "p.updated_at DESC",
@@ -271,11 +291,12 @@ export const storeRoutes = new Hono<AppEnv>()
         .from(variants)
         .leftJoin(stockLevels, and(eq(stockLevels.variantId, variants.id), eq(stockLevels.locationId, store.locationId)))
         .where(and(eq(variants.productId, p.id), eq(variants.active, true), isNull(variants.deletedAt))),
-      p.categoryId ? db.select({ name: categories.name }).from(categories).where(eq(categories.id, p.categoryId)).get() : undefined,
+      p.categoryId ? db.select({ name: categories.name, parentId: categories.parentId }).from(categories).where(eq(categories.id, p.categoryId)).get() : undefined,
       p.brandId ? db.select({ name: brands.name }).from(brands).where(eq(brands.id, p.brandId)).get() : undefined,
       taxResolver(db, t.id),
     ]);
     if (!vs.length) throw new AppError(404, "not_found", "Este producto ya no está disponible.");
+    const parentCat = cat?.parentId ? await db.select({ id: categories.id, name: categories.name }).from(categories).where(eq(categories.id, cat.parentId)).get() : undefined;
     const rate = rateOf(p.taxRateId);
     const promo = promotionFor(await livePromotions(db, t.id, today, "online"), p.id, p.categoryId);
     vs.sort((a, b) => a.position - b.position);
@@ -286,7 +307,10 @@ export const storeRoutes = new Hono<AppEnv>()
       images: p.images,
       categoryId: p.categoryId,
       categoryName: cat?.name ?? null,
+      parentCategoryId: parentCat?.id ?? null,
+      parentCategoryName: parentCat?.name ?? null,
       brandName: brand?.name ?? null,
+      keywords: p.keywords,
       unit: p.unit as UnitCode,
       optionNames: p.optionNames,
       taxRateBps: rate,

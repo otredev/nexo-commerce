@@ -174,11 +174,11 @@ export const reportRoutes = new Hono<AppEnv>()
       d1.prepare("SELECT date, SUM(sales_count) AS count, SUM(total_cents - returns_cents) AS net FROM daily_sales WHERE tenant_id = ?1 AND date BETWEEN ?2 AND ?3 GROUP BY date").bind(t.id, from, to),
       d1.prepare(`SELECT (SELECT COALESCE(SUM(promo_discount_cents), 0) FROM sales WHERE tenant_id = ?1 AND status = 'completed' AND business_date BETWEEN ?2 AND ?3)
           + (SELECT COALESCE(SUM(discount_cents), 0) FROM orders WHERE tenant_id = ?1 AND status = 'completed' AND business_date BETWEEN ?2 AND ?3) AS promo`).bind(t.id, from, to),
-      d1.prepare(`SELECT d.variant_id, d.product_id, p.name, p.category_id, COALESCE(c.name, 'Sin categoría') AS category, v.options, v.sku, p.unit,
+      d1.prepare(`SELECT d.variant_id, d.product_id, p.name, p.category_id, COALESCE(CASE WHEN pc.name IS NOT NULL THEN pc.name || ' › ' || c.name ELSE c.name END, 'Sin categoría') AS category, v.options, v.sku, p.unit,
           COALESCE(tr.rate_bps, (SELECT rate_bps FROM tax_rates WHERE tenant_id = ?1 AND is_default = 1 LIMIT 1), 0) AS rate,
           SUM(d.quantity) AS qty, SUM(d.total_cents) AS total, SUM(d.cost_cents) AS cost
         FROM daily_product_sales d JOIN products p ON p.id = d.product_id JOIN variants v ON v.id = d.variant_id
-        LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN tax_rates tr ON tr.id = p.tax_rate_id
+        LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN categories pc ON pc.id = c.parent_id LEFT JOIN tax_rates tr ON tr.id = p.tax_rate_id
         WHERE d.tenant_id = ?1 AND d.date BETWEEN ?2 AND ?3 GROUP BY d.variant_id ORDER BY total DESC`).bind(t.id, from, to),
       d1.prepare(`SELECT p.method, COUNT(DISTINCT p.sale_id) AS n, SUM(p.amount_cents) AS amount FROM sale_payments p JOIN sales s ON s.id = p.sale_id
         WHERE s.tenant_id = ?1 AND s.status = 'completed' AND s.business_date BETWEEN ?2 AND ?3 GROUP BY p.method`).bind(t.id, from, to),

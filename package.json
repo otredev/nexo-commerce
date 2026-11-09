@@ -19,7 +19,7 @@
     "db:migrate:local": "npm run migrate:local -w @nexo/api",
     "deploy:staging": "npm run build && npm run deploy:staging -w @nexo/api && npm run deploy:staging -w @nexo/store",
     "deploy:production": "npm run build && npm run deploy:production -w @nexo/api && npm run deploy:production -w @nexo/store",
-    "smoke": "node scripts/smoke.mjs && node scripts/smoke-catalog.mjs && node scripts/smoke-pos.mjs && node scripts/smoke-purchasing.mjs && node scripts/smoke-store.mjs && node scripts/smoke-growth.mjs && node scripts/smoke-seo.mjs && node scripts/smoke-theme.mjs && node scripts/smoke-integrations.mjs && node scripts/smoke-saas.mjs && node scripts/smoke-ops.mjs && node scripts/smoke-analytics.mjs && node scripts/smoke-platform.mjs && node scripts/smoke-accounts.mjs && node scripts/smoke-roles.mjs"
+    "smoke": "node scripts/smoke.mjs && node scripts/smoke-catalog.mjs && node scripts/smoke-pos.mjs && node scripts/smoke-purchasing.mjs && node scripts/smoke-store.mjs && node scripts/smoke-growth.mjs && node scripts/smoke-seo.mjs && node scripts/smoke-theme.mjs && node scripts/smoke-integrations.mjs && node scripts/smoke-saas.mjs && node scripts/smoke-ops.mjs && node scripts/smoke-analytics.mjs && node scripts/smoke-platform.mjs && node scripts/smoke-accounts.mjs && node scripts/smoke-roles.mjs && node scripts/smoke-subcategories.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

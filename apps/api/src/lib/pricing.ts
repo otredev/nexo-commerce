@@ -2,13 +2,13 @@
  * Server side of promotions, coupons and customer matching. Pricing itself is the shared
  * priceCart(), so the POS, the store and the server always agree.
  */
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { tenant, type TenantDb } from "@nexo/db";
 import { isLive, normalizeCode, normalizeSearch, type Channel, type CouponRule, type PromotionRule } from "@nexo/shared";
 import { newId } from "./crypto";
 import { toStatement } from "./inventory";
 
-const { promotions, coupons, customers } = tenant;
+const { promotions, coupons, customers, categories } = tenant;
 
 export const toPromotionRule = (p: typeof promotions.$inferSelect): PromotionRule => ({
   id: p.id, name: p.name, percentBps: p.percentBps, target: p.target, targetIds: p.targetIds, channel: p.channel, startsOn: p.startsOn, endsOn: p.endsOn, active: p.active,
@@ -20,7 +20,13 @@ export const toCouponRule = (c: typeof coupons.$inferSelect): CouponRule => ({
 /** Promotions valid today for a channel. */
 export async function livePromotions(db: TenantDb, tenantId: string, today: string, channel: Channel): Promise<PromotionRule[]> {
   const rows = await db.select().from(promotions).where(and(eq(promotions.tenantId, tenantId), eq(promotions.active, true)));
-  return rows.map(toPromotionRule).filter((p) => isLive(p, today, channel));
+  const live = rows.map(toPromotionRule).filter((p) => isLive(p, today, channel));
+  // A promotion on a category also covers its subcategories: list them as targets too.
+  const parents = [...new Set(live.filter((p) => p.target === "category").flatMap((p) => p.targetIds))];
+  if (!parents.length) return live;
+  const subs = await db.select({ id: categories.id, parentId: categories.parentId }).from(categories).where(and(eq(categories.tenantId, tenantId), inArray(categories.parentId, parents.slice(0, 90))));
+  if (!subs.length) return live;
+  return live.map((p) => (p.target === "category" ? { ...p, targetIds: [...new Set([...p.targetIds, ...subs.filter((s) => p.targetIds.includes(s.parentId!)).map((s) => s.id)])] } : p));
 }
 
 export async function findCoupon(db: TenantDb, tenantId: string, code: string) {

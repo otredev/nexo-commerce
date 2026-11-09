@@ -7,17 +7,17 @@ import { downloadText, parseCsv, toCsv } from "../lib/csv";
 
 const COLUMNS = [
   "nombre", "sku", "codigo_barras", "categoria", "marca", "descripcion", "unidad", "controla_inventario", "impuesto",
-  "precio", "costo", "stock_inicial", "stock_minimo", "opcion1", "valor1", "opcion2", "valor2", "opcion3", "valor3",
+  "precio", "costo", "stock_inicial", "stock_minimo", "opcion1", "valor1", "opcion2", "valor2", "opcion3", "valor3", "palabras_clave",
 ] as const;
 type Col = (typeof COLUMNS)[number];
 
 const TEMPLATE = [
   [...COLUMNS],
-  ["Taza de cerámica", "TAZ-001", "7501234567890", "Hogar", "Olivo", "Taza blanca de 350 ml", "pieza", "si", "16", "185.00", "90.00", "24", "6", "", "", "", "", "", ""],
-  ["Camisa de lino", "CAM-M-BL", "", "Ropa", "Olivo", "", "pieza", "si", "16", "590.00", "300.00", "4", "1", "Talla", "M", "Color", "Blanco", "", ""],
-  ["Camisa de lino", "CAM-L-BL", "", "Ropa", "Olivo", "", "pieza", "si", "16", "590.00", "300.00", "3", "1", "Talla", "L", "Color", "Blanco", "", ""],
-  ["Café de grano", "CAF-KG", "", "Despensa", "", "", "kg", "si", "0", "320.00", "180.00", "12.5", "2", "", "", "", "", "", ""],
-  ["Envoltura de regalo", "", "", "Servicios", "", "", "servicio", "no", "16", "30.00", "", "", "", "", "", "", "", "", ""],
+  ["Taza de cerámica", "TAZ-001", "7501234567890", "Hogar > Cocina", "Olivo", "Taza blanca de 350 ml", "pieza", "si", "16", "185.00", "90.00", "24", "6", "", "", "", "", "", "", "regalo; cerámica"],
+  ["Camisa de lino", "CAM-M-BL", "", "Ropa > Camisas", "Olivo", "", "pieza", "si", "16", "590.00", "300.00", "4", "1", "Talla", "M", "Color", "Blanco", "", "", "lino; verano"],
+  ["Camisa de lino", "CAM-L-BL", "", "Ropa > Camisas", "Olivo", "", "pieza", "si", "16", "590.00", "300.00", "3", "1", "Talla", "L", "Color", "Blanco", "", "", ""],
+  ["Café de grano", "CAF-KG", "", "Despensa", "", "", "kg", "si", "0", "320.00", "180.00", "12.5", "2", "", "", "", "", "", "", "orgánico"],
+  ["Envoltura de regalo", "", "", "Servicios", "", "", "servicio", "no", "16", "30.00", "", "", "", "", "", "", "", "", "", ""],
 ];
 
 const norm = (s: string) => normalizeSearch(s).replace(/[\s-]+/g, "_");
@@ -96,6 +96,7 @@ function buildProducts(rows: string[][]): Parsed {
         rows: [rowNo],
         product: {
           name, description: cell(r, "descripcion") || null, categoryName: cell(r, "categoria") || null, brandName: cell(r, "marca") || null,
+          keywords: cell(r, "palabras_clave"),
           taxPercent: tax, unit, trackInventory: track, optionNames, variants: [variant], rows: [rowNo],
         },
       });
@@ -188,7 +189,7 @@ export function ImportProductsModal({ open, onClose, onDone }: { open: boolean; 
           <>
             <p style={{ margin: 0 }}>
               Sube un archivo CSV con una fila por producto (o por variante). Las filas con el mismo nombre se agrupan como variantes.
-              Las categorías y marcas que no existan se crean solas.{" "}
+              Las categorías y marcas que no existan se crean solas; para una subcategoría escribe «Ropa &gt; Camisas». Separa las palabras clave con punto y coma.{" "}
               <button type="button" className="nx-link" style={{ border: 0, background: "none", padding: 0, cursor: "pointer", font: "inherit" }} onClick={() => downloadText("plantilla-productos.csv", toCsv(TEMPLATE))}>
                 Descargar plantilla
               </button>

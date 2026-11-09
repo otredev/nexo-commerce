@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeftRight, Boxes } from "lucide-react";
-import { formatQty, type InventoryRow, type InventorySummary, type Named, type Paginated } from "@nexo/shared";
+import { formatQty, type InventoryRow, type InventorySummary, type CategoryItem, type Named, type Paginated } from "@nexo/shared";
+import { CategoryOptions } from "../lib/categories";
 import { Alert, Button, EmptyState, PageHeader, Pagination, SearchInput, Segmented, Stat, useDebounced } from "@nexo/ui";
 import { get } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -32,7 +33,7 @@ export function InventoryPage() {
   const search = new URLSearchParams({ stock, page: String(page), pageSize: "50", ...(query && { q: query }), ...(locationId && { locationId }), ...(categoryId && { categoryId }) });
   const { data, error, loading, reload } = useLoad(() => get<Paginated<InventoryRow>>(`/inventory?${search}`), [search.toString()]);
   const summary = useLoad(() => get<InventorySummary>("/inventory/summary"));
-  const categories = useLoad(() => get<Named[]>("/categories"));
+  const categories = useLoad(() => get<CategoryItem[]>("/categories"));
   const filtered = Boolean(query || stock !== "all" || categoryId);
 
   return (
@@ -61,7 +62,7 @@ export function InventoryPage() {
             </select>
             <select className="nx-select" aria-label="Categoría" value={categoryId} onChange={(e) => set("categoria", e.target.value)}>
               <option value="">Todas las categorías</option>
-              {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.data && <CategoryOptions list={categories.data} />}
             </select>
             <Segmented label="Existencias" value={stock} onChange={(v) => set("stock", v === "all" ? "" : v)} options={[{ id: "all", label: "Todos" }, { id: "low", label: "Stock bajo" }, { id: "out", label: "Agotados" }]} />
           </div>

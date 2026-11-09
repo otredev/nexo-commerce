@@ -5,12 +5,13 @@ import {
   businessDate,
   type Coupon,
   type CouponInput,
-  type Named,
+  type CategoryItem, type Named,
   type Paginated,
   type ProductListItem,
   type Promotion,
   type PromotionInput,
 } from "@nexo/shared";
+import { categoryLabel, categoryTree } from "../lib/categories";
 import { Alert, Badge, Button, Checkbox, EmptyState, Modal, PageHeader, SearchInput, Segmented, SelectField, Tabs, TextField, useDebounced, useToast } from "@nexo/ui";
 import { del, get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -114,7 +115,7 @@ function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" 
   const [targets, setTargets] = useState<Array<{ id: string; name: string }>>([]);
   const [productQ, setProductQ] = useState("");
   const productQuery = useDebounced(productQ);
-  const categories = useLoad(() => (promo ? get<Named[]>("/categories") : Promise.resolve([] as Named[])), [Boolean(promo)]);
+  const categories = useLoad(() => (promo ? get<CategoryItem[]>("/categories") : Promise.resolve([] as CategoryItem[])), [Boolean(promo)]);
   const products = useLoad(
     () => (promo && form.target === "product" && productQuery ? get<Paginated<ProductListItem>>(`/products?q=${encodeURIComponent(productQuery)}&pageSize=8`) : Promise.resolve(null)),
     [Boolean(promo), form.target, productQuery],
@@ -166,13 +167,14 @@ function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" 
         {form.target === "category" && (
           <div className="nx-field">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {categories.data?.map((c) => {
+              {categoryTree(categories.data ?? []).flatMap((c) => [c, ...c.children]).map((c) => {
                 const on = targets.some((t) => t.id === c.id);
-                return <Button key={c.id} size="sm" variant={on ? "primary" : "secondary"} aria-pressed={on} onClick={() => toggle(c)}>{c.name}</Button>;
+                const label = categoryLabel(categories.data ?? [], c.id) ?? c.name;
+                return <Button key={c.id} size="sm" variant={on ? "primary" : "secondary"} aria-pressed={on} onClick={() => toggle({ ...c, name: label })}>{label}</Button>;
               })}
               {categories.data?.length === 0 && <span className="nx-muted">Aún no tienes categorías.</span>}
             </div>
-            {f.targetIds && <span className="nx-help" style={{ color: "var(--danger)" }}>{f.targetIds}</span>}
+            {f.targetIds ? <span className="nx-help" style={{ color: "var(--danger)" }}>{f.targetIds}</span> : <span className="nx-help">Una categoría incluye sus subcategorías.</span>}
           </div>
         )}
         {form.target === "product" && (

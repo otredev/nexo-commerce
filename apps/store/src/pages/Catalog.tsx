@@ -15,6 +15,7 @@ export function CatalogPage() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const category = params.get("categoria") ?? "";
+  const keyword = params.get("palabra") ?? "";
   const sort = (params.get("orden") ?? "featured") as Sort;
   const [items, setItems] = useState<StoreProductCard[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -23,7 +24,7 @@ export function CatalogPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = async (p: number) => {
-    const search = new URLSearchParams({ page: String(p), sort, ...(q && { q }), ...(category && { categoryId: category }) });
+    const search = new URLSearchParams({ page: String(p), sort, ...(q && { q }), ...(category && { categoryId: category }), ...(keyword && { keyword }) });
     const res = await api<Paginated<StoreProductCard>>("GET", `/${slug}/products?${search}`);
     setTotal(res.total);
     setPage(p);
@@ -34,17 +35,22 @@ export function CatalogPage() {
     setError(null);
     load(1).catch((e: RequestError) => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, q, category, sort]);
+  }, [slug, q, category, keyword, sort]);
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
     setParams(next, { replace: true });
   };
   if (!store) return null;
+  const mains = store.categories.filter((c) => !c.parentId);
+  const chosen = store.categories.find((c) => c.id === category);
+  const openCat = mains.find((c) => c.id === (chosen?.parentId ?? chosen?.id));
+  const subs = openCat ? store.categories.filter((c) => c.parentId === openCat.id) : [];
+  const filtered = Boolean(q || category || keyword);
 
   return (
     <div className="st-wrap">
-      {!q && !category && store.appearance.banners.length > 0 && <BannerCarousel />}
+      {!filtered && store.appearance.banners.length > 0 && <BannerCarousel />}
       {!q && (
         <section className="st-hero" data-compact={store.appearance.banners.length > 0 || undefined}>
           <h1 className={store.appearance.banners.length > 0 ? "nx-sr-only" : "st-hero__title"}>{store.name}</h1>
@@ -67,11 +73,31 @@ export function CatalogPage() {
         </section>
       )}
       <div className="st-toolbar">
-        <div className="st-chips" role="group" aria-label="Categorías">
-          <button type="button" className="st-chip" aria-pressed={!category} onClick={() => set("categoria", "")}>Todo</button>
-          {store.categories.map((c) => (
-            <button type="button" key={c.id} className="st-chip" aria-pressed={category === c.id} onClick={() => set("categoria", c.id)}>{c.name}</button>
-          ))}
+        <div className="st-filters">
+          <div className="st-chips" role="group" aria-label="Categorías">
+            <button type="button" className="st-chip" aria-pressed={!category} onClick={() => set("categoria", "")}>Todo</button>
+            {mains.map((c) => (
+              <button type="button" key={c.id} className="st-chip" aria-pressed={openCat?.id === c.id} onClick={() => set("categoria", c.id)}>{c.name}</button>
+            ))}
+          </div>
+          {openCat && subs.length > 0 && (
+            <div className="st-chips st-chips--sub" role="group" aria-label={`Subcategorías de ${openCat.name}`}>
+              <button type="button" className="st-chip" aria-pressed={category === openCat.id} onClick={() => set("categoria", openCat.id)}>Todo {openCat.name}</button>
+              {subs.map((c) => (
+                <button type="button" key={c.id} className="st-chip" aria-pressed={category === c.id} onClick={() => set("categoria", c.id)}>{c.name}</button>
+              ))}
+            </div>
+          )}
+          {(store.keywords.length > 0 || keyword) && (
+            <div className="st-chips st-chips--tags" role="group" aria-label="Palabras clave">
+              {keyword && !store.keywords.some((k) => k.keyword === keyword) && (
+                <button type="button" className="st-chip st-chip--tag" aria-pressed onClick={() => set("palabra", "")}>#{keyword}</button>
+              )}
+              {store.keywords.map((k) => (
+                <button type="button" key={k.keyword} className="st-chip st-chip--tag" aria-pressed={keyword === k.keyword} onClick={() => set("palabra", keyword === k.keyword ? "" : k.keyword)}>#{k.keyword}</button>
+              ))}
+            </div>
+          )}
         </div>
         <select className="nx-select st-sort" aria-label="Ordenar" value={sort} onChange={(e) => set("orden", e.target.value === "featured" ? "" : e.target.value)} style={{ width: "auto" }}>
           <option value="featured">Destacados</option>
@@ -88,9 +114,9 @@ export function CatalogPage() {
         </div>
       ) : items && items.length === 0 ? (
         <div className="st-empty">
-          <h2 className="st-empty__title">{q || category ? "No encontramos productos" : "Muy pronto"}</h2>
-          <p className="st-empty__text">{q || category ? "Prueba con otra búsqueda o categoría." : "Estamos preparando el catálogo. Vuelve pronto."}</p>
-          {(q || category) && <Button onClick={() => setParams({})}>Ver todo</Button>}
+          <h2 className="st-empty__title">{filtered ? "No encontramos productos" : "Muy pronto"}</h2>
+          <p className="st-empty__text">{filtered ? "Prueba con otra búsqueda, categoría o palabra clave." : "Estamos preparando el catálogo. Vuelve pronto."}</p>
+          {filtered && <Button onClick={() => setParams({})}>Ver todo</Button>}
         </div>
       ) : (
         <>
@@ -102,7 +128,7 @@ export function CatalogPage() {
           )}
         </>
       )}
-      {!q && !category && store && store.faq.length > 0 && (
+      {!filtered && store && store.faq.length > 0 && (
         <section className="st-faq" aria-labelledby="faq-title">
           <h2 id="faq-title">Preguntas frecuentes</h2>
           {store.faq.map((f, i) => (

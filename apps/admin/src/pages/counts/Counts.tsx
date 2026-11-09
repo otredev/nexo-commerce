@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ClipboardCheck } from "lucide-react";
-import { docNumber, type CreateCountInput, type Named, type Paginated, type StockCountDetail, type StockCountListItem } from "@nexo/shared";
+import { docNumber, type CreateCountInput, type CategoryItem, type Named, type Paginated, type StockCountDetail, type StockCountListItem } from "@nexo/shared";
+import { CategoryOptions } from "../../lib/categories";
 import { Alert, Button, EmptyState, Modal, PageHeader, Pagination, Progress, Segmented, SelectField, TextField, useToast } from "@nexo/ui";
 import { get, post } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -94,7 +95,7 @@ function NewCountModal({ open, onClose, onCreated }: { open: boolean; onClose: (
   const { locations } = useBusiness();
   const toast = useToast();
   const active = locations.filter((l) => l.active);
-  const categories = useLoad(() => (open ? get<Named[]>("/categories") : Promise.resolve([] as Named[])), [open]);
+  const categories = useLoad(() => (open ? get<CategoryItem[]>("/categories") : Promise.resolve([] as CategoryItem[])), [open]);
   const [form, setForm] = useState<CreateCountInput>({ locationId: "", scope: "category", categoryId: null, note: null });
   useEffect(() => {
     if (open) setForm({ locationId: (active.find((l) => l.isDefault) ?? active[0])?.id ?? "", scope: "category", categoryId: null, note: null });
@@ -122,14 +123,14 @@ function NewCountModal({ open, onClose, onCreated }: { open: boolean; onClose: (
           />
           <span className="nx-help">
             {form.scope === "all" && "Incluye todos los productos que controlan inventario. Puede tomar varias horas en una tienda grande."}
-            {form.scope === "category" && "Ideal para conteos cíclicos: un pasillo o una familia de productos a la vez."}
+            {form.scope === "category" && "Ideal para conteos cíclicos: un pasillo o una familia de productos a la vez. Una categoría incluye sus subcategorías."}
             {form.scope === "manual" && "Empieza vacío: escanea o agrega solo los productos que quieras revisar."}
           </span>
         </div>
         {form.scope === "category" && (
           <SelectField label="Categoría" value={form.categoryId ?? ""} onChange={(e) => { setForm({ ...form, categoryId: e.target.value || null }); save.clearFields("categoryId"); }} error={save.fields.categoryId}>
             <option value="">Elige una categoría</option>
-            {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}{c.productCount !== undefined ? ` (${c.productCount})` : ""}</option>)}
+            {categories.data && <CategoryOptions list={categories.data} />}
           </SelectField>
         )}
         <TextField label="Nota" optional value={form.note ?? ""} onChange={(e) => setForm({ ...form, note: e.target.value || null })} placeholder="Pasillo 3, conteo de fin de mes…" />

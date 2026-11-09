@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Banknote, Lock, Minus, Monitor, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserRound, X } from "lucide-react";
-import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type DisplayState, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type DisplayState, type CategoryItem, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { categoryTree } from "../../lib/categories";
 import { useDisplayPublisher } from "../../lib/customerDisplay";
 import { Alert, Badge, Button, EmptyState, Modal, Segmented, TextField, useDebounced, useToast } from "@nexo/ui";
 import { get, RequestError } from "../../lib/api";
@@ -97,7 +98,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
   const [refreshKey, setRefreshKey] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const categories = useLoad(() => get<Named[]>("/categories"));
+  const categories = useLoad(() => get<CategoryItem[]>("/categories"));
   const params = new URLSearchParams({ locationId: session.locationId, ...(query.trim() && { q: query.trim() }), ...(categoryId && { categoryId }) });
   const results = useLoad(() => get<PosProduct[]>(`/pos/products?${params}`), [params.toString(), refreshKey]);
 
@@ -230,10 +231,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           />
         </div>
         {categories.data && categories.data.length > 0 && (
-          <div className="nx-row" style={{ gap: 6 }}>
-            <Button size="sm" variant={categoryId ? "ghost" : "secondary"} onClick={() => setCategoryId("")}>Todo</Button>
-            {categories.data.map((c) => <Button key={c.id} size="sm" variant={categoryId === c.id ? "secondary" : "ghost"} onClick={() => setCategoryId(c.id)}>{c.name}</Button>)}
-          </div>
+          <PosCategories list={categories.data} value={categoryId} onChange={setCategoryId} />
         )}
         {results.error && <Alert tone="danger">{results.error.message}</Alert>}
         {results.data && results.data.length === 0 ? (
@@ -465,5 +463,26 @@ function DisplayModal({ open, onClose, locationId, display }: { open: boolean; o
         </section>
       </div>
     </Modal>
+  );
+}
+
+/** Main categories; the chosen one (or the parent of the chosen subcategory) opens a row with its subcategories. */
+function PosCategories({ list, value, onChange }: { list: CategoryItem[]; value: string; onChange: (id: string) => void }) {
+  const tree = categoryTree(list);
+  const chosen = list.find((c) => c.id === value);
+  const open = tree.find((c) => c.id === (chosen?.parentId ?? chosen?.id));
+  return (
+    <div className="nx-stack" style={{ gap: 6 }}>
+      <div className="nx-row" style={{ gap: 6, flexWrap: "wrap" }}>
+        <Button size="sm" variant={value ? "ghost" : "secondary"} onClick={() => onChange("")}>Todo</Button>
+        {tree.map((c) => <Button key={c.id} size="sm" variant={open?.id === c.id ? "secondary" : "ghost"} onClick={() => onChange(c.id)}>{c.name}</Button>)}
+      </div>
+      {open && open.children.length > 0 && (
+        <div className="nx-row" style={{ gap: 6, flexWrap: "wrap", paddingLeft: 8 }} role="group" aria-label={`Subcategorías de ${open.name}`}>
+          <Button size="sm" variant={value === open.id ? "secondary" : "ghost"} onClick={() => onChange(open.id)}>Todo {open.name}</Button>
+          {open.children.map((c) => <Button key={c.id} size="sm" variant={value === c.id ? "secondary" : "ghost"} onClick={() => onChange(c.id)}>{c.name}</Button>)}
+        </div>
+      )}
+    </div>
   );
 }
