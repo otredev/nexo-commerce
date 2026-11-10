@@ -266,7 +266,7 @@ const codeTool = fullTools.find((t) => t.name === "editar_codigo_tienda");
 check("editar_codigo_tienda marcada como destructiva; las de secciones no", codeTool?.annotations.destructiveHint === true && fullTools.find((t) => t.name === "agregar_seccion")?.annotations.destructiveHint === false, codeTool?.annotations);
 check("ya no existen las herramientas de banners", !fullTools.some((t) => t.name === "editar_banner" || t.name === "ordenar_banners"), fullTools.map((t) => t.name));
 let t = await tool(readKey, "ver_apariencia");
-check("ver_apariencia: tema, avisos, secciones y opciones", t.isError === false && t.json.tema.estilo === "nexo" && t.json.secciones.map((s) => s.tipo).join() === "banners,catalog" && t.json.tipos_de_seccion.length === 15 && t.json.estilos_disponibles.length === 6 && t.json.letras_disponibles.some((l) => l.id === "clasica"), t.json ?? t.text);
+check("ver_apariencia: tema, avisos, secciones y opciones", t.isError === false && t.json.tema.estilo === "nexo" && t.json.secciones.map((s) => s.tipo).join() === "banners,catalog" && t.json.tipos_de_seccion.length === 16 && t.json.tipos_de_seccion.some((x) => x.tipo === "footer" && x.solo_una) && t.json.estilos_disponibles.length === 6 && t.json.letras_disponibles.some((l) => l.id === "clasica"), t.json ?? t.text);
 t = await tool(readKey, "cambiar_tema", { estilo: "boutique" });
 check("cambiar_tema con llave de lectura → error JSON-RPC", t.error?.code === -32602, t);
 
