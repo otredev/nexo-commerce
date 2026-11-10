@@ -39,6 +39,7 @@ export interface BusinessSettings {
   logoKey: string | null;
   cashierMaxDiscountBps: number;
   receiptWidthMm: 58 | 80;
+  posCustomerSignup: boolean;
   updatedAt: string;
 }
 

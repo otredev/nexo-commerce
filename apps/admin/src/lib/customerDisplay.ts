@@ -2,10 +2,15 @@
  * Customer display (Phase 8): the register publishes what the customer should see.
  * - Same computer (second monitor): BroadcastChannel, no server involved.
  * - Another device (tablet, TV): the state goes to /api/pos/display/:code and from there over a WebSocket.
+ * The display answers only one thing: the customer's optional sign-up. Same computer: over the channel;
+ * another device: it waits in the hub's inbox, which the register polls while it is asking.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DisplayState } from "@nexo/shared";
-import { del, post, RequestError } from "./api";
+import { displaySignupMessageSchema, type DisplaySignupMessage, type DisplayState } from "@nexo/shared";
+import { del, get, post, RequestError } from "./api";
+
+/** A display on this computer says "here" every few seconds; after this long without hearing it, it's gone. */
+const LOCAL_TTL = 15_000;
 
 export const displayChannelName = (tenantId: string, locationId: string) => `nx-display:${tenantId}:${locationId}`;
 const codeKey = (tenantId: string, locationId: string) => `nx.pos.display.${tenantId}.${locationId}`;
@@ -22,15 +27,29 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
   const [code, setCodeState] = useState<string | null>(() => readCode(key));
   const [remote, setRemote] = useState<{ displays: number; error: string | null }>({ displays: 0, error: null });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [localSeen, setLocalSeen] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const onMessage = useRef<((m: DisplaySignupMessage) => void) | null>(null);
 
   useEffect(() => {
     if (typeof BroadcastChannel === "undefined") return;
     const ch = new BroadcastChannel(displayChannelName(tenantId, locationId));
     channel.current = ch;
-    // A display that opens late asks for the current state.
-    ch.onmessage = (e) => { if (e.data === "hello" && last.current) ch.postMessage(last.current); };
+    ch.onmessage = (e) => {
+      // A display that opens late asks for the current state; open displays say "here" now and then.
+      if (e.data === "hello" || e.data === "here") {
+        setLocalSeen(Date.now());
+        if (e.data === "hello" && last.current) ch.postMessage(last.current);
+        return;
+      }
+      if (e.data && typeof e.data === "object" && "type" in e.data) {
+        const r = displaySignupMessageSchema.safeParse(e.data);
+        if (r.success) onMessage.current?.(r.data);
+      }
+    };
     return () => { ch.close(); channel.current = null; };
   }, [tenantId, locationId]);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 5_000); return () => clearInterval(t); }, []);
 
   const setCode = (c: string | null) => {
     try { if (c) localStorage.setItem(key, c); else localStorage.removeItem(key); } catch { /* private mode */ }
@@ -70,5 +89,16 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
     setRemote({ displays: 0, error: null });
   };
 
-  return { publish, code, pair, unpair, remote };
+  /** The customer's answer on another device, if any (picked up once). */
+  const pollInbox = useCallback(async (): Promise<DisplaySignupMessage | null> => {
+    if (!code) return null;
+    const raw = await get<unknown>(`/pos/display/${code}/inbox`).catch(() => null);
+    const r = displaySignupMessageSchema.safeParse(raw);
+    return r.success ? r.data : null;
+  }, [code]);
+
+  /** Is someone looking? A display open on this computer, or one connected with the code. */
+  const active = now - localSeen < LOCAL_TTL || remote.displays > 0;
+
+  return { publish, code, pair, unpair, remote, active, onMessage, pollInbox };
 }

@@ -552,6 +552,12 @@ body[data-pos] .nx-toast-region { top: calc(var(--topbar-height) + var(--space-4
 .nx-cd__pair { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); max-width: 520px; }
 .nx-cd__code { width: 7.5ch; padding: 10px 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); text-align: center; font: 500 44px/1.2 var(--font-mono); letter-spacing: .15em; }
 .nx-cd__error { margin: 0; color: var(--danger); }
+.nx-cd__signup { display: flex; flex-direction: column; gap: var(--space-4); width: min(520px, 100%); text-align: left; }
+.nx-cd__signup > .nx-cd__logo, .nx-cd__signup > .nx-cd__welcome, .nx-cd__signup > .nx-cd__hint, .nx-cd__signup > .nx-cd__status { align-self: center; text-align: center; }
+.nx-cd__signup .nx-input { min-height: 52px; font-size: 18px; }
+.nx-cd__signup .nx-choice { font-size: 16px; }
+.nx-cd__signup-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+.nx-cd__signup-actions > * { flex: 1; }
 .nx-pair-code { font: 500 48px/1 var(--font-mono); letter-spacing: .2em; text-align: center; padding: var(--space-4) 0; }
 @media (max-width: 760px), (orientation: portrait) {
   .nx-cd:not(.nx-cd--center) { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }

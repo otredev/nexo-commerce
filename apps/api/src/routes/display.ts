@@ -37,6 +37,14 @@ export const posDisplayRoutes = new Hono<AppEnv>()
     return c.json((await res.json()) as { displays: number });
   })
 
+  /** The customer's answer to "¿Quieres registrarte?" (or null). Picked up once. */
+  .get("/:code/inbox", requirePermission("pos:sell"), async (c) => {
+    const res = await call(hub(c, c.req.param("code")), "GET", `/inbox?tenantId=${encodeURIComponent(c.var.auth.tenant.id)}`);
+    if (res.status === 404) throw new AppError(404, "display_gone", "Este emparejamiento terminó. Genera un código nuevo.");
+    c.header("Cache-Control", "no-store");
+    return c.json(await res.json());
+  })
+
   .delete("/:code", requirePermission("pos:sell"), async (c) => {
     await call(hub(c, c.req.param("code")), "DELETE", `/?tenantId=${encodeURIComponent(c.var.auth.tenant.id)}`);
     return c.body(null, 204);

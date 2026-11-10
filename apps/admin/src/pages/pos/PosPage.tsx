@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Banknote, Lock, Minus, Monitor, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserRound, X } from "lucide-react";
-import { formatQty, parseMoney, priceCart, unitInfo, type CashSession, type DisplayState, type CategoryItem, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { ArrowLeft, Banknote, Lock, Minus, Monitor, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserPlus, UserRound, X } from "lucide-react";
+import { firstNameOf, formatQty, parseMoney, priceCart, unitInfo, type CashSession, type Customer, type DisplaySignupMessage, type DisplayState, type CategoryItem, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
 import { categoryTree } from "../../lib/categories";
 import { useDisplayPublisher } from "../../lib/customerDisplay";
 import { Alert, Badge, Button, EmptyState, Modal, Segmented, TextField, useDebounced, useToast } from "@nexo/ui";
-import { get, RequestError } from "../../lib/api";
+import { get, post, RequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { centsToInput, useBusiness } from "../../lib/business";
 import { useLoad, useSubmit } from "../../lib/hooks";
-import { EMPTY_CART, lineLabel, useStored, type Cart, type CartLine } from "../../lib/pos";
+import { EMPTY_CART, lineLabel, newClientId, useStored, type Cart, type CartLine } from "../../lib/pos";
 import { Thumb } from "../../components/StockBadge";
 import { CashMovementModal, CloseCashModal, OpenCashPanel } from "./CashModals";
 import { CheckoutModal } from "./Checkout";
@@ -119,6 +119,10 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
   const display = useDisplayPublisher(tenantId, session.locationId);
   const [displayOpen, setDisplayOpen] = useState(false);
   const [after, setAfter] = useState<{ phase: "paying"; paid: number; change: number } | { phase: "paid"; sale: SaleDetail } | null>(null);
+  /** Optional self sign-up on the customer display; `thenPay` = asked when the cashier pressed «Cobrar». */
+  const [signup, setSignup] = useState<{ id: string; error: string | null; thenPay: boolean; saving: boolean } | null>(null);
+  /** The owner decides it in Configuración › Negocio. */
+  const signupEnabled = settings?.posCustomerSignup !== false;
   useEffect(() => {
     if (after?.phase === "paid" && cart.lines.length) setAfter(null);
   }, [cart.lines.length, after?.phase]);
@@ -135,7 +139,8 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
       business: { name: settings.tradeName, logoKey: settings.logoKey },
       currency: settings.currency,
       locale: settings.locale,
-      phase: paid ? "paid" : after?.phase === "paying" ? "paying" : cart.lines.length ? "cart" : "idle",
+      phase: paid ? "paid" : after?.phase === "paying" ? "paying" : signup ? "signup" : cart.lines.length ? "cart" : "idle",
+      signup: signup && !paid ? { id: signup.id, error: signup.error } : null,
       lines: cart.lines.map((l, i) => ({
         key: l.key,
         name: l.name,
@@ -152,13 +157,61 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
       pricesIncludeTax,
       paidCents: paid ? paid.payments.reduce((a, p) => a + p.amountCents, 0) : after?.phase === "paying" ? after.paid : 0,
       changeCents: paid ? paid.changeCents : after?.phase === "paying" ? after.change : 0,
-      customerName: cart.customerName || null,
+      customerName: firstNameOf(cart.customerName),
       saleNumber: paid ? paid.number : null,
       at: Date.now(),
     };
     display.publish(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, totals, priced, after, settings, display.publish, pricesIncludeTax]);
+  }, [cart, totals, priced, after, settings, display.publish, pricesIncludeTax, signup]);
+
+  /* ---------- Self sign-up on the customer display (optional, before paying) ---------- */
+  const startSignup = (thenPay: boolean) => setSignup({ id: newClientId().replace(/[^A-Za-z0-9]/g, "").slice(0, 16), error: null, thenPay, saving: false });
+  /** «Cobrar»: offers the sign-up first if the cashier wants it, someone is looking and there's no customer yet. */
+  const startPay = () => {
+    if (signupEnabled && display.active && !cart.customerId) startSignup(true);
+    else setPaying(true);
+  };
+  const endSignup = (pay: boolean) => { setSignup(null); if (pay) setPaying(true); else focusSearch(); };
+  const signupRef = useRef(signup);
+  signupRef.current = signup;
+  const onDisplayMessage = useCallback(async (m: DisplaySignupMessage) => {
+    const s = signupRef.current;
+    if (!s || m.id !== s.id || s.saving) return;
+    if (m.type === "signup_skip") return endSignup(s.thenPay);
+    setSignup({ ...s, saving: true, error: null });
+    const body = { name: m.name, email: m.email, phone: m.phone, acceptsMarketing: m.acceptsMarketing };
+    let customer: Customer | null = null;
+    let existing = false;
+    try {
+      customer = await post<Customer>("/customers?origen=pos", body);
+    } catch (e) {
+      const err = e as RequestError;
+      if (err.code === "duplicate" && err.fields.existingId) {
+        // Already a customer (same phone or email): use that record; the cashier sees which one.
+        customer = await get<Customer>(`/customers/${err.fields.existingId}`).catch(() => null);
+        existing = Boolean(customer);
+      }
+      if (!customer) {
+        const field = Object.values(err.fields ?? {}).find((v) => typeof v === "string" && !/^[0-9A-Z]{20,}$/.test(v));
+        const msg = err.status === 422 && field ? field : err.status === 403 ? "No pudimos registrarte aquí. Pide ayuda en caja." : "No pudimos registrarte. Intenta de nuevo o pide ayuda en caja.";
+        setSignup({ ...s, saving: false, error: msg });
+        return;
+      }
+    }
+    const picked = customer;
+    setCart((c) => ({ ...c, customerId: picked.id, customerName: picked.name, customerContact: picked.email ?? picked.phone ?? "" }));
+    toast(existing ? `Ya estaba registrado: ${customer.name}` : `Cliente registrado: ${customer.name}`, "success");
+    endSignup(s.thenPay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setCart, toast]);
+  useEffect(() => { display.onMessage.current = (m) => void onDisplayMessage(m); return () => { display.onMessage.current = null; }; }, [display.onMessage, onDisplayMessage]);
+  // Another device answers through the hub's inbox: check it while asking.
+  useEffect(() => {
+    if (!signup || signup.saving || !display.code) return;
+    const t = setInterval(() => { void display.pollInbox().then((m) => { if (m) void onDisplayMessage(m); }); }, 1500);
+    return () => clearInterval(t);
+  }, [signup, display.code, display.pollInbox, onDisplayMessage]);
 
   // The cashier's limit only counts discounts given by hand.
   const overLimit = maxDiscountBps !== null && priced.manualDiscountCents * 10_000 > totals.subtotalCents * maxDiscountBps;
@@ -197,8 +250,8 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (paying || discountFor || customerOpen || cashOpen || closeOpen || couponOpen) return;
-      if (e.key === "F2") { e.preventDefault(); if (cart.lines.length && !overLimit && !priced.couponError) setPaying(true); }
+      if (paying || signup || discountFor || customerOpen || cashOpen || closeOpen || couponOpen) return;
+      if (e.key === "F2") { e.preventDefault(); if (cart.lines.length && !overLimit && !priced.couponError) startPay(); }
       else if (e.key === "F4") { e.preventDefault(); if (cart.lines.length) setDiscountFor("cart"); }
       else if (e.key === "Escape") { setQ(""); focusSearch(); }
       else if (selected && document.activeElement === searchRef.current && !q && (e.key === "+" || e.key === "-")) {
@@ -258,7 +311,12 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
 
       <aside className="nx-pos__cart" aria-label="Venta actual">
         <div className="nx-row" style={{ justifyContent: "space-between", padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
-          <Button size="sm" variant="ghost" onClick={() => setCustomerOpen(true)}><UserRound className="nx-icon" aria-hidden="true" />{cart.customerName || "Cliente"}</Button>
+          <div className="nx-row" style={{ gap: 2 }}>
+            <Button size="sm" variant="ghost" onClick={() => setCustomerOpen(true)}><UserRound className="nx-icon" aria-hidden="true" />{cart.customerName || "Cliente"}</Button>
+            {signupEnabled && display.active && !cart.customerId && (
+              <Button size="sm" variant="ghost" icon aria-label="Que el cliente se registre en su pantalla" title="Registro en la pantalla del cliente" onClick={() => startSignup(false)}><UserPlus className="nx-icon" aria-hidden="true" /></Button>
+            )}
+          </div>
           <div className="nx-row" style={{ gap: 4 }}>
             <Button size="sm" variant="ghost" icon={!display.code} aria-label="Pantalla del cliente" title="Pantalla del cliente" onClick={() => setDisplayOpen(true)}>
               <Monitor className="nx-icon" aria-hidden="true" />
@@ -337,7 +395,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           {priced.couponError && <Alert tone="warning">{priced.couponError}</Alert>}
         </div>
         <div className="nx-pos__pay nx-stack" style={{ gap: 8 }}>
-          <Button variant="primary" block disabled={!cart.lines.length || overLimit || Boolean(invalidQty) || Boolean(priced.couponError)} onClick={() => setPaying(true)}>
+          <Button variant="primary" block disabled={!cart.lines.length || overLimit || Boolean(invalidQty) || Boolean(priced.couponError)} onClick={startPay}>
             Cobrar {money(totals.totalCents)} <kbd>F2</kbd>
           </Button>
           <div className="nx-row" style={{ justifyContent: "space-between" }}>
@@ -387,7 +445,28 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
         onPick={(c) => { setCart({ ...cart, customerId: c?.id ?? null, customerName: c?.name ?? "", customerContact: c ? (c.email ?? c.phone ?? "") : "" }); setCustomerOpen(false); focusSearch(); }}
       />
       <CouponModal open={couponOpen} onClose={() => { setCouponOpen(false); focusSearch(); }} onApply={(coupon) => { setCart({ ...cart, coupon }); setCouponOpen(false); focusSearch(); }} />
-      <DisplayModal open={displayOpen} onClose={() => { setDisplayOpen(false); focusSearch(); }} locationId={session.locationId} display={display} />
+      <DisplayModal open={displayOpen} onClose={() => { setDisplayOpen(false); focusSearch(); }} locationId={session.locationId} display={display} signupEnabled={signupEnabled} />
+      <Modal
+        open={Boolean(signup)}
+        title="Registro en la pantalla del cliente"
+        onClose={() => endSignup(false)}
+        footer={
+          <>
+            <Button variant="ghost" disabled={signup?.saving} onClick={() => { endSignup(false); setCustomerOpen(true); }}>Lo registro yo</Button>
+            {signup?.thenPay ? <Button variant="primary" disabled={signup?.saving} onClick={() => endSignup(true)}>Cobrar sin registro</Button> : <Button disabled={signup?.saving} onClick={() => endSignup(false)}>Cancelar</Button>}
+          </>
+        }
+      >
+        <div className="nx-stack" style={{ gap: 12 }}>
+          <div className="nx-row" style={{ gap: 10 }}>
+            <span className="nx-spinner" aria-hidden="true" />
+            <span>{signup?.saving ? "Registrando al cliente…" : "Tu cliente puede escribir su nombre, teléfono o correo en su pantalla, o tocar «Ahora no»."}</span>
+          </div>
+          {signup?.error && <Alert tone="warning">Le mostramos al cliente: «{signup.error}»</Alert>}
+          {!display.active && <Alert tone="warning">No vemos una pantalla del cliente abierta. Ábrela desde el botón de la pantalla, o registra tú al cliente.</Alert>}
+          {signup?.thenPay && <p className="nx-help" style={{ margin: 0 }}>Al terminar (o si toca «Ahora no») se abre el cobro.</p>}
+        </div>
+      </Modal>
       <CashMovementModal session={session} open={cashOpen} onClose={() => { setCashOpen(false); focusSearch(); }} onDone={onSessionChange} />
       <CloseCashModal session={session} open={closeOpen} onClose={() => setCloseOpen(false)} onClosed={() => { setCloseOpen(false); onClosed(); }} />
     </>
@@ -427,7 +506,7 @@ function DiscountModal({ target, baseCents, current, money, onClose, onApply }: 
   );
 }
 
-function DisplayModal({ open, onClose, locationId, display }: { open: boolean; onClose: () => void; locationId: string; display: ReturnType<typeof useDisplayPublisher> }) {
+function DisplayModal({ open, onClose, locationId, display, signupEnabled }: { open: boolean; onClose: () => void; locationId: string; display: ReturnType<typeof useDisplayPublisher>; signupEnabled: boolean }) {
   const pair = useSubmit(async () => { await display.pair(); });
   const unpair = useSubmit(async () => { await display.unpair(); });
   const url = `${window.location.origin}/pantalla`;
@@ -459,6 +538,14 @@ function DisplayModal({ open, onClose, locationId, display }: { open: boolean; o
             </>
           ) : (
             <div><Button loading={pair.pending} onClick={() => void pair.submit()}>Conectar otro dispositivo</Button></div>
+          )}
+        </section>
+        <section className="nx-stack" style={{ gap: 8 }}>
+          <h3 className="nx-label" style={{ margin: 0 }}>Registro de clientes</h3>
+          {signupEnabled ? (
+            <p className="nx-help" style={{ margin: 0 }}>Activado. Al tocar «Cobrar» en una venta sin cliente, la pantalla le pregunta «¿Quieres registrarte?» (puede tocar «Ahora no»). También puedes pedírselo con el botón <UserPlus size={13} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> junto a «Cliente».</p>
+          ) : (
+            <p className="nx-help" style={{ margin: 0 }}>Desactivado. El propietario o un administrador lo activa en Configuración › Negocio.</p>
           )}
         </section>
       </div>

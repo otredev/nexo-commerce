@@ -1,6 +1,7 @@
 /**
  * Push notifications (Phase 8): what can be notified, to whom (by permission) and how it reads.
  */
+import { z } from "zod";
 import type { Permission } from "./roles";
 
 export const NOTIFICATION_EVENTS = [
@@ -43,8 +44,13 @@ export interface DisplayState {
   business: { name: string; logoKey: string | null };
   currency: string;
   locale: string;
-  /** idle: welcome screen · cart: items being scanned · paying: collecting payment · paid: thank you + change. */
-  phase: "idle" | "cart" | "paying" | "paid";
+  /**
+   * idle: welcome screen · cart: items being scanned · signup: the customer may register (optional) ·
+   * paying: collecting payment · paid: thank you + change.
+   */
+  phase: "idle" | "cart" | "signup" | "paying" | "paid";
+  /** While phase is "signup": which request the display answers, and the register's error, if any. */
+  signup?: { id: string; error: string | null } | null;
   lines: Array<{ key: string; name: string; detail: string; quantity: string; totalCents: number; savingCents: number }>;
   itemsCount: number;
   subtotalCents: number;
@@ -54,8 +60,37 @@ export interface DisplayState {
   pricesIncludeTax: boolean;
   paidCents: number;
   changeCents: number;
+  /** Only the first name: the display is in front of other people. */
   customerName: string | null;
   /** Folio of the finished sale (paid phase). */
   saleNumber: number | null;
   at: number;
 }
+
+/* ---------- Customer display → register: self sign-up (optional, before paying) ---------- */
+
+const signupId = z.string().regex(/^[A-Za-z0-9_-]{6,40}$/);
+
+/**
+ * The only thing a display may send back. The register checks it again (customerSchema) before creating
+ * the customer; the display hub forwards it only while the register is asking for that same id.
+ */
+export const displaySignupMessageSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("signup"),
+      id: signupId,
+      name: z.string().trim().min(2, "Escribe tu nombre").max(120),
+      email: z.union([z.string().trim().toLowerCase().email("Correo no válido").max(254), z.literal("")]).nullable().default(null).transform((v) => (v ? v : null)),
+      phone: z.string().trim().max(32).regex(/^[+\d\s()-]*$/, "Teléfono no válido").nullable().default(null).transform((v) => (v ? v : null)),
+      acceptsMarketing: z.boolean().default(false),
+    })
+    .strict()
+    .refine((m) => m.email || m.phone, { message: "Escribe tu teléfono o tu correo", path: ["phone"] }),
+  z.object({ type: z.literal("signup_skip"), id: signupId }).strict(),
+]);
+export type DisplaySignupMessage = z.infer<typeof displaySignupMessageSchema>;
+export const DISPLAY_MESSAGE_MAX = 2_000;
+
+/** First word of a name: what the display shows of the customer. */
+export const firstNameOf = (name: string | null | undefined) => (name ?? "").trim().split(/\s+/)[0] || null;

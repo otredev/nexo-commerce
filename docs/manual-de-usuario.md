@@ -270,6 +270,15 @@ Tu cliente puede ver lo que vas escaneando, el total y su cambio. Toca el botón
 
 ![Pantalla del cliente en una tablet](img/pantalla-cliente.png)
 
+#### Registro del cliente en su pantalla (opcional)
+
+Tu cliente puede registrarse él mismo en su pantalla antes de pagar:
+
+- **Al cobrar**: si la venta no tiene cliente y hay una pantalla del cliente abierta, al tocar **Cobrar** (o F2) su pantalla le pregunta **«¿Quieres registrarte?»**. Escribe su nombre y su teléfono o correo, y elige si quiere recibir promociones. Si toca **Ahora no**, se abre el cobro como siempre. En la caja puedes **Cobrar sin registro** o **Lo registro yo** en cualquier momento.
+- **Cuando quieras**: el botón de **persona con +** junto a «Cliente» le muestra el registro sin abrir el cobro.
+- Si su teléfono o correo ya estaba registrado, se usa ese cliente y la caja te avisa cuál es.
+- Lo activa o desactiva el **propietario** (o un administrador) en **Configuración → Negocio → Ofrecer a los clientes registrarse en la pantalla del cliente**; aplica a todas las cajas y viene activado. Los cajeros no pueden cambiarlo. En la pantalla del cliente solo se muestra su primer nombre.
+
 ### Ingresos, retiros y corte de caja
 
 - **Efectivo** (en la barra de la caja): registra **ingresos** (por ejemplo, más cambio) y **retiros** (por ejemplo, un pago o el dinero que se lleva el dueño), con su motivo.

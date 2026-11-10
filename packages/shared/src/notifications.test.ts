@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceLabel, NOTIFICATION_EVENTS } from "./notifications";
+import { deviceLabel, displaySignupMessageSchema, firstNameOf, NOTIFICATION_EVENTS } from "./notifications";
 import { can } from "./roles";
 
 describe("deviceLabel", () => {
@@ -17,5 +17,29 @@ describe("notification events", () => {
     const forCashier = NOTIFICATION_EVENTS.filter((e) => can("cashier", e.permission)).map((e) => e.id);
     expect(forCashier).toEqual(["order_new", "order_paid", "daily_digest"]);
     expect(NOTIFICATION_EVENTS.every((e) => can("owner", e.permission))).toBe(true);
+  });
+});
+
+describe("customer display sign-up message", () => {
+  const ok = (m: unknown) => displaySignupMessageSchema.safeParse(m).success;
+  it("accepts a sign-up with a phone or an email, and «not now»", () => {
+    expect(ok({ type: "signup", id: "abc123def", name: "Ana López", phone: "+1 305 555 0101", email: "" })).toBe(true);
+    expect(ok({ type: "signup", id: "abc123def", name: "Ana", email: "ANA@Example.com", acceptsMarketing: true })).toBe(true);
+    expect(displaySignupMessageSchema.parse({ type: "signup", id: "abc123def", name: "Ana", email: "ANA@Example.com" })).toMatchObject({ email: "ana@example.com", phone: null, acceptsMarketing: false });
+    expect(ok({ type: "signup_skip", id: "abc123def" })).toBe(true);
+  });
+  it("rejects anything else", () => {
+    expect(ok({ type: "signup", id: "abc123def", name: "Ana" })).toBe(false); // no phone nor email
+    expect(ok({ type: "signup", id: "abc123def", name: "A", phone: "5551234" })).toBe(false);
+    expect(ok({ type: "signup", id: "abc123def", name: "Ana", phone: "<script>" })).toBe(false);
+    expect(ok({ type: "signup", id: "bad id!", name: "Ana", phone: "5551234" })).toBe(false);
+    expect(ok({ type: "signup", id: "abc123def", name: "Ana", phone: "5551234", notes: "extra" })).toBe(false);
+    expect(ok({ type: "sale", id: "abc123def" })).toBe(false);
+    expect(ok("hello")).toBe(false);
+  });
+  it("shows only the first name", () => {
+    expect(firstNameOf("  Ana María López ")).toBe("Ana");
+    expect(firstNameOf("")).toBeNull();
+    expect(firstNameOf(null)).toBeNull();
   });
 });

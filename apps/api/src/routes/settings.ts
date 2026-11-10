@@ -20,10 +20,11 @@ export const settingsRoutes = new Hono<AppEnv>()
   })
 
   .put("/", requirePermission("settings:write"), json(businessSettingsSchema), async (c) => {
-    const input = c.req.valid("json");
+    const body = c.req.valid("json");
     const { db, tenant: t } = c.var.auth;
     const current = await db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get();
     if (!current) throw notFound("Configuración");
+    const input = { ...body, posCustomerSignup: body.posCustomerSignup ?? current.posCustomerSignup };
 
     const changes = diff(current, input);
     if (!changes.changed) {

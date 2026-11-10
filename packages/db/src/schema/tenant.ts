@@ -24,6 +24,8 @@ export const businessSettings = sqliteTable("business_settings", {
   /** Highest discount a cashier can give, in basis points of the subtotal (1000 = 10 %). */
   cashierMaxDiscountBps: integer("cashier_max_discount_bps").notNull().default(1000),
   receiptWidthMm: integer("receipt_width_mm").notNull().default(80),
+  /** The register may offer the customer to sign up on the customer display before paying. */
+  posCustomerSignup: integer("pos_customer_signup", { mode: "boolean" }).notNull().default(true),
   updatedAt: text("updated_at").notNull().default(now),
 });
 

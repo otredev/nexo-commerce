@@ -3,8 +3,13 @@
  * the register (signed in) pushes the state; displays (a tablet, a TV; no sign-in, only the code)
  * listen over a WebSocket. Uses the hibernation API, so idle displays cost nothing.
  * A code that nobody uses for 24 hours is erased.
+ *
+ * The one thing a display may send back is the customer's optional sign-up (or "not now"), and only while
+ * the register is asking for it (state.phase "signup" with the same id). It waits in an inbox that the
+ * register picks up; the register then creates the customer with its own session and permissions.
  */
 import { DurableObject } from "cloudflare:workers";
+import { DISPLAY_MESSAGE_MAX, displaySignupMessageSchema } from "@nexo/shared";
 
 const IDLE_MS = 24 * 3600_000;
 
@@ -51,6 +56,12 @@ export class DisplayHub extends DurableObject {
         if (state) pair[1].send(state);
         return new Response(null, { status: 101, webSocket: pair[0] });
       }
+      case "GET /inbox": {
+        if (!meta || meta.tenantId !== url.searchParams.get("tenantId")) return Response.json({ error: "not_found" }, { status: 404 });
+        const msg = await this.ctx.storage.get<string>("inbox");
+        if (msg) await this.ctx.storage.delete("inbox");
+        return new Response(msg ?? "null", { headers: { "content-type": "application/json" } });
+      }
       case "DELETE /": {
         if (!meta || meta.tenantId !== url.searchParams.get("tenantId")) return Response.json({ error: "not_found" }, { status: 404 });
         await this.end();
@@ -60,9 +71,19 @@ export class DisplayHub extends DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  /** Displays only listen; a ping keeps proxies from closing the socket. */
+  /** A ping keeps proxies from closing the socket; the only other message is the sign-up the register asked for. */
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    if (message === "ping") ws.send("pong");
+    if (message === "ping") return ws.send("pong");
+    if (typeof message !== "string" || message.length > DISPLAY_MESSAGE_MAX) return;
+    let parsed: unknown;
+    try { parsed = JSON.parse(message); } catch { return; }
+    const r = displaySignupMessageSchema.safeParse(parsed);
+    if (!r.success) return;
+    const state = await this.ctx.storage.get<string>("state");
+    let asking: string | null = null;
+    try { const s = state ? (JSON.parse(state) as { phase?: string; signup?: { id?: string } | null }) : null; asking = s?.phase === "signup" ? (s.signup?.id ?? null) : null; } catch { /* no state */ }
+    if (asking !== r.data.id) return;
+    await this.ctx.storage.put("inbox", JSON.stringify(r.data));
   }
 
   override async webSocketClose(ws: WebSocket, code: number) {

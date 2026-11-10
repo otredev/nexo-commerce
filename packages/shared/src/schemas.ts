@@ -51,6 +51,8 @@ export const businessSettingsSchema = z.object({
   /** Highest discount a cashier can give without a supervisor, in basis points of the subtotal. */
   cashierMaxDiscountBps: z.number().int().min(0).max(10_000).default(1000),
   receiptWidthMm: z.union([z.literal(58), z.literal(80)]).default(80),
+  /** Offer customers to sign up on the customer display before paying. Left out = keep the current value. */
+  posCustomerSignup: z.boolean().optional(),
 });
 export type BusinessSettingsInput = z.infer<typeof businessSettingsSchema>;
 

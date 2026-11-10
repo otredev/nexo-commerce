@@ -155,6 +155,15 @@ function BusinessTab() {
             <option value="58">58 mm</option>
           </SelectField>
           <TextAreaField label="Mensaje al pie del recibo" optional fieldClassName="nx-span-2" {...text("receiptFooter")} placeholder="¡Gracias por tu compra!" rows={2} />
+          <div className="nx-span-2">
+            <Checkbox
+              label="Ofrecer a los clientes registrarse en la pantalla del cliente"
+              help="Al cobrar una venta sin cliente, la pantalla del cliente le pregunta «¿Quieres registrarte?» (puede tocar «Ahora no»). El cajero también puede pedírselo con el botón junto a «Cliente»."
+              checked={form.posCustomerSignup}
+              disabled={!editable}
+              onChange={(e) => setForm({ ...form, posCustomerSignup: e.target.checked })}
+            />
+          </div>
         </div>
       </Card>
     </form>

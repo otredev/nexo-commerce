@@ -238,8 +238,15 @@ img { display: block; max-width: 100%; }
 .st-legal a { color: var(--ink); }
 .st-footer__legal { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; font-size: 13px; }
 .st-footer__legal a { color: var(--ink-muted); }
-/* Copy written by the server for crawlers; React replaces it in a moment. */
+/*
+ * Copy written by the server for crawlers and link previews; React replaces it in a moment. People with
+ * JavaScript never see it (it would flash as an unstyled list): they get the same spinner the app shows
+ * while it loads. Without JavaScript, index.html's <noscript> shows it.
+ */
 .st-prerender { max-width: 1120px; margin: 0 auto; padding: 32px 20px; font-family: var(--font-sans); color: var(--ink); }
+.st-prerender { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#root:has(> .st-prerender) { min-height: 60vh; display: grid; place-items: center; color: var(--ink-muted); }
+#root:has(> .st-prerender)::after { content: ""; width: 14px; height: 14px; border-radius: var(--radius-full); border: 1.5px solid currentColor; border-right-color: transparent; animation: nx-spin .7s linear infinite; }
 .st-prerender h1 { font: var(--st-heading-weight, 400) 32px/1.15 var(--st-heading, var(--font-serif)); letter-spacing: var(--st-heading-tracking,-0.01em); margin: 0 0 12px; }
 .st-prerender ul { padding-left: 20px; line-height: 1.8; }
 .st-prerender a { color: var(--ink); }
