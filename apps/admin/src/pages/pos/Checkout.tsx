@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Check, CreditCard, Landmark, Printer, Wallet } from "lucide-react";
-import { formatFolio, parseMoney, PAYMENT_METHODS, paymentLabel, settle, type PaymentMethod, type SaleDetail, type SaleInput } from "@nexo/shared";
+import { Banknote, Check, CreditCard, Landmark, Nfc, Printer, Wallet } from "lucide-react";
+import { formatFolio, parseMoney, PAYMENT_METHODS, paymentLabel, settle, type PaymentMethod, type SaleDetail, type SaleInput, type TerminalPayment } from "@nexo/shared";
 import { Alert, Button, Modal, TextField, useToast } from "@nexo/ui";
-import { post, RequestError } from "../../lib/api";
+import { get, post, RequestError } from "../../lib/api";
 import { centsToInput, useBusiness } from "../../lib/business";
 import { useSubmit } from "../../lib/hooks";
 import { newClientId, quickCash } from "../../lib/pos";
 
 const ICONS: Record<PaymentMethod, typeof Wallet> = { cash: Banknote, card: CreditCard, transfer: Landmark, other: Wallet };
 
-interface Payment { method: PaymentMethod; amountCents: number; reference: string | null }
+interface Payment { method: PaymentMethod; amountCents: number; reference: string | null; paymentIntentId?: string | null }
+export type CardOnDisplay = TerminalPayment & { attempt: number };
 
 /**
  * Payment step. The clientId is created once per checkout and reused on every retry,
  * so a timeout followed by "Cobrar" again never charges twice.
  */
-export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewSale, onProgress }: {
+export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewSale, onProgress, card, onCard }: {
   open: boolean;
   totalCents: number;
   build: () => Omit<SaleInput, "clientId" | "payments">;
@@ -24,6 +25,10 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
   onNewSale: () => void;
   /** What has been received so far and the change, for the customer display. */
   onProgress?: (paidCents: number, changeCents: number) => void;
+  /** Tap to Pay on the customer display: whether it can charge now, and why not. */
+  card?: { ready: boolean; hint: string | null; locationId: string };
+  /** The card charge to show on the customer display (null = none). */
+  onCard?: (c: CardOnDisplay | null) => void;
 }) {
   const { money } = useBusiness();
   const toast = useToast();
@@ -35,6 +40,8 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
   const [email, setEmail] = useState("");
   const clientId = useRef(newClientId());
   const inputRef = useRef<HTMLInputElement>(null);
+  const [cardPay, setCardPayState] = useState<CardOnDisplay | null>(null);
+  const setCardPay = (c: CardOnDisplay | null) => { setCardPayState(c); onCard?.(c); };
 
   const totalRef = useRef(totalCents);
   totalRef.current = totalCents;
@@ -50,6 +57,7 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
     setReference("");
     setSale(null);
     setEmail("");
+    setCardPayState(null);
     setTimeout(() => inputRef.current?.select(), 30);
   }, [open]);
 
@@ -78,12 +86,58 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
     setMethod(method === "cash" ? "card" : "cash");
   };
 
-  const charge = useSubmit(async () => {
-    if (!check.ok) throw new RequestError(422, "payment_error", check.message);
-    const created = await post<SaleDetail>("/sales", { ...build(), clientId: clientId.current, payments: draft });
+  const charge = useSubmit(async (list?: Payment[]) => {
+    const pays = list ?? draft;
+    const ok = settle(totalCents, pays);
+    if (!ok.ok) throw new RequestError(422, "payment_error", ok.message);
+    const created = await post<SaleDetail>("/sales", { ...build(), clientId: clientId.current, payments: pays });
     setSale(created);
+    setCardPay(null);
     onPaid(created);
   });
+
+  /* ---------- Card on the customer display (Stripe Terminal, Tap to Pay) ---------- */
+  const cardAmount = method === "card" && typed > 0 ? Math.min(typed, remaining) : remaining;
+  const startCard = useSubmit(async () => {
+    if (!card) return;
+    const p = await post<TerminalPayment>("/pos/terminal/payments", { locationId: card.locationId, amountCents: cardAmount, clientId: clientId.current });
+    setCardPay({ ...p, attempt: 1 });
+  });
+  const cancelCard = async () => {
+    const c = cardPay;
+    setCardPay(null);
+    if (c && c.status !== "succeeded") await post(`/pos/terminal/payments/${c.id}/cancel`).catch(() => {});
+  };
+  const refunds = useSubmit(async () => {
+    for (const p of payments.filter((x) => x.paymentIntentId)) await post(`/pos/terminal/payments/${p.paymentIntentId}/refund`);
+    setPayments(payments.filter((x) => !x.paymentIntentId));
+    toast("Cobro con tarjeta reembolsado");
+  });
+  // The server asks Stripe how the charge is going (the device is never trusted).
+  useEffect(() => {
+    if (!cardPay || cardPay.status === "succeeded" || cardPay.status === "canceled") return;
+    let stop = false;
+    const t = setInterval(async () => {
+      const p = await get<TerminalPayment>(`/pos/terminal/payments/${cardPay.id}`).catch(() => null);
+      if (!p || stop) return;
+      if (p.status === cardPay.status && p.error === cardPay.error) return;
+      // After «Reintentar», a past decline still shows until the device collects again.
+      if (p.status === "failed" && cardPay.status === "waiting" && cardPay.attempt > 1 && p.error === cardPay.error) return;
+      const next = { ...p, attempt: cardPay.attempt };
+      setCardPay(next);
+      if (p.status === "succeeded") {
+        const list = [...payments, { method: "card" as const, amountCents: p.amountCents, reference: "Tarjeta · Stripe", paymentIntentId: p.id }];
+        setPayments(list);
+        const left = totalCents - list.reduce((a, x) => a + x.amountCents, 0);
+        if (left <= 0) void charge.submit(list);
+        else { setMethod("cash"); setValue(centsToInput(left)); setTimeout(() => setCardPay(null), 2500); }
+      }
+    }, 1500);
+    return () => { stop = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardPay?.id, cardPay?.status, cardPay?.attempt, cardPay?.error]);
+  const cardBusy = Boolean(cardPay && cardPay.status !== "failed" && cardPay.status !== "canceled");
+  const paidByCard = payments.some((p) => p.paymentIntentId);
   const sendEmail = useSubmit(async () => {
     if (!sale) return;
     await post(`/sales/${sale.id}/email`, { email });
@@ -98,7 +152,7 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
       if (e.key !== "Enter" || (e.target as HTMLElement).closest("[data-no-enter]")) return;
       e.preventDefault();
       if (sale) onNewSale();
-      else if (check.ok && !charge.pending) void charge.submit();
+      else if (check.ok && !charge.pending && !cardPay) void charge.submit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -134,12 +188,12 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
     <Modal
       open={open}
       title="Cobrar"
-      onClose={onClose}
-      dismissable={!charge.pending}
+      onClose={() => { void cancelCard(); onClose(); }}
+      dismissable={!charge.pending && !cardBusy && !paidByCard}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={charge.pending}>Volver</Button>
-          <Button variant="primary" size="lg" disabled={!check.ok} loading={charge.pending} onClick={() => void charge.submit()}>
+          <Button variant="ghost" onClick={() => { void cancelCard(); onClose(); }} disabled={charge.pending || cardBusy || paidByCard}>Volver</Button>
+          <Button variant="primary" size="lg" disabled={!check.ok || Boolean(cardPay)} loading={charge.pending} onClick={() => void charge.submit()}>
             {charge.pending ? "Cobrando" : `Cobrar ${money(totalCents)}`} {!charge.pending && <kbd>Enter</kbd>}
           </Button>
         </>
@@ -151,6 +205,34 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
           <span className="nx-big-number">{money(totalCents)}</span>
         </div>
         {charge.message && <Alert tone="danger">{charge.message}</Alert>}
+        {charge.message && paidByCard && (
+          <Alert tone="warning">
+            La tarjeta ya se cobró pero la venta no se guardó. Corrige lo que dice arriba y vuelve a cobrar (no se cobra dos veces), o reembolsa la tarjeta.{" "}
+            <Button size="sm" variant="ghost" loading={refunds.pending} onClick={() => void refunds.submit()}>Reembolsar tarjeta</Button>
+            {refunds.message && <div style={{ color: "var(--danger)" }}>{refunds.message}</div>}
+          </Alert>
+        )}
+        {cardPay && (
+          <div className="nx-card-wait" data-status={cardPay.status}>
+            <div className="nx-row" style={{ gap: 10, alignItems: "center" }}>
+              {cardPay.status === "succeeded" ? <Check size={20} aria-hidden="true" /> : cardPay.status === "failed" ? <CreditCard size={20} aria-hidden="true" /> : <span className="nx-spinner" aria-hidden="true" />}
+              <strong>{money(cardPay.amountCents)}</strong>
+              <span>
+                {cardPay.status === "waiting" && "Esperando la tarjeta en la pantalla del cliente…"}
+                {cardPay.status === "processing" && "Procesando el pago…"}
+                {cardPay.status === "succeeded" && "Pago aprobado"}
+                {cardPay.status === "failed" && (cardPay.error ?? "No se pudo cobrar")}
+                {cardPay.status === "canceled" && "Cobro cancelado"}
+              </span>
+            </div>
+            {cardPay.status !== "succeeded" && (
+              <div className="nx-row" style={{ gap: 8, marginTop: 10 }}>
+                {cardPay.status === "failed" && <Button size="sm" variant="primary" onClick={() => setCardPay({ ...cardPay, status: "waiting", attempt: cardPay.attempt + 1 })}>Reintentar</Button>}
+                <Button size="sm" variant="ghost" onClick={() => void cancelCard()}>Cancelar cobro con tarjeta</Button>
+              </div>
+            )}
+          </div>
+        )}
         {payments.length > 0 && (
           <div>
             {payments.map((p, i) => (
@@ -184,6 +266,14 @@ export function CheckoutModal({ open, totalCents, build, onClose, onPaid, onNewS
             help={method === "cash" ? undefined : "Tarjeta y transferencia no generan cambio."}
           />
           {method !== "cash" && <TextField label="Referencia" optional value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Autorización, folio…" />}
+          {method === "card" && card && !cardPay && (
+            <div className="nx-span-2 nx-stack" style={{ gap: 6 }}>
+              <Button variant="primary" disabled={!card.ready || cardAmount <= 0} loading={startCard.pending} onClick={() => void startCard.submit()}>
+                <Nfc className="nx-icon" aria-hidden="true" />Cobrar {money(cardAmount)} en la pantalla del cliente
+              </Button>
+              <span className="nx-help">{startCard.message ?? (card.ready ? "El cliente acerca su tarjeta o teléfono a la pantalla (Tap to Pay)." : card.hint ?? "Conecta la app de la pantalla del cliente con Tap to Pay.")}</span>
+            </div>
+          )}
           {method === "cash" && (
             <div className="nx-field">
               <span className="nx-label">Cambio</span>

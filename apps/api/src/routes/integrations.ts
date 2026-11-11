@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { control, controlDb, tenant } from "@nexo/db";
-import { apiKeyCreateSchema, planOf, webhookEndpointSchema, webhookUrlProblem, type IntegrationsSettings } from "@nexo/shared";
+import { apiKeyCreateSchema, planOf, smsSettingsSchema, smsTestSchema, webhookEndpointSchema, webhookUrlProblem, type IntegrationsSettings } from "@nexo/shared";
 import type { AppEnv } from "../env";
 import { generateApiKey, toApiKey } from "../lib/apiKeys";
 import { auditEntry } from "../lib/audit";
@@ -11,9 +11,12 @@ import { AppError, notFound } from "../lib/errors";
 import { toStatement } from "../lib/inventory";
 import { attemptDelivery, emitEvent, lastDeliveries, newWebhookSecret, toDelivery, toEndpoint } from "../lib/outbound";
 import { json } from "../lib/validate";
+import { sealSecret } from "../lib/secrets";
+import { sendSms, smsConfig, toE164, verifyTwilio } from "../lib/sms";
+import { getSettings } from "../lib/sales";
 import { requirePermission } from "../middleware/auth";
 
-const { webhookEndpoints, webhookDeliveries } = tenant;
+const { webhookEndpoints, webhookDeliveries, smsSettings } = tenant;
 
 const limitError = (what: string, limit: number, plan: string) =>
   new AppError(402, "plan_limit", `Tu plan ${plan} permite hasta ${limit} ${what}. Mejora tu plan en Configuración › Plan para agregar más.`);
@@ -23,9 +26,10 @@ export const integrationRoutes = new Hono<AppEnv>()
 
   .get("/", async (c) => {
     const { db, tenant: t } = c.var.auth;
-    const [keys, hooks] = await Promise.all([
+    const [keys, hooks, sms] = await Promise.all([
       controlDb(c.env.DB_CONTROL).select().from(control.apiKeys).where(and(eq(control.apiKeys.tenantId, t.id), isNull(control.apiKeys.revokedAt))).orderBy(desc(control.apiKeys.createdAt)),
       db.select().from(webhookEndpoints).where(eq(webhookEndpoints.tenantId, t.id)).orderBy(webhookEndpoints.createdAt),
+      smsConfig(db, t.id),
     ]);
     const base = c.env.APP_URL.replace(/\/$/, "");
     const plan = planOf(t.plan);
@@ -35,8 +39,45 @@ export const integrationRoutes = new Hono<AppEnv>()
       limits: { apiKeys: plan.limits.apiKeys, webhooks: plan.limits.webhooks },
       apiUrl: `${base}/api`,
       mcpUrl: `${base}/mcp`,
+      sms: sms ? { provider: "twilio", accountSid: sms.accountSid, sender: sms.sender, updatedAt: sms.updatedAt } : null,
     };
     return c.json(body);
+  })
+
+  /* ---------- Text messages (Twilio) ---------- */
+  .put("/sms", json(smsSettingsSchema), async (c) => {
+    const input = c.req.valid("json");
+    const { db, d1, tenant: t } = c.var.auth;
+    const current = await smsConfig(db, t.id);
+    const sameAccount = current?.accountSid === input.accountSid;
+    if (!input.authToken && !sameAccount) throw new AppError(422, "validation_error", "Escribe el Auth Token", { authToken: "Escribe el Auth Token" });
+    if (input.authToken) await verifyTwilio(c.env, input.accountSid, input.authToken);
+    const authTokenEnc = input.authToken ? await sealSecret(c.env, t.id, input.authToken) : current!.authTokenEnc;
+    const now = new Date().toISOString();
+    await d1.batch([
+      toStatement(d1, db.insert(smsSettings).values({ tenantId: t.id, provider: "twilio", accountSid: input.accountSid, authTokenEnc, sender: input.sender, updatedAt: now })
+        .onConflictDoUpdate({ target: smsSettings.tenantId, set: { accountSid: input.accountSid, authTokenEnc, sender: input.sender, updatedAt: now } })),
+      toStatement(d1, auditEntry(c, { action: current ? "integration.sms_update" : "integration.sms_create", entity: "sms_settings", entityId: t.id, after: { accountSid: input.accountSid, sender: input.sender } })),
+    ]);
+    return c.json({ provider: "twilio", accountSid: input.accountSid, sender: input.sender, updatedAt: now });
+  })
+
+  .delete("/sms", async (c) => {
+    const { db, d1, tenant: t } = c.var.auth;
+    await d1.batch([
+      toStatement(d1, db.delete(smsSettings).where(eq(smsSettings.tenantId, t.id))),
+      toStatement(d1, auditEntry(c, { action: "integration.sms_delete", entity: "sms_settings", entityId: t.id })),
+    ]);
+    return c.body(null, 204);
+  })
+
+  .post("/sms/test", json(smsTestSchema), async (c) => {
+    const { db, tenant: t } = c.var.auth;
+    const s = await getSettings(c);
+    const to = toE164(c.req.valid("json").phone, s.currency);
+    if (!to) throw new AppError(422, "validation_error", "Teléfono no válido", { phone: "Revisa el número" });
+    await sendSms(c.env, db, t.id, to, `${s.tradeName}: mensaje de prueba de Nexo. Los recibos por texto ya están listos.`);
+    return c.body(null, 204);
   })
 
   /* ---------- API keys ---------- */

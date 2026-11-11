@@ -1,0 +1,21 @@
+{
+  "name": "nexo-display-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pantalla del cliente de Nexo para Android con Tap to Pay (Stripe Terminal).",
+  "scripts": {
+    "add:android": "cap add android",
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "build:debug": "cap sync android && cd android && ./gradlew assembleDebug",
+    "build:release": "cap sync android && cd android && ./gradlew bundleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor-community/stripe-terminal": "^8.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

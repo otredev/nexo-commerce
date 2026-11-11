@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import type { Permission } from "./roles";
+import type { TerminalPayment } from "./terminal";
 
 export const NOTIFICATION_EVENTS = [
   { id: "order_new", label: "Pedido nuevo en la tienda", help: "Cuando un cliente hace un pedido en línea.", permission: "orders:read" },
@@ -48,9 +49,21 @@ export interface DisplayState {
    * idle: welcome screen · cart: items being scanned · signup: the customer may register (optional) ·
    * paying: collecting payment · paid: thank you + change.
    */
-  phase: "idle" | "cart" | "signup" | "paying" | "paid";
+  phase: "idle" | "cart" | "signup" | "paying" | "card" | "paid";
+  /** phase "card": the charge the display device collects with Tap to Pay, and how it is going. */
+  card?: (TerminalPayment & { attempt: number }) | null;
   /** While phase is "signup": which request the display answers, and the register's error, if any. */
   signup?: { id: string; error: string | null } | null;
+  /**
+   * What the customer may do on the display right now, under one request id (the hub only forwards
+   * messages with this id): `account` = «Registrarme / Ya soy cliente» buttons during the sale;
+   * `receipt` = how they want their receipt after paying (the methods the owner enabled).
+   */
+  ask?: { id: string; account: boolean; receipt: ReceiptMethod[] | null } | null;
+  /** Masked contact of the identified customer, to offer «send it to a•••@gmail.com». */
+  receiptTo?: { email: string | null; phone: string | null } | null;
+  /** A short message for the customer: looking up their account, an error, «¡Hola, Ana!», «Recibo enviado». */
+  notice?: { tone: "info" | "success" | "error"; text: string } | null;
   lines: Array<{ key: string; name: string; detail: string; quantity: string; totalCents: number; savingCents: number }>;
   itemsCount: number;
   subtotalCents: number;
@@ -71,6 +84,12 @@ export interface DisplayState {
 
 const signupId = z.string().regex(/^[A-Za-z0-9_-]{6,40}$/);
 
+/** How the customer may get the receipt; the owner picks which ones are offered. */
+export const RECEIPT_METHODS = { sms: "Texto", email: "Correo", print: "Impreso", none: "Sin recibo" } as const;
+export type ReceiptMethod = keyof typeof RECEIPT_METHODS;
+export const RECEIPT_METHOD_IDS = Object.keys(RECEIPT_METHODS) as ReceiptMethod[];
+const phoneField = z.string().trim().max(32).regex(/^[+\d\s()-]*$/, "Teléfono no válido");
+
 /**
  * The only thing a display may send back. The register checks it again (customerSchema) before creating
  * the customer; the display hub forwards it only while the register is asking for that same id.
@@ -88,7 +107,39 @@ export const displaySignupMessageSchema = z.discriminatedUnion("type", [
     .strict()
     .refine((m) => m.email || m.phone, { message: "Escribe tu teléfono o tu correo", path: ["phone"] }),
   z.object({ type: z.literal("signup_skip"), id: signupId }).strict(),
+  /** «Ya soy cliente»: the register looks the phone up and the cashier confirms who it is. */
+  z.object({ type: z.literal("login"), id: signupId, phone: phoneField.refine((v) => v.replace(/\D/g, "").length >= 7, "Escribe tu teléfono completo") }).strict(),
+  /** After paying. `to` = another email or phone; null = the one on the customer's record. */
+  z
+    .object({ type: z.literal("receipt"), id: signupId, method: z.enum(RECEIPT_METHOD_IDS as [ReceiptMethod, ...ReceiptMethod[]]), to: z.string().trim().max(254).nullable().default(null).transform((v) => (v ? v : null)) })
+    .strict()
+    .superRefine((m, ctx) => {
+      if (!m.to) return;
+      if (m.method === "email" && !z.string().email().safeParse(m.to).success) ctx.addIssue({ code: "custom", message: "Correo no válido", path: ["to"] });
+      if (m.method === "sms" && (!/^[+\d\s()-]*$/.test(m.to) || m.to.replace(/\D/g, "").length < 7)) ctx.addIssue({ code: "custom", message: "Teléfono no válido", path: ["to"] });
+    }),
 ]);
+
+/** Which request a display message answers (the hub checks it against the state it holds). */
+export function displayMessageAllowed(state: Pick<DisplayState, "phase" | "signup" | "ask"> | null, m: DisplaySignupMessage): boolean {
+  if (!state) return false;
+  if (state.phase === "signup" && state.signup?.id === m.id && (m.type === "signup" || m.type === "signup_skip")) return true;
+  const ask = state.ask;
+  if (!ask || ask.id !== m.id) return false;
+  if (m.type === "receipt") return Boolean(ask.receipt?.includes(m.method));
+  return ask.account;
+}
+
+/** «a•••@gmail.com», «•••• 0142»: enough for the customer to recognize it, not for others to read it. */
+export const maskEmail = (e: string | null | undefined) => {
+  if (!e || !e.includes("@")) return null;
+  const [u, d] = e.split("@");
+  return `${u!.slice(0, 1)}•••@${d}`;
+};
+export const maskPhone = (p: string | null | undefined) => {
+  const d = (p ?? "").replace(/\D/g, "");
+  return d.length >= 4 ? `•••• ${d.slice(-4)}` : null;
+};
 export type DisplaySignupMessage = z.infer<typeof displaySignupMessageSchema>;
 export const DISPLAY_MESSAGE_MAX = 2_000;
 

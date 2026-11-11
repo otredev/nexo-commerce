@@ -6,9 +6,34 @@
  */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Maximize2 } from "lucide-react";
-import { displaySignupMessageSchema, formatMoney, type DisplaySignupMessage, type DisplayState } from "@nexo/shared";
-import { Button, Checkbox, TextField } from "@nexo/ui";
+import { Check, Maximize2, Nfc, X } from "lucide-react";
+import { formatMoney, type DisplayState } from "@nexo/shared";
+import { Button } from "@nexo/ui";
+import { AccountActions, ReceiptChooser, SignupFields, type Send } from "./DisplayActions";
+import { useTapToPay } from "./tapToPay";
+
+/** «Acerca tu tarjeta»: the charge the display device collects (Tap to Pay), and its result. */
+function CardScreen({ state }: { state: DisplayState }) {
+  const card = state.card!;
+  const money = (c: number) => formatMoney(c, state.currency, state.locale);
+  const Icon = card.status === "succeeded" ? Check : card.status === "failed" || card.status === "canceled" ? X : Nfc;
+  return (
+    <div className="nx-cd nx-cd--center">
+      <div className="nx-cd__card" data-status={card.status} role="status" aria-live="polite">
+        <div className="nx-cd__card-icon"><Icon size={64} strokeWidth={1.4} aria-hidden="true" /></div>
+        <div className="nx-cd__card-amount nx-num">{money(card.amountCents)}</div>
+        <p className="nx-cd__hint" style={{ fontSize: "clamp(18px, 2.2vw, 26px)", color: card.status === "failed" ? "var(--danger)" : undefined }}>
+          {card.status === "waiting" && "Acerca tu tarjeta o teléfono a la parte trasera de esta pantalla"}
+          {card.status === "processing" && "Procesando tu pago… no retires la tarjeta"}
+          {card.status === "succeeded" && "¡Pago aprobado!"}
+          {card.status === "failed" && (card.error ?? "No se pudo cobrar")}
+          {card.status === "canceled" && "Cobro cancelado"}
+        </p>
+        {card.status === "failed" && <p className="nx-cd__status">La caja puede intentarlo de nuevo o cobrar de otra forma.</p>}
+      </div>
+    </div>
+  );
+}
 import { useAuth } from "../../lib/auth";
 import { displayChannelName } from "../../lib/customerDisplay";
 
@@ -25,47 +50,23 @@ function useWakeLock() {
   }, []);
 }
 
-type Send = (m: DisplaySignupMessage) => void;
-
-/** "¿Quieres registrarte?": optional; the register creates the customer and answers with an error if any. */
+/** «¿Quieres registrarte?» full screen, when the cashier asks for it (at «Cobrar» or with the button). */
 function SignupForm({ state, send, logo }: { state: DisplayState; send: Send; logo: ReactNode }) {
   const id = state.signup?.id ?? "";
-  const [form, setForm] = useState({ name: "", phone: "", email: "", acceptsMarketing: false });
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
-  // A new request starts clean; an error from the register lets the customer fix and send again.
-  useEffect(() => { setForm({ name: "", phone: "", email: "", acceptsMarketing: false }); setErrors({}); setSent(false); }, [id]);
+  useEffect(() => { setSent(false); }, [id]);
   useEffect(() => { if (state.signup?.error) setSent(false); }, [state.signup?.error, state.at]);
   const money = (c: number) => formatMoney(c, state.currency, state.locale);
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const r = displaySignupMessageSchema.safeParse({ type: "signup", id, name: form.name, phone: form.phone, email: form.email, acceptsMarketing: form.acceptsMarketing });
-    if (!r.success) {
-      const out: Record<string, string> = {};
-      for (const i of r.error.issues) { const k = String(i.path[0] ?? "name"); out[k] ??= i.message; }
-      return setErrors(out);
-    }
-    setErrors({});
-    setSent(true);
-    send(r.data);
-  };
   return (
     <div className="nx-cd nx-cd--center">
-      <form className="nx-cd__signup" onSubmit={submit} noValidate>
+      <div className="nx-cd__signup">
         {logo}
         <h1 className="nx-cd__welcome" style={{ fontSize: "clamp(28px, 4vw, 44px)" }}>¿Quieres registrarte?</h1>
         <p className="nx-cd__hint">Es opcional. Guardamos tus compras y te avisamos de promociones si quieres.</p>
         {state.signup?.error && !sent && <p className="nx-cd__error" role="alert">{state.signup.error}</p>}
-        <TextField label="Nombre" autoComplete="name" value={form.name} maxLength={120} onChange={(e) => setForm({ ...form, name: e.target.value })} error={errors.name} disabled={sent} autoFocus />
-        <TextField label="Teléfono" type="tel" inputMode="tel" autoComplete="tel" value={form.phone} maxLength={32} onChange={(e) => setForm({ ...form, phone: e.target.value })} error={errors.phone} disabled={sent} />
-        <TextField label="Correo" type="email" inputMode="email" autoComplete="email" optional value={form.email} maxLength={254} onChange={(e) => setForm({ ...form, email: e.target.value })} error={errors.email} disabled={sent} />
-        <Checkbox label="Quiero recibir promociones y novedades" checked={form.acceptsMarketing} onChange={(e) => setForm({ ...form, acceptsMarketing: e.target.checked })} disabled={sent} />
-        <div className="nx-cd__signup-actions">
-          <Button type="button" size="lg" variant="ghost" disabled={sent} onClick={() => { setSent(true); send({ type: "signup_skip", id }); }}>Ahora no</Button>
-          <Button type="submit" size="lg" variant="primary" loading={sent}>Registrarme</Button>
-        </div>
+        <SignupFields id={id} send={send} busy={sent} onSent={() => setSent(true)} onCancel={() => { setSent(true); send({ type: "signup_skip", id }); }} />
         {state.totalCents > 0 && <p className="nx-cd__status">Total de tu compra: <strong className="nx-num">{money(state.totalCents)}</strong></p>}
-      </form>
+      </div>
     </div>
   );
 }
@@ -85,12 +86,12 @@ export function CustomerDisplayView({ state, status, send }: { state: DisplaySta
   const logo = state.business.logoKey ? <img className="nx-cd__logo" src={`/files/${state.business.logoKey}`} alt="" /> : null;
 
   if (state.phase === "signup" && state.signup && send) return <SignupForm state={state} send={send} logo={logo} />;
+  if (state.phase === "card" && state.card) return <CardScreen state={state} />;
   if (state.phase === "idle" || (state.phase === "cart" && state.lines.length === 0)) {
     return (
       <div className="nx-cd nx-cd--center">
         {logo}
         <h1 className="nx-cd__welcome">{state.business.name}</h1>
-        <p className="nx-cd__hint">¡Bienvenido!</p>
         {status && <p className="nx-cd__status">{status}</p>}
       </div>
     );
@@ -105,6 +106,7 @@ export function CustomerDisplayView({ state, status, send }: { state: DisplaySta
           {state.changeCents > 0 && <div className="nx-cd__change"><span>Tu cambio</span><strong className="nx-num">{money(state.changeCents)}</strong></div>}
         </div>
         {state.saleNumber && <p className="nx-cd__hint">Venta #{String(state.saleNumber).padStart(6, "0")}</p>}
+        {send && <ReceiptChooser state={state} send={send} />}
       </div>
     );
   }
@@ -128,6 +130,7 @@ export function CustomerDisplayView({ state, status, send }: { state: DisplaySta
             </li>
           ))}
         </ol>
+        {send && <AccountActions state={state} send={send} />}
       </section>
       <aside className="nx-cd__totals" aria-label="Total">
         <dl>
@@ -181,7 +184,7 @@ export function LocalDisplayPage() {
     const here = setInterval(() => ch.postMessage("here"), 5_000);
     return () => { clearInterval(here); ch.close(); channel.current = null; };
   }, [me, locationId]);
-  return <><CustomerDisplayView state={state} status="Abre una venta en la caja de esta computadora." send={(m) => channel.current?.postMessage(m)} /><FullscreenButton /></>;
+  return <><CustomerDisplayView state={state} send={(m) => channel.current?.postMessage(m)} /><FullscreenButton /></>;
 }
 
 const SAVED_CODE = "nx.display.code";
@@ -194,7 +197,13 @@ export function PairedDisplayPage() {
   const [state, setState] = useState<DisplayState | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const socket = useRef<WebSocket | null>(null);
+  const device = useRef<string | null>(null);
   useWakeLock();
+  // Inside the Android display app: Tap to Pay. Tells the register what this device can do.
+  useTapToPay(code, state, (d) => {
+    device.current = JSON.stringify({ type: "device", ...d });
+    if (socket.current?.readyState === 1) socket.current.send(device.current);
+  });
   useEffect(() => { document.title = "Pantalla del cliente"; }, []);
 
   useEffect(() => {
@@ -219,7 +228,7 @@ export function PairedDisplayPage() {
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${window.location.host}/api/display/${code}/ws`);
       socket.current = ws;
-      ws.onopen = () => { retry = 0; setStatus(null); ping = setInterval(() => ws?.readyState === 1 && ws.send("ping"), 25_000); };
+      ws.onopen = () => { retry = 0; setStatus(null); if (device.current) ws?.send(device.current); ping = setInterval(() => ws?.readyState === 1 && ws.send("ping"), 25_000); };
       ws.onmessage = (e) => { if (e.data !== "pong") { try { setState(JSON.parse(e.data as string) as DisplayState); } catch { /* ignore */ } } };
       ws.onclose = (e) => {
         clearInterval(ping);
@@ -257,7 +266,7 @@ export function PairedDisplayPage() {
   }
   return (
     <>
-      <CustomerDisplayView state={state} status={status ?? "Conectado. Esperando la siguiente venta."} send={(m) => { if (socket.current?.readyState === 1) socket.current.send(JSON.stringify(m)); }} />
+      <CustomerDisplayView state={state} status={status} send={(m) => { if (socket.current?.readyState === 1) socket.current.send(JSON.stringify(m)); }} />
       <FullscreenButton />
       <button type="button" className="nx-cd__unpair" onClick={() => { try { localStorage.removeItem(SAVED_CODE); } catch { /* ignore */ } setCode(null); setState(null); }}>Desconectar</button>
     </>

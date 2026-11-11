@@ -3,10 +3,11 @@ import { useState, type ReactNode } from "react";
 import { Copy, Eye, EyeOff, KeyRound, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
 import {
   API_KEY_ACCESS, API_KEY_ACCESS_IDS, WEBHOOK_EVENT_TYPES, WEBHOOK_EVENTS,
-  type ApiKey, type ApiKeyAccess, type IntegrationsSettings, type WebhookDelivery, type WebhookEndpoint, type WebhookEventType,
+  type ApiKey, type ApiKeyAccess, type IntegrationsSettings, type TerminalStatus, type WebhookDelivery, type WebhookEndpoint, type WebhookEventType,
 } from "@nexo/shared";
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Modal, Segmented, SelectField, Switch, TextField, useToast } from "@nexo/ui";
 import { del, get, post, put } from "../lib/api";
+import { useBusiness } from "../lib/business";
 import { useLoad, useSubmit } from "../lib/hooks";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -51,8 +52,104 @@ export function IntegrationsTab() {
       <ApiKeysCard s={s} reload={load.reload} />
       <McpCard s={s} />
       <WebhooksCard s={s} reload={load.reload} />
+      <TerminalCard />
+      <SmsCard s={s} reload={load.reload} />
       <RestCard s={s} />
     </div>
+  );
+}
+
+/* ---------------- Card payments at the register (Stripe Terminal, Tap to Pay) ---------------- */
+
+function TerminalCard() {
+  const toast = useToast();
+  const load = useLoad(() => get<TerminalStatus>("/pos/terminal"));
+  const { settings } = useBusiness();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ line1: "", city: "", state: "", postalCode: "", country: settings?.currency === "USD" ? "US" : "MX" });
+  const save = useSubmit(async () => {
+    await post(`/pos/terminal/locations/${editing}`, form);
+    toast("Tienda activada para cobrar con tarjeta");
+    setEditing(null);
+    await load.reload();
+  });
+  const t = load.data;
+  return (
+    <Card title="Cobro con tarjeta en caja (Tap to Pay)" description="El cliente paga acercando su tarjeta o teléfono a la pantalla del cliente: un dispositivo Android con NFC y la app de Nexo. El dinero llega a tu cuenta de Stripe." actions={t?.available ? <Badge tone="success">Disponible</Badge> : undefined}>
+      {load.error && <Alert tone="danger">{load.error.message}</Alert>}
+      {t && !t.available && <Alert tone="warning">{t.reason}</Alert>}
+      {t?.available && (
+        <div className="nx-stack" style={{ gap: 12 }}>
+          {t.locations.map((l) => (
+            <div key={l.id} className="nx-list-item" style={{ alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500 }}>{l.name}</div>
+                <div className="nx-help">{l.terminalLocationId ? "Activa: la app de la pantalla del cliente de esta tienda cobra con tarjeta." : "Stripe pide la dirección de la tienda para activar Tap to Pay."}</div>
+                {editing === l.id && (
+                  <form className="nx-form-grid" style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); void save.submit(); }}>
+                    {save.message && !Object.keys(save.fields).length && <div className="nx-span-2"><Alert tone="danger">{save.message}</Alert></div>}
+                    <TextField label="Calle y número" fieldClassName="nx-span-2" value={form.line1} onChange={(e) => setForm({ ...form, line1: e.target.value })} error={save.fields.line1} />
+                    <TextField label="Ciudad" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} error={save.fields.city} />
+                    <TextField label="Estado" optional value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="FL" error={save.fields.state} />
+                    <TextField label="Código postal" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} error={save.fields.postalCode} />
+                    <TextField label="País" value={form.country} maxLength={2} onChange={(e) => setForm({ ...form, country: e.target.value.toUpperCase() })} help="US, MX…" error={save.fields.country} />
+                    <div className="nx-span-2 nx-row" style={{ gap: 8 }}>
+                      <Button type="submit" variant="primary" loading={save.pending}>Activar</Button>
+                      <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button>
+                    </div>
+                  </form>
+                )}
+              </div>
+              {l.terminalLocationId ? <Badge tone="success">Activa</Badge> : editing !== l.id && <Button size="sm" onClick={() => setEditing(l.id)}>Activar</Button>}
+            </div>
+          ))}
+          <p className="nx-help" style={{ margin: 0 }}>Después, en la caja: botón de monitor › <strong>Conectar otro dispositivo</strong>, y escribe el código en la app de la pantalla del cliente.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ---------------- Text messages (Twilio) ---------------- */
+
+function SmsCard({ s, reload }: { s: IntegrationsSettings; reload: () => Promise<void> }) {
+  const toast = useToast();
+  const [form, setForm] = useState({ accountSid: s.sms?.accountSid ?? "", authToken: "", sender: s.sms?.sender ?? "" });
+  const [testTo, setTestTo] = useState("");
+  const save = useSubmit(async () => {
+    await put("/integrations/sms", { ...form, authToken: form.authToken || null });
+    setForm({ ...form, authToken: "" });
+    toast("Twilio conectado");
+    await reload();
+  });
+  const remove = useSubmit(async () => { await del("/integrations/sms"); setForm({ accountSid: "", authToken: "", sender: "" }); toast("Twilio desconectado"); await reload(); });
+  const test = useSubmit(async () => { await post("/integrations/sms/test", { phone: testTo }); toast(`Mensaje de prueba enviado a ${testTo}`); });
+  return (
+    <Card
+      title="Mensajes de texto (Twilio)"
+      description="Para enviar el recibo por mensaje de texto cuando el cliente lo elige en su pantalla. Usa tu propia cuenta de Twilio; los mensajes se cobran en ella."
+      actions={s.sms ? <Badge tone="success">Conectado</Badge> : undefined}
+    >
+      <form className="nx-stack" style={{ gap: 14 }} onSubmit={(e) => { e.preventDefault(); void save.submit(); }}>
+        {save.message && !Object.keys(save.fields).length && <Alert tone="danger">{save.message}</Alert>}
+        <div className="nx-form-grid">
+          <TextField label="Account SID" value={form.accountSid} onChange={(e) => setForm({ ...form, accountSid: e.target.value })} placeholder="AC…" error={save.fields.accountSid} autoComplete="off" spellCheck={false} />
+          <TextField label="Auth Token" type="password" value={form.authToken} onChange={(e) => setForm({ ...form, authToken: e.target.value })} placeholder={s.sms ? "Guardado · escribe uno nuevo para cambiarlo" : ""} error={save.fields.authToken} autoComplete="new-password" />
+          <TextField label="Remitente" value={form.sender} onChange={(e) => setForm({ ...form, sender: e.target.value })} placeholder="+13055550100 o MG…" error={save.fields.sender} help="Tu número de Twilio o un Messaging Service SID." />
+        </div>
+        <div className="nx-row" style={{ gap: 8 }}>
+          <Button type="submit" variant="primary" loading={save.pending}>{s.sms ? "Guardar cambios" : "Conectar Twilio"}</Button>
+          {s.sms && <Button type="button" variant="danger-ghost" loading={remove.pending} onClick={() => void remove.submit()}>Desconectar</Button>}
+        </div>
+        <p className="nx-help" style={{ margin: 0 }}>El Auth Token se guarda cifrado y no se vuelve a mostrar. Lo verificamos con Twilio al guardarlo.</p>
+      </form>
+      {s.sms && (
+        <form className="nx-row" style={{ alignItems: "flex-end", marginTop: 16, gap: 8 }} onSubmit={(e) => { e.preventDefault(); void test.submit(); }}>
+          <div style={{ flex: 1 }}><TextField label="Enviar un mensaje de prueba a" type="tel" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="(305) 555-0142" error={test.fields.phone ?? test.message ?? undefined} /></div>
+          <Button type="submit" loading={test.pending} disabled={!testTo}><Send className="nx-icon" aria-hidden="true" />Probar</Button>
+        </form>
+      )}
+    </Card>
   );
 }
 

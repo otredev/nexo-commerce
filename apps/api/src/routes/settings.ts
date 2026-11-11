@@ -6,6 +6,7 @@ import type { AppEnv } from "../env";
 import { auditEntry, diff } from "../lib/audit";
 import { notFound } from "../lib/errors";
 import { json } from "../lib/validate";
+import { smsConfig } from "../lib/sms";
 import { requirePermission } from "../middleware/auth";
 
 const { businessSettings } = tenant;
@@ -16,7 +17,7 @@ export const settingsRoutes = new Hono<AppEnv>()
     const row = await db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get();
     if (!row) throw notFound("Configuración");
     const { tenantId: _, ...settings } = row;
-    return c.json(settings);
+    return c.json({ ...settings, smsReady: Boolean(await smsConfig(db, t.id)) });
   })
 
   .put("/", requirePermission("settings:write"), json(businessSettingsSchema), async (c) => {
@@ -24,7 +25,7 @@ export const settingsRoutes = new Hono<AppEnv>()
     const { db, tenant: t } = c.var.auth;
     const current = await db.select().from(businessSettings).where(eq(businessSettings.tenantId, t.id)).get();
     if (!current) throw notFound("Configuración");
-    const input = { ...body, posCustomerSignup: body.posCustomerSignup ?? current.posCustomerSignup };
+    const input = { ...body, posCustomerSignup: body.posCustomerSignup ?? current.posCustomerSignup, receiptOptions: body.receiptOptions ? [...new Set(body.receiptOptions)] : current.receiptOptions };
 
     const changes = diff(current, input);
     if (!changes.changed) {
@@ -40,5 +41,5 @@ export const settingsRoutes = new Hono<AppEnv>()
     if (input.tradeName !== current.tradeName) {
       await controlDb(c.env.DB_CONTROL).update(control.tenants).set({ name: input.tradeName }).where(eq(control.tenants.id, t.id));
     }
-    return c.json({ ...input, updatedAt });
+    return c.json({ ...input, updatedAt, smsReady: Boolean(await smsConfig(db, t.id)) });
   });

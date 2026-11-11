@@ -11,6 +11,7 @@ import { AppError } from "../lib/errors";
 import { usageOf } from "../lib/plan";
 import { stripe, stripeConfigured } from "../lib/stripe";
 import { json } from "../lib/validate";
+import { getSettings } from "../lib/sales";
 import { requirePermission } from "../middleware/auth";
 
 const appLink = (env: Env, path: string) => `${env.APP_URL.replace(/\/$/, "")}${path}`;
@@ -106,7 +107,10 @@ export const billingRoutes = new Hono<AppEnv>()
     const row = await tenantRow(c.env, t.id);
     let account = row.stripeAccountId;
     if (!account) {
-      const created = await stripe<{ id: string }>(c.env, "POST", "/accounts", { type: "standard", country: "MX", email: user.email, business_profile: { name: row.name }, metadata: { tenant_id: t.id } }, { idempotencyKey: `account-${t.id}` });
+      // The account's country follows the business's currency (USD → United States, MXN → Mexico…).
+      const { currency } = await getSettings(c);
+      const country = ({ USD: "US", MXN: "MX", CAD: "CA", COP: "CO", PEN: "PE", CLP: "CL", EUR: "ES", GTQ: "GT" } as Record<string, string>)[currency] ?? "MX";
+      const created = await stripe<{ id: string }>(c.env, "POST", "/accounts", { type: "standard", country, email: user.email, business_profile: { name: row.name }, metadata: { tenant_id: t.id } }, { idempotencyKey: `account-${t.id}` });
       account = created.id;
       await controlDb(c.env.DB_CONTROL).update(control.tenants).set({ stripeAccountId: account }).where(eq(control.tenants.id, t.id));
     }

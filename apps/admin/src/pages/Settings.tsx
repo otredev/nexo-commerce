@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ImagePlus, MapPin, Percent, Plus } from "lucide-react";
-import { bpsToPercent, percentToBps, type BusinessSettings, type Location, type TaxRate } from "@nexo/shared";
+import { bpsToPercent, percentToBps, RECEIPT_METHOD_IDS, RECEIPT_METHODS, type BusinessSettings, type Location, type TaxRate } from "@nexo/shared";
 import { Alert, Badge, Button, Card, Checkbox, EmptyState, Modal, PageHeader, SelectField, Switch, Tabs, TextAreaField, TextField, useToast } from "@nexo/ui";
 import { get, post, put, RequestError } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -163,6 +163,21 @@ function BusinessTab() {
               disabled={!editable}
               onChange={(e) => setForm({ ...form, posCustomerSignup: e.target.checked })}
             />
+          </div>
+          <div className="nx-span-2 nx-field">
+            <span className="nx-label">Recibo que el cliente puede elegir en su pantalla</span>
+            <div className="nx-row" style={{ flexWrap: "wrap", gap: "8px 20px" }}>
+              {RECEIPT_METHOD_IDS.map((m) => (
+                <Checkbox
+                  key={m}
+                  label={RECEIPT_METHODS[m]}
+                  checked={form.receiptOptions.includes(m)}
+                  disabled={!editable || (m === "sms" && !form.smsReady && !form.receiptOptions.includes("sms"))}
+                  onChange={(e) => setForm({ ...form, receiptOptions: e.target.checked ? [...form.receiptOptions, m] : form.receiptOptions.filter((x) => x !== m) })}
+                />
+              ))}
+            </div>
+            <span className="nx-help">{save.fields.receiptOptions ?? (form.smsReady ? "Al pagar, la pantalla del cliente le pregunta cómo quiere su recibo." : "Al pagar, la pantalla del cliente le pregunta cómo quiere su recibo. «Texto» necesita Twilio en Configuración › Integraciones.")}</span>
           </div>
         </div>
       </Card>

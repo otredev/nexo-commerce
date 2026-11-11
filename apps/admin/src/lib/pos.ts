@@ -25,6 +25,9 @@ export interface Cart {
   customerContact: string;
   /** Registered customer; name and contact above are its snapshot. */
   customerId?: string | null;
+  /** Its email and phone, to offer «send the receipt to a•••@gmail.com» on the customer display. */
+  customerEmail?: string | null;
+  customerPhone?: string | null;
   /** Validated coupon applied to this sale. */
   coupon?: CouponRule | null;
 }

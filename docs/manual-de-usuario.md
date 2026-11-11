@@ -270,14 +270,16 @@ Tu cliente puede ver lo que vas escaneando, el total y su cambio. Toca el botón
 
 ![Pantalla del cliente en una tablet](img/pantalla-cliente.png)
 
-#### Registro del cliente en su pantalla (opcional)
+#### El cliente en su pantalla: registro, cuenta, recibo y tarjeta
 
-Tu cliente puede registrarse él mismo en su pantalla antes de pagar:
+Todo es opcional para el cliente:
 
-- **Al cobrar**: si la venta no tiene cliente y hay una pantalla del cliente abierta, al tocar **Cobrar** (o F2) su pantalla le pregunta **«¿Quieres registrarte?»**. Escribe su nombre y su teléfono o correo, y elige si quiere recibir promociones. Si toca **Ahora no**, se abre el cobro como siempre. En la caja puedes **Cobrar sin registro** o **Lo registro yo** en cualquier momento.
-- **Cuando quieras**: el botón de **persona con +** junto a «Cliente» le muestra el registro sin abrir el cobro.
-- Si su teléfono o correo ya estaba registrado, se usa ese cliente y la caja te avisa cuál es.
-- Lo activa o desactiva el **propietario** (o un administrador) en **Configuración → Negocio → Ofrecer a los clientes registrarse en la pantalla del cliente**; aplica a todas las cajas y viene activado. Los cajeros no pueden cambiarlo. En la pantalla del cliente solo se muestra su primer nombre.
+- **Durante la venta** aparecen tres botones: **Registrarme** (nombre, y teléfono o correo; elige si quiere promociones), **Ya soy cliente** (escribe su teléfono) y **Seguir sin registro**. Con «Ya soy cliente», la caja te muestra **¿Es tu cliente?** con su nombre completo: confírmalo antes de aceptar. Al identificarse se aplican las **promociones solo para clientes**.
+- **Al cobrar**, si la venta no tiene cliente, la pantalla puede preguntarle **«¿Quieres registrarte?»** a pantalla completa; si toca **Ahora no**, se abre el cobro. En la caja tienes **Cobrar sin registro** y **Lo registro yo**. El botón de **persona con +** junto a «Cliente» se lo pide cuando quieras.
+- **Al terminar**, la pantalla pregunta **«¿Cómo quieres tu recibo?»**: Texto, Correo, Impreso o Sin recibo. Si el cliente está identificado, le ofrece enviarlo a su correo o teléfono sin mostrarlo completo (a•••@gmail.com, •••• 0199), o escribir otro.
+- **Pago con tarjeta (Tap to Pay)**: si la pantalla del cliente es la **app de Nexo para Android** con NFC, en el cobro elige **Tarjeta › Cobrar … en la pantalla del cliente**. El cliente acerca su tarjeta o teléfono; la caja espera la confirmación de Stripe. Si el banco rechaza, la pantalla dice por qué y puedes **Reintentar** o cobrar de otra forma. Si la tarjeta se cobró pero la venta no se pudo guardar, la caja te deja **Reembolsar tarjeta**.
+
+Lo decide el **propietario** (o un administrador) en **Configuración → Negocio**: **Ofrecer a los clientes registrarse en la pantalla del cliente** y qué **recibos** se ofrecen. «Texto» necesita **Twilio** y Tap to Pay necesita activar la tienda en **Configuración → Integraciones**. En la pantalla del cliente solo se muestra su primer nombre.
 
 ### Ingresos, retiros y corte de caja
 
@@ -314,6 +316,8 @@ Los clientes se registran en **Clientes**, al cobrar en la caja, solos cuando ha
 ### Promociones y cupones
 
 ![Promociones](img/promociones.png)
+
+**Solo clientes registrados**: marca la promoción así para que aplique en caja únicamente cuando la venta tiene un cliente (se identificó en su pantalla o lo elegiste tú). No aplica en la tienda en línea.
 
 - **Nueva promoción**: un porcentaje de descuento para todo, para algunas categorías o para algunos productos, con fechas y canal (*caja*, *tienda en línea* o *ambos*). Se aplican solas. Si un producto tiene varias promociones, gana la mejor.
 - **Nuevo cupón**: un código (por ejemplo `BIENVENIDA`) con porcentaje o importe, compra mínima, usos máximos, fechas y canal.
@@ -498,6 +502,9 @@ Las visitas se cuentan **sin cookies**. Los pedidos y las ventas siempre son exa
 
 ## 13. Integraciones: API, webhooks y asistentes de IA
 
+
+- **Mensajes de texto (Twilio)**: escribe el Account SID, el Auth Token (se guarda cifrado y no se vuelve a mostrar) y el remitente (tu número de Twilio o un Messaging Service SID). Lo verificamos con Twilio al guardar; **Probar** manda un mensaje de prueba. Los mensajes se cobran en tu cuenta de Twilio.
+- **Cobro con tarjeta en caja (Tap to Pay)**: con tu cuenta de Stripe conectada y cobrando, **Activa** cada tienda con su dirección (Stripe la pide). Luego instala la app de la pantalla del cliente en un Android con NFC y emparéjala con el código de la caja.
 **Configuración → Integraciones** (propietario y administradores).
 
 ![Integraciones](img/integraciones.png)

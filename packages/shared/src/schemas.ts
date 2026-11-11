@@ -53,6 +53,8 @@ export const businessSettingsSchema = z.object({
   receiptWidthMm: z.union([z.literal(58), z.literal(80)]).default(80),
   /** Offer customers to sign up on the customer display before paying. Left out = keep the current value. */
   posCustomerSignup: z.boolean().optional(),
+  /** Receipt options offered on the customer display after paying. Left out = keep the current ones. */
+  receiptOptions: z.array(z.enum(["print", "email", "sms", "none"])).min(1, "Elige al menos una opción").max(4).optional(),
 });
 export type BusinessSettingsInput = z.infer<typeof businessSettingsSchema>;
 
@@ -246,7 +248,15 @@ export const saleInputSchema = z.object({
     .max(200),
   discountCents: money.default(0),
   payments: z
-    .array(z.object({ method: z.enum(PAYMENT_CODES), amountCents: money.refine((v) => v > 0, "El importe debe ser mayor a 0"), reference: z.string().trim().max(80).nullable().default(null) }))
+    .array(
+      z.object({
+        method: z.enum(PAYMENT_CODES),
+        amountCents: money.refine((v) => v > 0, "El importe debe ser mayor a 0"),
+        reference: z.string().trim().max(80).nullable().default(null),
+        /** Card charged on the customer display (Stripe Terminal); the server checks it with Stripe. */
+        paymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]{8,64}$/, "Pago no válido").nullable().default(null),
+      }),
+    )
     .min(1, "Agrega un pago")
     .max(6),
   customerName: z.string().trim().max(120).nullable().default(null).transform((v) => (v ? v : null)),
@@ -286,6 +296,7 @@ export const closeCashSchema = z.object({
   note: z.string().trim().max(300).nullable().default(null),
 });
 export const emailReceiptSchema = z.object({ email: z.string().trim().toLowerCase().email("Correo no válido").max(254) });
+export const smsReceiptSchema = z.object({ phone: z.string().trim().min(7, "Escribe el teléfono").max(32).regex(/^[+\d\s()-]+$/, "Teléfono no válido") });
 
 /* ---------- Phase 3: suppliers, purchases, transfers, counts ---------- */
 
@@ -494,11 +505,14 @@ export const promotionSchema = z
     target: z.enum(["all", "category", "product"]),
     targetIds: z.array(id).max(200).default([]),
     channel: z.enum(["all", "pos", "online"]).default("all"),
+    /** Only for identified customers: at the register, once the sale has a customer. Not online. */
+    membersOnly: z.boolean().default(false),
     startsOn: optDate,
     endsOn: optDate,
     active: z.boolean().default(true),
   })
   .superRefine((p, ctx) => {
+    if (p.membersOnly && p.channel === "online") ctx.addIssue({ code: "custom", path: ["channel"], message: "Las promociones solo para clientes aplican en caja" });
     if (p.target !== "all" && !p.targetIds.length) ctx.addIssue({ code: "custom", path: ["targetIds"], message: p.target === "category" ? "Elige al menos una categoría" : "Elige al menos un producto" });
     dateRange(p, ctx);
   });

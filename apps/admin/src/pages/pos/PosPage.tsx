@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Banknote, Lock, Minus, Monitor, Percent, Plus, ScanBarcode, ShoppingCart, Tag, Ticket, Trash2, UserPlus, UserRound, X } from "lucide-react";
-import { firstNameOf, formatQty, parseMoney, priceCart, unitInfo, type CashSession, type Customer, type DisplaySignupMessage, type DisplayState, type CategoryItem, type Named, type PosProduct, type PromotionRule, type SaleDetail } from "@nexo/shared";
+import { firstNameOf, maskEmail, maskPhone, formatQty, parseMoney, priceCart, unitInfo, type CashSession, type Customer, type DisplaySignupMessage, type DisplayState, type CategoryItem, type Named, type PosProduct, type PromotionRule, type SaleDetail, type TerminalStatus } from "@nexo/shared";
 import { categoryTree } from "../../lib/categories";
 import { useDisplayPublisher } from "../../lib/customerDisplay";
 import { Alert, Badge, Button, EmptyState, Modal, Segmented, TextField, useDebounced, useToast } from "@nexo/ui";
@@ -12,10 +12,13 @@ import { useLoad, useSubmit } from "../../lib/hooks";
 import { EMPTY_CART, lineLabel, newClientId, useStored, type Cart, type CartLine } from "../../lib/pos";
 import { Thumb } from "../../components/StockBadge";
 import { CashMovementModal, CloseCashModal, OpenCashPanel } from "./CashModals";
-import { CheckoutModal } from "./Checkout";
+import { CheckoutModal, type CardOnDisplay } from "./Checkout";
 import { CouponModal, CustomerPicker } from "./CustomerCoupon";
 
 const timeFmt = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
+
+/** Request id for the customer display (letters and digits only). */
+const mkId = () => newClientId().replace(/[^A-Za-z0-9]/g, "").slice(0, 16);
 
 export function PosPage() {
   const { me, can } = useAuth();
@@ -108,7 +111,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
     () =>
       priceCart(
         cart.lines.map((l) => ({ productId: l.productId, categoryId: l.categoryId ?? null, unitPriceCents: l.priceCents, quantity: l.quantity, taxRateBps: l.taxRateBps, manualDiscountCents: l.discountCents })),
-        { promotions: promos.data ?? [], coupon: cart.coupon ?? null, manualCartDiscountCents: cart.discountCents, pricesIncludeTax, formatMoney: (c) => money(c) },
+        { promotions: (promos.data ?? []).filter((p) => !p.membersOnly || Boolean(cart.customerId)), coupon: cart.coupon ?? null, manualCartDiscountCents: cart.discountCents, pricesIncludeTax, formatMoney: (c) => money(c) },
       ),
     [cart, pricesIncludeTax, promos.data, money],
   );
@@ -119,18 +122,46 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
   const display = useDisplayPublisher(tenantId, session.locationId);
   const [displayOpen, setDisplayOpen] = useState(false);
   const [after, setAfter] = useState<{ phase: "paying"; paid: number; change: number } | { phase: "paid"; sale: SaleDetail } | null>(null);
-  /** Optional self sign-up on the customer display; `thenPay` = asked when the cashier pressed «Cobrar». */
+  /** Full-screen «¿Quieres registrarte?» asked by the cashier; `thenPay` = asked when pressing «Cobrar». */
   const [signup, setSignup] = useState<{ id: string; error: string | null; thenPay: boolean; saving: boolean } | null>(null);
-  /** The owner decides it in Configuración › Negocio. */
+  /** The owner decides both in Configuración › Negocio. */
   const signupEnabled = settings?.posCustomerSignup !== false;
+  /** Text messages need the business's SMS provider (Integraciones). */
+  const smsReady = settings?.smsReady === true;
+  const receiptOffer = useMemo(() => (settings?.receiptOptions ?? ["print", "email", "none"]).filter((m) => m !== "sms" || smsReady), [settings?.receiptOptions, smsReady]);
+  /** One request id per sale: the display's buttons answer with it, the hub forwards only that one. */
+  const [askId, setAskId] = useState(mkId);
+  const [notice, setNotice] = useState<DisplayState["notice"]>(null);
+  const [receiptDone, setReceiptDone] = useState(false);
+  /** Contact of the customer of the sale just paid (the cart is already empty), for the receipt. */
+  const [paidContact, setPaidContact] = useState<{ email: string | null; phone: string | null } | null>(null);
+  /** Card charge shown on the customer display while it collects it (Tap to Pay). */
+  const [cardCharge, setCardCharge] = useState<CardOnDisplay | null>(null);
+  const terminal = useLoad(() => get<TerminalStatus>("/pos/terminal"));
+  const storeTerminal = terminal.data?.locations.find((l) => l.id === session.locationId);
+  const cardOnDisplay = {
+    locationId: session.locationId,
+    ready: Boolean(terminal.data?.available && storeTerminal?.terminalLocationId && display.cardReady),
+    hint: !terminal.data ? null
+      : !terminal.data.available ? terminal.data.reason
+      : !storeTerminal?.terminalLocationId ? "Activa el cobro con tarjeta de esta tienda en Configuración › Integraciones."
+      : !display.code || !display.remote.displays ? "Empareja la app de la pantalla del cliente (botón de monitor)."
+      : display.remote.device?.error ?? "La pantalla del cliente no tiene Tap to Pay listo.",
+  };
+  /** «Ya soy cliente»: who the phone belongs to, for the cashier to confirm. */
+  const [confirmLogin, setConfirmLogin] = useState<Customer | null>(null);
+  const say = useCallback((tone: "info" | "success" | "error", text: string) => setNotice({ tone, text }), []);
+  useEffect(() => { if (!notice || notice.tone === "info") return; const t = setTimeout(() => setNotice(null), 8_000); return () => clearTimeout(t); }, [notice]);
+  const newSaleOnDisplay = () => { setAskId(mkId()); setReceiptDone(false); setNotice(null); setPaidContact(null); };
   useEffect(() => {
-    if (after?.phase === "paid" && cart.lines.length) setAfter(null);
+    if (after?.phase === "paid" && cart.lines.length) { setAfter(null); newSaleOnDisplay(); }
   }, [cart.lines.length, after?.phase]);
   useEffect(() => {
     if (after?.phase !== "paid") return;
-    const t = setTimeout(() => setAfter(null), 12_000);
+    // Time to choose the receipt on the display; a new sale ends it earlier.
+    const t = setTimeout(() => { setAfter(null); newSaleOnDisplay(); }, receiptOffer.length && !receiptDone ? 60_000 : 12_000);
     return () => clearTimeout(t);
-  }, [after]);
+  }, [after, receiptDone, receiptOffer.length]);
   useEffect(() => {
     if (!settings) return;
     const paid = after?.phase === "paid" ? after.sale : null;
@@ -139,8 +170,14 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
       business: { name: settings.tradeName, logoKey: settings.logoKey },
       currency: settings.currency,
       locale: settings.locale,
-      phase: paid ? "paid" : after?.phase === "paying" ? "paying" : signup ? "signup" : cart.lines.length ? "cart" : "idle",
+      phase: paid ? "paid" : cardCharge ? "card" : after?.phase === "paying" ? "paying" : signup ? "signup" : cart.lines.length ? "cart" : "idle",
+      card: cardCharge && !paid ? cardCharge : null,
       signup: signup && !paid ? { id: signup.id, error: signup.error } : null,
+      ask: paid
+        ? (receiptOffer.length && !receiptDone ? { id: askId, account: false, receipt: receiptOffer } : null)
+        : signupEnabled && !signup && !after && !cart.customerId && cart.lines.length ? { id: askId, account: true, receipt: null } : null,
+      receiptTo: paid && paidContact ? { email: maskEmail(paidContact.email), phone: maskPhone(paidContact.phone) } : null,
+      notice,
       lines: cart.lines.map((l, i) => ({
         key: l.key,
         name: l.name,
@@ -163,55 +200,104 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
     };
     display.publish(state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, totals, priced, after, settings, display.publish, pricesIncludeTax, signup]);
+  }, [cart, totals, priced, after, settings, display.publish, pricesIncludeTax, signup, askId, notice, receiptDone, paidContact, signupEnabled, receiptOffer, cardCharge]);
 
-  /* ---------- Self sign-up on the customer display (optional, before paying) ---------- */
-  const startSignup = (thenPay: boolean) => setSignup({ id: newClientId().replace(/[^A-Za-z0-9]/g, "").slice(0, 16), error: null, thenPay, saving: false });
-  /** «Cobrar»: offers the sign-up first if the cashier wants it, someone is looking and there's no customer yet. */
+  /* ---------- What the customer does on the display (all optional) ---------- */
+  const startSignup = (thenPay: boolean) => setSignup({ id: mkId(), error: null, thenPay, saving: false });
+  /** «Cobrar»: offers the sign-up first if the owner wants it, someone is looking and there's no customer yet. */
   const startPay = () => {
     if (signupEnabled && display.active && !cart.customerId) startSignup(true);
     else setPaying(true);
   };
   const endSignup = (pay: boolean) => { setSignup(null); if (pay) setPaying(true); else focusSearch(); };
-  const signupRef = useRef(signup);
-  signupRef.current = signup;
-  const onDisplayMessage = useCallback(async (m: DisplaySignupMessage) => {
-    const s = signupRef.current;
-    if (!s || m.id !== s.id || s.saving) return;
-    if (m.type === "signup_skip") return endSignup(s.thenPay);
-    setSignup({ ...s, saving: true, error: null });
-    const body = { name: m.name, email: m.email, phone: m.phone, acceptsMarketing: m.acceptsMarketing };
-    let customer: Customer | null = null;
-    let existing = false;
+  const attach = (c: Customer) => setCart((x) => ({ ...x, customerId: c.id, customerName: c.name, customerContact: c.email ?? c.phone ?? "", customerEmail: c.email, customerPhone: c.phone }));
+  const live = useRef({ signup, askId, after, paidContact });
+  live.current = { signup, askId, after, paidContact };
+  /** One display message at a time (a second tap while looking up waits for the next one). */
+  const busy = useRef(false);
+
+  const createCustomer = async (m: Extract<DisplaySignupMessage, { type: "signup" }>): Promise<{ customer: Customer; existing: boolean } | { error: string }> => {
     try {
-      customer = await post<Customer>("/customers?origen=pos", body);
+      return { customer: await post<Customer>("/customers?origen=pos", { name: m.name, email: m.email, phone: m.phone, acceptsMarketing: m.acceptsMarketing }), existing: false };
     } catch (e) {
       const err = e as RequestError;
       if (err.code === "duplicate" && err.fields.existingId) {
         // Already a customer (same phone or email): use that record; the cashier sees which one.
-        customer = await get<Customer>(`/customers/${err.fields.existingId}`).catch(() => null);
-        existing = Boolean(customer);
+        const found = await get<Customer>(`/customers/${err.fields.existingId}`).catch(() => null);
+        if (found) return { customer: found, existing: true };
       }
-      if (!customer) {
-        const field = Object.values(err.fields ?? {}).find((v) => typeof v === "string" && !/^[0-9A-Z]{20,}$/.test(v));
-        const msg = err.status === 422 && field ? field : err.status === 403 ? "No pudimos registrarte aquí. Pide ayuda en caja." : "No pudimos registrarte. Intenta de nuevo o pide ayuda en caja.";
-        setSignup({ ...s, saving: false, error: msg });
-        return;
-      }
+      const field = Object.values(err.fields ?? {}).find((v) => typeof v === "string" && !/^[0-9A-Z]{20,}$/.test(v));
+      return { error: err.status === 422 && field ? field : err.status === 403 ? "No pudimos registrarte aquí. Pide ayuda en caja." : "No pudimos registrarte. Intenta de nuevo o pide ayuda en caja." };
     }
-    const picked = customer;
-    setCart((c) => ({ ...c, customerId: picked.id, customerName: picked.name, customerContact: picked.email ?? picked.phone ?? "" }));
-    toast(existing ? `Ya estaba registrado: ${customer.name}` : `Cliente registrado: ${customer.name}`, "success");
-    endSignup(s.thenPay);
+  };
+
+  const onDisplayMessage = useCallback(async (m: DisplaySignupMessage) => {
+    const now = live.current;
+    if (busy.current) return;
+    // Full-screen sign-up asked by the cashier.
+    if (now.signup && m.id === now.signup.id) {
+      const s = now.signup;
+      if (s.saving) return;
+      if (m.type === "signup_skip") return endSignup(s.thenPay);
+      if (m.type !== "signup") return;
+      setSignup({ ...s, saving: true, error: null });
+      const r = await createCustomer(m);
+      if ("error" in r) return setSignup({ ...s, saving: false, error: r.error });
+      attach(r.customer);
+      toast(r.existing ? `Ya estaba registrado: ${r.customer.name}` : `Cliente registrado: ${r.customer.name}`, "success");
+      say("success", `¡Hola, ${firstNameOf(r.customer.name)}!`);
+      return endSignup(s.thenPay);
+    }
+    if (m.id !== now.askId) return;
+    busy.current = true;
+    try {
+      if (m.type === "signup") {
+        say("info", "Registrándote…");
+        const r = await createCustomer(m);
+        if ("error" in r) return say("error", r.error);
+        attach(r.customer);
+        toast(r.existing ? `Ya estaba registrado: ${r.customer.name}` : `Cliente registrado: ${r.customer.name}`, "success");
+        say("success", r.existing ? `¡Hola de nuevo, ${firstNameOf(r.customer.name)}!` : `¡Bienvenido, ${firstNameOf(r.customer.name)}!`);
+      } else if (m.type === "login") {
+        say("info", "Un momento: la caja está confirmando tu cuenta.");
+        const found = await get<Customer>(`/customers/lookup?phone=${encodeURIComponent(m.phone)}`).catch((e: RequestError) => (e.status === 404 ? null : Promise.reject(e))).catch(() => undefined);
+        if (found === undefined) return say("error", "No pudimos buscar tu cuenta. Intenta de nuevo o pide ayuda en caja.");
+        if (!found) return say("error", "No encontramos una cuenta con ese teléfono. Puedes registrarte.");
+        setConfirmLogin(found);
+      } else if (m.type === "receipt") {
+        const sale = now.after?.phase === "paid" ? now.after.sale : null;
+        if (!sale) return;
+        if (m.method === "none") { setReceiptDone(true); return say("success", "¡Gracias por tu compra!"); }
+        if (m.method === "print") {
+          window.open(`/recibo/${sale.id}?imprimir=1`, "recibo", "width=420,height=720");
+          setReceiptDone(true);
+          return say("success", "Tu recibo se está imprimiendo.");
+        }
+        const to = m.to ?? (m.method === "email" ? now.paidContact?.email : now.paidContact?.phone) ?? null;
+        if (!to) return say("error", m.method === "email" ? "Escribe tu correo." : "Escribe tu teléfono.");
+        say("info", "Enviando tu recibo…");
+        try {
+          if (m.method === "email") await post(`/sales/${sale.id}/email`, { email: to });
+          else await post(`/sales/${sale.id}/sms`, { phone: to });
+          setReceiptDone(true);
+          say("success", m.method === "email" ? "Listo, te enviamos tu recibo por correo." : "Listo, te enviamos tu recibo por mensaje.");
+        } catch (e) {
+          say("error", (e as RequestError).status === 422 ? (m.method === "email" ? "Ese correo no es válido." : "Ese teléfono no es válido.") : "No pudimos enviar tu recibo. Pide ayuda en caja.");
+        }
+      }
+    } finally {
+      busy.current = false;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setCart, toast]);
+  }, [setCart, toast, say]);
   useEffect(() => { display.onMessage.current = (m) => void onDisplayMessage(m); return () => { display.onMessage.current = null; }; }, [display.onMessage, onDisplayMessage]);
-  // Another device answers through the hub's inbox: check it while asking.
+  // Another device answers through the hub's inbox: check it while the display can act.
+  const listening = Boolean(signup && !signup.saving) || (signupEnabled && !cart.customerId && cart.lines.length > 0 && !after) || (after?.phase === "paid" && receiptOffer.length > 0 && !receiptDone);
   useEffect(() => {
-    if (!signup || signup.saving || !display.code) return;
-    const t = setInterval(() => { void display.pollInbox().then((m) => { if (m) void onDisplayMessage(m); }); }, 1500);
+    if (!listening || !display.code || !display.remote.displays) return;
+    const t = setInterval(() => { void display.pollInbox().then(async (list) => { for (const m of list) await onDisplayMessage(m); }); }, 1500);
     return () => clearInterval(t);
-  }, [signup, display.code, display.pollInbox, onDisplayMessage]);
+  }, [listening, display.code, display.remote.displays, display.pollInbox, onDisplayMessage]);
 
   // The cashier's limit only counts discounts given by hand.
   const overLimit = maxDiscountBps !== null && priced.manualDiscountCents * 10_000 > totals.subtotalCents * maxDiscountBps;
@@ -264,7 +350,7 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const clear = () => { setCart(EMPTY_CART); setSelected(null); focusSearch(); };
+  const clear = () => { setCart(EMPTY_CART); setSelected(null); newSaleOnDisplay(); focusSearch(); };
   const invalidQty = cart.lines.find((l) => l.quantity <= 0 || (!unitInfo(l.unit).decimals && !Number.isInteger(l.quantity)));
 
   return (
@@ -420,9 +506,11 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
           customerId: cart.customerId ?? null,
           couponCode: cart.coupon?.code ?? null,
         })}
-        onClose={() => { setPaying(false); setAfter((a) => (a?.phase === "paying" ? null : a)); focusSearch(); }}
+        onClose={() => { setPaying(false); setCardCharge(null); setAfter((a) => (a?.phase === "paying" ? null : a)); focusSearch(); }}
         onProgress={(paid, change) => setAfter({ phase: "paying", paid, change })}
-        onPaid={(sale: SaleDetail) => { setAfter({ phase: "paid", sale }); setCart(EMPTY_CART); setSelected(null); setRefreshKey((k) => k + 1); }}
+        card={cardOnDisplay}
+        onCard={setCardCharge}
+        onPaid={(sale: SaleDetail) => { setPaidContact(cart.customerId ? { email: cart.customerEmail ?? null, phone: cart.customerPhone ?? null } : null); setNotice(null); setAfter({ phase: "paid", sale }); setCart(EMPTY_CART); setSelected(null); setRefreshKey((k) => k + 1); }}
         onNewSale={() => { setPaying(false); focusSearch(); }}
       />
       <DiscountModal
@@ -442,10 +530,30 @@ function Register({ tenantId, session, onSessionChange, onClosed, money, pricesI
         open={customerOpen}
         current={cart.customerId ? { id: cart.customerId, name: cart.customerName } : null}
         onClose={() => { setCustomerOpen(false); focusSearch(); }}
-        onPick={(c) => { setCart({ ...cart, customerId: c?.id ?? null, customerName: c?.name ?? "", customerContact: c ? (c.email ?? c.phone ?? "") : "" }); setCustomerOpen(false); focusSearch(); }}
+        onPick={(c) => { setCart({ ...cart, customerId: c?.id ?? null, customerName: c?.name ?? "", customerContact: c ? (c.email ?? c.phone ?? "") : "", customerEmail: c?.email ?? null, customerPhone: c?.phone ?? null }); setCustomerOpen(false); focusSearch(); }}
       />
       <CouponModal open={couponOpen} onClose={() => { setCouponOpen(false); focusSearch(); }} onApply={(coupon) => { setCart({ ...cart, coupon }); setCouponOpen(false); focusSearch(); }} />
       <DisplayModal open={displayOpen} onClose={() => { setDisplayOpen(false); focusSearch(); }} locationId={session.locationId} display={display} signupEnabled={signupEnabled} />
+      <Modal
+        open={Boolean(confirmLogin)}
+        title="¿Es tu cliente?"
+        onClose={() => { setConfirmLogin(null); say("error", "No pudimos confirmar tu cuenta. Pide ayuda en caja."); }}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setConfirmLogin(null); say("error", "No pudimos confirmar tu cuenta. Pide ayuda en caja."); }}>No es</Button>
+            <Button variant="primary" onClick={() => { if (confirmLogin) { attach(confirmLogin); say("success", `¡Hola, ${firstNameOf(confirmLogin.name)}!`); toast(`Cliente: ${confirmLogin.name}`, "success"); } setConfirmLogin(null); focusSearch(); }}>Sí, es esta persona</Button>
+          </>
+        }
+      >
+        <div className="nx-stack" style={{ gap: 8 }}>
+          <p style={{ margin: 0 }}>El cliente entró con su teléfono en la pantalla. Confirma que es esta persona:</p>
+          <div className="nx-panel" style={{ padding: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 18 }}>{confirmLogin?.name}</div>
+            <div className="nx-muted">{[confirmLogin?.phone, confirmLogin?.email].filter(Boolean).join(" · ")}</div>
+          </div>
+          <p className="nx-help" style={{ margin: 0 }}>Si no estás seguro, pídele su nombre. Con «No es», la pantalla le pide ayuda en caja.</p>
+        </div>
+      </Modal>
       <Modal
         open={Boolean(signup)}
         title="Registro en la pantalla del cliente"

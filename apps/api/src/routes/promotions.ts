@@ -75,7 +75,7 @@ export const promotionRoutes = new Hono<AppEnv>()
   .get("/live", requirePermission("pos:sell"), async (c) => {
     const { db, tenant: t } = c.var.auth;
     const settings = await getSettings(c);
-    return c.json(await livePromotions(db, t.id, businessDate(settings.timezone), "pos"));
+    return c.json(await livePromotions(db, t.id, businessDate(settings.timezone), "pos", { members: "all" }));
   })
 
   .post("/", requirePermission("promotions:write"), json(promotionSchema), async (c) => {

@@ -49,6 +49,10 @@ export interface Env {
   CF_ACCOUNT_ID?: string;
   CF_ANALYTICS_TOKEN?: string;
   STORE_EVENTS_DATASET?: string;
+  /** AES-GCM key (32 bytes, base64) for the secrets businesses give us, e.g. their Twilio token (Phase 12). */
+  SECRETS_KEY?: string;
+  /** Override of https://api.twilio.com (tests). */
+  TWILIO_API_BASE?: string;
 }
 
 export interface TenantRef {

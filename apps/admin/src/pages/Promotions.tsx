@@ -62,7 +62,7 @@ export function PromotionsPage() {
                 <tbody>
                   {data?.promotions.map((p) => (
                     <tr key={p.id} className={write ? "nx-clickable" : undefined} onClick={write ? () => setEditPromo(p) : undefined}>
-                      <td><span style={{ fontWeight: 500 }}>{p.name}</span><div className="nx-muted" style={{ fontSize: 12 }}>−{bpsToPercent(p.percentBps)} %</div></td>
+                      <td><span style={{ fontWeight: 500 }}>{p.name}</span><div className="nx-muted" style={{ fontSize: 12 }}>−{bpsToPercent(p.percentBps)} %{p.membersOnly && " · solo clientes"}</div></td>
                       <td className="nx-muted" style={{ maxWidth: 260 }}>{p.target === "all" ? "Todos los productos" : p.targetNames.join(", ") || "—"}</td>
                       <td className="nx-muted">{CHANNEL[p.channel]}</td>
                       <td className="nx-muted nx-num" style={{ whiteSpace: "nowrap" }}>{period(p)}</td>
@@ -111,7 +111,7 @@ export function PromotionsPage() {
 function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const editing = promo && promo !== "new" ? promo : null;
-  const [form, setForm] = useState({ name: "", percent: "", target: "category" as PromotionInput["target"], channel: "all" as NonNullable<PromotionInput["channel"]>, startsOn: "", endsOn: "", active: true });
+  const [form, setForm] = useState({ name: "", percent: "", target: "category" as PromotionInput["target"], channel: "all" as NonNullable<PromotionInput["channel"]>, membersOnly: false, startsOn: "", endsOn: "", active: true });
   const [targets, setTargets] = useState<Array<{ id: string; name: string }>>([]);
   const [productQ, setProductQ] = useState("");
   const productQuery = useDebounced(productQ);
@@ -123,10 +123,10 @@ function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" 
   useEffect(() => {
     if (!promo) return;
     if (promo === "new") {
-      setForm({ name: "", percent: "", target: "category", channel: "all", startsOn: "", endsOn: "", active: true });
+      setForm({ name: "", percent: "", target: "category", channel: "all", membersOnly: false, startsOn: "", endsOn: "", active: true });
       setTargets([]);
     } else {
-      setForm({ name: promo.name, percent: String(bpsToPercent(promo.percentBps)), target: promo.target, channel: promo.channel, startsOn: promo.startsOn ?? "", endsOn: promo.endsOn ?? "", active: promo.active });
+      setForm({ name: promo.name, percent: String(bpsToPercent(promo.percentBps)), target: promo.target, channel: promo.channel, membersOnly: promo.membersOnly, startsOn: promo.startsOn ?? "", endsOn: promo.endsOn ?? "", active: promo.active });
       setTargets(promo.targetIds.map((id, i) => ({ id, name: promo.targetNames[i] ?? id })));
     }
     setProductQ("");
@@ -135,7 +135,7 @@ function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" 
   const save = useSubmit(async () => {
     const pct = Number(form.percent.replace(",", ".").replace("%", ""));
     if (!Number.isFinite(pct) || pct <= 0) throw new RequestError(422, "validation_error", "Revisa", { percentBps: "Escribe el porcentaje" });
-    const body: PromotionInput = { name: form.name, percentBps: Math.round(pct * 100), target: form.target, targetIds: targets.map((t) => t.id), channel: form.channel, startsOn: form.startsOn || null, endsOn: form.endsOn || null, active: form.active };
+    const body: PromotionInput = { name: form.name, percentBps: Math.round(pct * 100), target: form.target, targetIds: targets.map((t) => t.id), channel: form.channel, membersOnly: form.membersOnly, startsOn: form.startsOn || null, endsOn: form.endsOn || null, active: form.active };
     if (editing) await put(`/promotions/${editing.id}`, body); else await post("/promotions", body);
     toast(editing ? "Promoción guardada" : "Promoción creada");
     onSaved();
@@ -192,10 +192,12 @@ function PromotionModal({ promo, onClose, onSaved }: { promo: Promotion | "new" 
           </div>
         )}
         <div className="nx-form-grid">
-          <SelectField label="Dónde" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as typeof form.channel })}>
-            {Object.entries(CHANNEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <SelectField label="Dónde" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value as typeof form.channel })} error={f.channel}>
+            {Object.entries(CHANNEL).map(([k, v]) => <option key={k} value={k} disabled={form.membersOnly && k === "online"}>{v}</option>)}
           </SelectField>
-          <div />
+          <div style={{ alignSelf: "end" }}>
+            <Checkbox label="Solo clientes registrados" help="En caja, cuando la venta tiene un cliente (el cliente se identifica en su pantalla o lo eliges tú)." checked={form.membersOnly} onChange={(e) => setForm({ ...form, membersOnly: e.target.checked, channel: e.target.checked && form.channel === "online" ? "pos" : form.channel })} />
+          </div>
           <TextField label="Desde" optional type="date" value={form.startsOn} onChange={(e) => setForm({ ...form, startsOn: e.target.value })} />
           <TextField label="Hasta" optional type="date" value={form.endsOn} onChange={(e) => setForm({ ...form, endsOn: e.target.value })} error={f.endsOn} help="Incluye ese día." />
         </div>

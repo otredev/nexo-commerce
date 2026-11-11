@@ -34,3 +34,10 @@ VAPID_SUBJECT=mailto:tu@correo.com
 CF_ACCOUNT_ID=
 CF_ANALYTICS_TOKEN=
 STORE_EVENTS_DATASET=
+
+# Phase 12: secrets the businesses give us (their Twilio auth token) are encrypted with this key.
+# 32 random bytes in base64:  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# In staging/production set it with: wrangler secret put SECRETS_KEY --env <env>. Never change it once used
+# (saved tokens would stop decrypting; the business re-enters them).
+# SECRETS_KEY=
+# TWILIO_API_BASE=   # tests only

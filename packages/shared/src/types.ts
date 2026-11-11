@@ -40,6 +40,9 @@ export interface BusinessSettings {
   cashierMaxDiscountBps: number;
   receiptWidthMm: 58 | 80;
   posCustomerSignup: boolean;
+  receiptOptions: Array<"print" | "email" | "sms" | "none">;
+  /** Read-only: the business has an SMS provider set up (text receipts). */
+  smsReady?: boolean;
   updatedAt: string;
 }
 

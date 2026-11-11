@@ -16,3 +16,4 @@ export * from "./blocks";
 export * from "./analytics";
 export * from "./integrations";
 export * from "./platform";
+export * from "./terminal";

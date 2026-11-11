@@ -17,6 +17,7 @@ import {
   quantityFitsUnit,
   returnInputSchema,
   saleInputSchema,
+  smsReceiptSchema,
   settle,
   toMilli,
   unitInfo,
@@ -29,6 +30,8 @@ import { emitFrom } from "../lib/outbound";
 import { auditEntry } from "../lib/audit";
 import { newId } from "../lib/crypto";
 import { sendEmail } from "../lib/email";
+import { sendSms, toE164 } from "../lib/sms";
+import { verifyTerminalPayment } from "../lib/terminal";
 import { AppError, notFound } from "../lib/errors";
 import { chunk, isCheckError, isStockCheckError, isUniqueError, movementStatements, toStatement } from "../lib/inventory";
 import { couponUseStatement, findCoupon, livePromotions, toCouponRule } from "../lib/pricing";
@@ -95,9 +98,18 @@ export const saleRoutes = new Hono<AppEnv>()
       const v = byId.get(item.variantId)!;
       return { unitPriceCents: v.price, quantity: item.quantity, discountCents: item.discountCents, taxRateBps: rateOf(v.taxRateId) };
     });
-    // Promotions and coupon: the same pricing the POS showed.
+    // Customer record: its name and contact go on the receipt.
+    let customerName = input.customerName;
+    let customerContact = input.customerContact;
+    if (input.customerId) {
+      const cust = await db.select().from(customers).where(and(eq(customers.id, input.customerId), eq(customers.tenantId, t.id))).get();
+      if (!cust) throw new AppError(422, "validation_error", "El cliente ya no existe.", { customerId: "No encontrado" });
+      customerName = cust.name;
+      customerContact = cust.email ?? cust.phone ?? null;
+    }
+    // Promotions and coupon: the same pricing the POS showed (members-only ones need the customer).
     const today = businessDate(settings.timezone);
-    const promos = await livePromotions(db, t.id, today, "pos");
+    const promos = await livePromotions(db, t.id, today, "pos", { members: Boolean(input.customerId) });
     const coupon = input.couponCode ? await findCoupon(db, t.id, input.couponCode) : null;
     if (input.couponCode) {
       const problem = coupon ? couponProblem(toCouponRule(coupon), today, "pos") : "Este cupón no existe.";
@@ -116,17 +128,13 @@ export const saleRoutes = new Hono<AppEnv>()
     if (priced.manualDiscountCents > 0 && !allowed(c.var.auth, "discount:unlimited") && priced.manualDiscountCents * 10_000 > totals.subtotalCents * settings.cashierMaxDiscountBps) {
       throw new AppError(403, "discount_limit", `Tu descuento máximo es ${settings.cashierMaxDiscountBps / 100} % del subtotal. Pide autorización a un administrador.`);
     }
-    // Customer record: its name and contact go on the receipt.
-    let customerName = input.customerName;
-    let customerContact = input.customerContact;
-    if (input.customerId) {
-      const cust = await db.select().from(customers).where(and(eq(customers.id, input.customerId), eq(customers.tenantId, t.id))).get();
-      if (!cust) throw new AppError(422, "validation_error", "El cliente ya no existe.", { customerId: "No encontrado" });
-      customerName = cust.name;
-      customerContact = cust.email ?? cust.phone ?? null;
-    }
     const settled = settle(totals.totalCents, input.payments);
     if (!settled.ok) throw new AppError(422, "payment_error", settled.message);
+    // Cards charged on the customer display: Stripe must confirm each one for this sale and amount.
+    for (const p of input.payments.filter((x) => x.paymentIntentId)) {
+      if (p.method !== "card") throw new AppError(422, "payment_error", "Un cobro de Stripe solo puede ser pago con tarjeta.");
+      await verifyTerminalPayment(c.env, { tenantId: t.id, id: p.paymentIntentId!, amountCents: p.amountCents, currency: settings.currency, clientId: input.clientId });
+    }
 
     const saleId = newId();
     const date = today;
@@ -168,7 +176,7 @@ export const saleRoutes = new Hono<AppEnv>()
       );
     });
     for (const p of input.payments) {
-      statements.push(toStatement(d1, db.insert(salePayments).values({ id: newId(), tenantId: t.id, saleId, method: p.method, amountCents: p.amountCents, reference: p.reference })));
+      statements.push(toStatement(d1, db.insert(salePayments).values({ id: newId(), tenantId: t.id, saleId, method: p.method, amountCents: p.amountCents, reference: p.reference, stripePaymentIntentId: p.paymentIntentId })));
     }
     // Stock: fails the whole batch (and the sale) if anything is short.
     input.items.forEach((item) => {
@@ -197,6 +205,7 @@ export const saleRoutes = new Hono<AppEnv>()
         const again = await db.select({ id: sales.id }).from(sales).where(and(eq(sales.tenantId, t.id), eq(sales.clientId, input.clientId))).get();
         if (again) return c.json(await loadSale(c, again.id), 200);
       }
+      if (isUniqueError(err) && String((err as Error).message).includes("stripe_payment_intent_id")) throw new AppError(409, "card_already_used", "Ese cobro con tarjeta ya se usó en otra venta.");
       if (!isStockCheckError(err)) throw err;
       // Find which product is short to give a useful message.
       const levels = await db.select().from(stockLevels).where(and(eq(stockLevels.tenantId, t.id), eq(stockLevels.locationId, input.locationId), inArray(stockLevels.variantId, ids)));
@@ -374,6 +383,29 @@ export const saleRoutes = new Hono<AppEnv>()
     const returned = await loadSale(c, id);
     emitFrom(c, "sale.returned", returned);
     return c.json(returned, 201);
+  })
+
+  /* ---------- Text receipt (Twilio of the business) ---------- */
+  .post("/:id/sms", requirePermission("pos:sell"), json(smsReceiptSchema), async (c) => {
+    const sale = await loadSale(c, c.req.param("id"));
+    if (!sale) throw notFound("Venta");
+    const s = await getSettings(c);
+    const to = toE164(c.req.valid("json").phone, s.currency);
+    if (!to) throw new AppError(422, "validation_error", "Teléfono no válido", { phone: "Revisa el número" });
+    const money = (v: number) => formatMoney(v, s.currency, s.locale);
+    const items = sale.items.slice(0, 6).map((i) => `${formatQty(i.quantity, i.unit)} ${i.name} ${money(i.totalCents)}`);
+    const more = sale.items.length > 6 ? [`+${sale.items.length - 6} productos más`] : [];
+    const body = [
+      `${s.tradeName} · Venta ${formatFolio(sale.number)}`,
+      new Date(sale.createdAt).toLocaleString(s.locale, { timeZone: s.timezone, dateStyle: "short", timeStyle: "short" }),
+      ...items,
+      ...more,
+      `Total: ${money(sale.totalCents)}`,
+      sale.changeCents ? `Cambio: ${money(sale.changeCents)}` : "",
+      s.receiptFooter ?? "¡Gracias por tu compra!",
+    ].filter(Boolean).join("\n");
+    await sendSms(c.env, c.var.auth.db, c.var.auth.tenant.id, to, body);
+    return c.body(null, 204);
   })
 
   /* ---------- Email receipt ---------- */

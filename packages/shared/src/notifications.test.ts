@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deviceLabel, displaySignupMessageSchema, firstNameOf, NOTIFICATION_EVENTS } from "./notifications";
+import { deviceLabel, displayMessageAllowed, displaySignupMessageSchema, firstNameOf, maskEmail, maskPhone, NOTIFICATION_EVENTS } from "./notifications";
 import { can } from "./roles";
 
 describe("deviceLabel", () => {
@@ -41,5 +41,27 @@ describe("customer display sign-up message", () => {
     expect(firstNameOf("  Ana María López ")).toBe("Ana");
     expect(firstNameOf("")).toBeNull();
     expect(firstNameOf(null)).toBeNull();
+  });
+});
+
+describe("display messages the hub forwards", () => {
+  const base = { phase: "cart" as const, signup: null };
+  const login = { type: "login" as const, id: "req123456", phone: "3055550142" };
+  const receipt = { type: "receipt" as const, id: "req123456", method: "email" as const, to: null };
+  it("only for the current request and what it allows", () => {
+    expect(displayMessageAllowed({ ...base, ask: { id: "req123456", account: true, receipt: null } }, login)).toBe(true);
+    expect(displayMessageAllowed({ ...base, ask: { id: "other12345", account: true, receipt: null } }, login)).toBe(false);
+    expect(displayMessageAllowed({ ...base, ask: { id: "req123456", account: false, receipt: ["print", "email"] } }, login)).toBe(false);
+    expect(displayMessageAllowed({ ...base, ask: { id: "req123456", account: false, receipt: ["print", "email"] } }, receipt)).toBe(true);
+    expect(displayMessageAllowed({ ...base, ask: { id: "req123456", account: false, receipt: ["print"] } }, receipt)).toBe(false);
+    expect(displayMessageAllowed({ phase: "signup", signup: { id: "req123456", error: null }, ask: null }, { type: "signup_skip", id: "req123456" })).toBe(true);
+    expect(displayMessageAllowed(null, login)).toBe(false);
+  });
+  it("validates receipt destinations and masks contacts", () => {
+    expect(displaySignupMessageSchema.safeParse({ ...receipt, to: "not-an-email" }).success).toBe(false);
+    expect(displaySignupMessageSchema.safeParse({ ...receipt, method: "sms", to: "12" }).success).toBe(false);
+    expect(displaySignupMessageSchema.safeParse({ ...receipt, method: "sms", to: "(305) 555-0142" }).success).toBe(true);
+    expect(maskEmail("ana.lopez@gmail.com")).toBe("a•••@gmail.com");
+    expect(maskPhone("+1 305 555 0142")).toBe("•••• 0142");
   });
 });

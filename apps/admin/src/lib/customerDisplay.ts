@@ -6,7 +6,7 @@
  * another device: it waits in the hub's inbox, which the register polls while it is asking.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { displaySignupMessageSchema, type DisplaySignupMessage, type DisplayState } from "@nexo/shared";
+import { displaySignupMessageSchema, type DisplayDevice, type DisplaySignupMessage, type DisplayState } from "@nexo/shared";
 import { del, get, post, RequestError } from "./api";
 
 /** A display on this computer says "here" every few seconds; after this long without hearing it, it's gone. */
@@ -25,7 +25,8 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
   const last = useRef<DisplayState | null>(null);
   const key = codeKey(tenantId, locationId);
   const [code, setCodeState] = useState<string | null>(() => readCode(key));
-  const [remote, setRemote] = useState<{ displays: number; error: string | null }>({ displays: 0, error: null });
+  /** Paired devices, and what the display app says it can do (Tap to Pay). */
+  const [remote, setRemote] = useState<{ displays: number; error: string | null; device: DisplayDevice | null }>({ displays: 0, error: null, device: null });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localSeen, setLocalSeen] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -58,12 +59,12 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
 
   const sendRemote = useCallback(async (c: string, state: DisplayState) => {
     try {
-      const r = await post<{ displays: number }>(`/pos/display/${c}/state`, { state });
-      setRemote({ displays: r.displays, error: null });
+      const r = await post<{ displays: number; device: DisplayDevice | null }>(`/pos/display/${c}/state`, { state });
+      setRemote({ displays: r.displays, error: null, device: r.device ?? null });
     } catch (e) {
       const err = e as RequestError;
       if (err.code === "display_gone") setCode(null);
-      setRemote({ displays: 0, error: err.message });
+      setRemote({ displays: 0, error: err.message, device: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -78,7 +79,7 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
   }, [code, sendRemote]);
 
   const pair = async () => {
-    const r = await post<{ code: string }>("/pos/display");
+    const r = await post<{ code: string }>("/pos/display", { locationId });
     setCode(r.code);
     if (last.current) void sendRemote(r.code, last.current);
     return r.code;
@@ -86,19 +87,21 @@ export function useDisplayPublisher(tenantId: string, locationId: string) {
   const unpair = async () => {
     if (code) await del(`/pos/display/${code}`).catch(() => {});
     setCode(null);
-    setRemote({ displays: 0, error: null });
+    setRemote({ displays: 0, error: null, device: null });
   };
 
-  /** The customer's answer on another device, if any (picked up once). */
-  const pollInbox = useCallback(async (): Promise<DisplaySignupMessage | null> => {
-    if (!code) return null;
+  /** What the customer did on another device, oldest first (picked up once). */
+  const pollInbox = useCallback(async (): Promise<DisplaySignupMessage[]> => {
+    if (!code) return [];
     const raw = await get<unknown>(`/pos/display/${code}/inbox`).catch(() => null);
-    const r = displaySignupMessageSchema.safeParse(raw);
-    return r.success ? r.data : null;
+    return (Array.isArray(raw) ? raw : []).flatMap((m) => { const r = displaySignupMessageSchema.safeParse(m); return r.success ? [r.data] : []; });
   }, [code]);
 
   /** Is someone looking? A display open on this computer, or one connected with the code. */
   const active = now - localSeen < LOCAL_TTL || remote.displays > 0;
 
-  return { publish, code, pair, unpair, remote, active, onMessage, pollInbox };
+  /** The paired display can take cards now (display app with Tap to Pay, reader ready). */
+  const cardReady = Boolean(code && remote.displays > 0 && remote.device?.tapToPay && remote.device.ready);
+
+  return { publish, code, pair, unpair, remote, active, onMessage, pollInbox, cardReady };
 }

@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like, or } from "drizzle-orm";
 import { z } from "zod";
 import { tenant } from "@nexo/db";
 import { customerSchema, fromMilli, normalizeSearch, type Customer, type CustomerDetail, type Paginated, type UnitCode } from "@nexo/shared";
@@ -127,6 +127,18 @@ export const customerRoutes = new Hono<AppEnv>()
     return new Response(`﻿${[header.join(","), ...lines].join("\r\n")}`, {
       headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="clientes.csv"` },
     });
+  })
+
+  /** «Ya soy cliente» at the register: the customer by phone (exact digits, or the same last 10). */
+  .get("/lookup", requirePermission("customers:read"), async (c) => {
+    const digits = normalizePhone(c.req.query("phone"));
+    if (!digits) throw new AppError(422, "validation_error", "Teléfono no válido", { phone: "Escribe el teléfono completo" });
+    const { db, tenant: t } = c.var.auth;
+    const last10 = digits.slice(-10);
+    const rows = await db.select().from(customers).where(and(eq(customers.tenantId, t.id), eq(customers.archived, false), or(eq(customers.phone, digits), like(customers.phone, `%${last10}`))));
+    const found = rows.find((r) => r.phone === digits) ?? (rows.length === 1 ? rows[0] : null);
+    if (!found) throw notFound("Cliente");
+    return c.json(toCustomer(await getCustomer(c, found.id)));
   })
 
   .get("/:id", requirePermission("customers:read"), async (c) => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { couponProblem, isLive, priceCart, promotionFor, type CouponRule, type PromotionRule } from "./promotions";
 
-const promo = (p: Partial<PromotionRule>): PromotionRule => ({ id: "p", name: "Promo", percentBps: 1000, target: "all", targetIds: [], channel: "all", startsOn: null, endsOn: null, active: true, ...p });
+const promo = (p: Partial<PromotionRule>): PromotionRule => ({ id: "p", name: "Promo", percentBps: 1000, target: "all", targetIds: [], channel: "all", membersOnly: false, startsOn: null, endsOn: null, active: true, ...p });
 const coupon = (c: Partial<CouponRule>): CouponRule => ({ code: "HOLA", kind: "percent", value: 1000, minSubtotalCents: 0, maxUses: null, usesCount: 0, channel: "all", startsOn: null, endsOn: null, active: true, ...c });
 
 describe("promotions", () => {

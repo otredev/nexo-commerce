@@ -4,16 +4,17 @@
  * listen over a WebSocket. Uses the hibernation API, so idle displays cost nothing.
  * A code that nobody uses for 24 hours is erased.
  *
- * The one thing a display may send back is the customer's optional sign-up (or "not now"), and only while
- * the register is asking for it (state.phase "signup" with the same id). It waits in an inbox that the
- * register picks up; the register then creates the customer with its own session and permissions.
+ * A display may send back only what the register is asking for right now (same request id): the
+ * customer's optional sign-up or «Ya soy cliente» during the sale, and how they want the receipt after
+ * paying. It waits in an inbox that the register picks up; the register acts with its own session and
+ * permissions (creates or looks up the customer, sends the receipt).
  */
 import { DurableObject } from "cloudflare:workers";
-import { DISPLAY_MESSAGE_MAX, displaySignupMessageSchema } from "@nexo/shared";
+import { DISPLAY_MESSAGE_MAX, displayDeviceMessageSchema, displayMessageAllowed, displaySignupMessageSchema, type DisplayDevice, type DisplayState } from "@nexo/shared";
 
 const IDLE_MS = 24 * 3600_000;
 
-interface Meta { tenantId: string; createdAt: number }
+interface Meta { tenantId: string; createdAt: number; locationId?: string | null }
 
 export class DisplayHub extends DurableObject {
   override async fetch(request: Request): Promise<Response> {
@@ -22,8 +23,8 @@ export class DisplayHub extends DurableObject {
     switch (`${request.method} ${url.pathname}`) {
       case "POST /init": {
         if (meta) return Response.json({ error: "taken" }, { status: 409 });
-        const { tenantId } = (await request.json()) as { tenantId: string };
-        await this.ctx.storage.put("meta", { tenantId, createdAt: Date.now() } satisfies Meta);
+        const { tenantId, locationId } = (await request.json()) as { tenantId: string; locationId?: string | null };
+        await this.ctx.storage.put("meta", { tenantId, locationId: locationId ?? null, createdAt: Date.now() } satisfies Meta);
         await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
         return Response.json({ ok: true });
       }
@@ -36,7 +37,8 @@ export class DisplayHub extends DurableObject {
         for (const ws of this.ctx.getWebSockets()) {
           try { ws.send(text); } catch { /* closed */ }
         }
-        return Response.json({ ok: true, displays: this.ctx.getWebSockets().length });
+        const device = (await this.ctx.storage.get<DisplayDevice>("device")) ?? null;
+        return Response.json({ ok: true, displays: this.ctx.getWebSockets().length, device });
       }
       case "GET /state": {
         if (!meta) return Response.json({ error: "not_found" }, { status: 404 });
@@ -45,7 +47,7 @@ export class DisplayHub extends DurableObject {
       }
       case "GET /info": {
         if (!meta) return Response.json({ error: "not_found" }, { status: 404 });
-        return Response.json({ tenantId: meta.tenantId, displays: this.ctx.getWebSockets().length });
+        return Response.json({ tenantId: meta.tenantId, locationId: meta.locationId ?? null, displays: this.ctx.getWebSockets().length });
       }
       case "GET /ws": {
         if (!meta) return new Response("Código no válido", { status: 404 });
@@ -60,7 +62,7 @@ export class DisplayHub extends DurableObject {
         if (!meta || meta.tenantId !== url.searchParams.get("tenantId")) return Response.json({ error: "not_found" }, { status: 404 });
         const msg = await this.ctx.storage.get<string>("inbox");
         if (msg) await this.ctx.storage.delete("inbox");
-        return new Response(msg ?? "null", { headers: { "content-type": "application/json" } });
+        return new Response(msg ?? "[]", { headers: { "content-type": "application/json" } });
       }
       case "DELETE /": {
         if (!meta || meta.tenantId !== url.searchParams.get("tenantId")) return Response.json({ error: "not_found" }, { status: 404 });
@@ -77,13 +79,21 @@ export class DisplayHub extends DurableObject {
     if (typeof message !== "string" || message.length > DISPLAY_MESSAGE_MAX) return;
     let parsed: unknown;
     try { parsed = JSON.parse(message); } catch { return; }
+    // The display app says whether it can take cards (Tap to Pay) and if its reader is ready.
+    const dev = displayDeviceMessageSchema.safeParse(parsed);
+    if (dev.success) {
+      const { type: _, ...device } = dev.data;
+      return this.ctx.storage.put("device", device);
+    }
     const r = displaySignupMessageSchema.safeParse(parsed);
     if (!r.success) return;
-    const state = await this.ctx.storage.get<string>("state");
-    let asking: string | null = null;
-    try { const s = state ? (JSON.parse(state) as { phase?: string; signup?: { id?: string } | null }) : null; asking = s?.phase === "signup" ? (s.signup?.id ?? null) : null; } catch { /* no state */ }
-    if (asking !== r.data.id) return;
-    await this.ctx.storage.put("inbox", JSON.stringify(r.data));
+    const stored = await this.ctx.storage.get<string>("state");
+    let state: DisplayState | null = null;
+    try { state = stored ? (JSON.parse(stored) as DisplayState) : null; } catch { /* no state */ }
+    if (!displayMessageAllowed(state, r.data)) return;
+    // A few messages may arrive between two polls of the register (e.g. «Ya soy cliente», then «Registrarme»).
+    const inbox = JSON.parse((await this.ctx.storage.get<string>("inbox")) ?? "[]") as unknown[];
+    await this.ctx.storage.put("inbox", JSON.stringify([...inbox, r.data].slice(-5)));
   }
 
   override async webSocketClose(ws: WebSocket, code: number) {

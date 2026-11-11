@@ -11,16 +11,20 @@ import { toStatement } from "./inventory";
 const { promotions, coupons, customers, categories } = tenant;
 
 export const toPromotionRule = (p: typeof promotions.$inferSelect): PromotionRule => ({
-  id: p.id, name: p.name, percentBps: p.percentBps, target: p.target, targetIds: p.targetIds, channel: p.channel, startsOn: p.startsOn, endsOn: p.endsOn, active: p.active,
+  id: p.id, name: p.name, percentBps: p.percentBps, target: p.target, targetIds: p.targetIds, channel: p.channel, membersOnly: p.membersOnly, startsOn: p.startsOn, endsOn: p.endsOn, active: p.active,
 });
 export const toCouponRule = (c: typeof coupons.$inferSelect): CouponRule => ({
   code: c.code, kind: c.kind, value: c.value, minSubtotalCents: c.minSubtotalCents, maxUses: c.maxUses, usesCount: c.usesCount, channel: c.channel, startsOn: c.startsOn, endsOn: c.endsOn, active: c.active,
 });
 
-/** Promotions valid today for a channel. */
-export async function livePromotions(db: TenantDb, tenantId: string, today: string, channel: Channel): Promise<PromotionRule[]> {
+/**
+ * Promotions valid today for a channel. Members-only ones count only for a sale with an identified
+ * customer at the register (`members: true`); the register's list asks for all of them ("all").
+ */
+export async function livePromotions(db: TenantDb, tenantId: string, today: string, channel: Channel, opts: { members?: boolean | "all" } = {}): Promise<PromotionRule[]> {
   const rows = await db.select().from(promotions).where(and(eq(promotions.tenantId, tenantId), eq(promotions.active, true)));
-  const live = rows.map(toPromotionRule).filter((p) => isLive(p, today, channel));
+  const members = channel === "pos" ? (opts.members ?? false) : false;
+  const live = rows.map(toPromotionRule).filter((p) => isLive(p, today, channel) && (!p.membersOnly || members !== false));
   // A promotion on a category also covers its subcategories: list them as targets too.
   const parents = [...new Set(live.filter((p) => p.target === "category").flatMap((p) => p.targetIds))];
   if (!parents.length) return live;

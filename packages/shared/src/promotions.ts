@@ -20,6 +20,8 @@ export interface PromotionRule {
   target: "all" | "category" | "product";
   targetIds: string[];
   channel: "all" | Channel;
+  /** Only when the register sale has an identified customer (never online). */
+  membersOnly: boolean;
   startsOn: string | null;
   endsOn: string | null;
   active: boolean;

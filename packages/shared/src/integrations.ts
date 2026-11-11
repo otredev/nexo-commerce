@@ -1,3 +1,4 @@
+import { z } from "zod";
 /**
  * Integrations (Phase 11): API keys, outgoing webhooks and the MCP server for AI assistants.
  */
@@ -124,4 +125,14 @@ export interface IntegrationsSettings {
   /** Base URL of the API and the MCP endpoint, for the instructions. */
   apiUrl: string;
   mcpUrl: string;
+  /** Text messages (Twilio). The auth token never comes back. */
+  sms: { provider: "twilio"; accountSid: string; sender: string; updatedAt: string } | null;
 }
+
+/** Twilio of the business. On update, an empty authToken keeps the saved one. */
+export const smsSettingsSchema = z.object({
+  accountSid: z.string().trim().regex(/^AC[0-9a-fA-F]{32}$/, "Empieza con AC y tiene 34 caracteres"),
+  authToken: z.string().trim().max(128).nullable().default(null).transform((v) => (v ? v : null)).refine((v) => v === null || /^[0-9a-zA-Z]{20,128}$/.test(v), "Auth Token no válido"),
+  sender: z.string().trim().regex(/^(?:\+[1-9]\d{7,14}|MG[0-9a-fA-F]{32})$/, "Un número de Twilio (+13055550100) o un Messaging Service SID (MG…)"),
+});
+export const smsTestSchema = z.object({ phone: z.string().trim().min(7, "Escribe el teléfono").max(32).regex(/^[+\d\s()-]+$/, "Teléfono no válido") });

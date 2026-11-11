@@ -75,6 +75,7 @@ export const STORE_TOOLS: Tool[] = [
       desde: DATE_OR_NULL,
       hasta: DATE_OR_NULL,
       activa: { type: "boolean" },
+      solo_clientes: { type: "boolean", description: "Solo para clientes registrados: en caja, cuando la venta tiene cliente (no en línea)" },
     }),
     run: async (a, call) => {
       const list = await getJson<{ promotions: Promotion[] }>(call, "/api/promotions");
@@ -83,14 +84,15 @@ export const STORE_TOOLS: Tool[] = [
       const cur = key ? list.promotions.find((p) => p.id === key || p.name.toLowerCase() === key.toLowerCase()) : undefined;
       if (key && !cur) return fail(`No existe la promoción «${key}». Promociones: ${list.promotions.map((p) => p.name).join(", ") || "ninguna"}.`, 404);
       const body: Record<string, unknown> = cur
-        ? { name: cur.name, percentBps: cur.percentBps, target: cur.target, targetIds: cur.targetIds, channel: cur.channel, startsOn: cur.startsOn, endsOn: cur.endsOn, active: cur.active }
-        : { target: "all", targetIds: [], channel: "all", startsOn: null, endsOn: null, active: true };
+        ? { name: cur.name, percentBps: cur.percentBps, target: cur.target, targetIds: cur.targetIds, channel: cur.channel, membersOnly: cur.membersOnly, startsOn: cur.startsOn, endsOn: cur.endsOn, active: cur.active }
+        : { target: "all", targetIds: [], channel: "all", membersOnly: false, startsOn: null, endsOn: null, active: true };
       put(body, "name", a.nombre === undefined ? undefined : str(a.nombre));
       put(body, "percentBps", a.porcentaje === undefined ? undefined : Math.round(Number(a.porcentaje) * 100));
       put(body, "channel", a.canal === undefined ? undefined : CHANNEL[str(a.canal)]);
       put(body, "startsOn", optStr(a.desde));
       put(body, "endsOn", optStr(a.hasta));
       put(body, "active", a.activa === undefined ? undefined : Boolean(a.activa));
+      put(body, "membersOnly", a.solo_clientes === undefined ? undefined : Boolean(a.solo_clientes));
       const target = a.aplica_a === undefined ? undefined : ({ todo: "all", categorias: "category", productos: "product" } as Record<string, string>)[str(a.aplica_a)];
       if (target) { body.target = target; body.targetIds = []; }
       if (Array.isArray(a.categorias)) {

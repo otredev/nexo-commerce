@@ -45,6 +45,7 @@ import { integrationRoutes } from "./routes/integrations";
 import { retryWebhooks } from "./lib/outbound";
 import { handleMcp } from "./lib/mcp";
 import { posDisplayRoutes, publicDisplayRoutes } from "./routes/display";
+import { terminalRoutes } from "./routes/terminal";
 export { DisplayHub } from "./display";
 import { dailyDigest } from "./lib/notify";
 import { AppError } from "./lib/errors";
@@ -82,7 +83,8 @@ const protectedApi = new Hono<AppEnv>()
   .route("/support", supportRoutes)
   .route("/notifications", notificationRoutes)
   .route("/integrations", integrationRoutes)
-  .route("/pos/display", posDisplayRoutes);
+  .route("/pos/display", posDisplayRoutes)
+  .route("/pos/terminal", terminalRoutes);
 
 const app = new Hono<AppEnv>()
   .use("/api/*", secureHeaders(), sameOrigin)

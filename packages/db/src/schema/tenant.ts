@@ -26,6 +26,19 @@ export const businessSettings = sqliteTable("business_settings", {
   receiptWidthMm: integer("receipt_width_mm").notNull().default(80),
   /** The register may offer the customer to sign up on the customer display before paying. */
   posCustomerSignup: integer("pos_customer_signup", { mode: "boolean" }).notNull().default(true),
+  /** Receipt options the customer display offers after paying (print, email, sms, none). */
+  receiptOptions: text("receipt_options", { mode: "json" }).$type<Array<"print" | "email" | "sms" | "none">>().notNull().default(sql`'["print","email","none"]'`),
+  updatedAt: text("updated_at").notNull().default(now),
+});
+
+/** Text messages of the business (Phase 12): its own Twilio account. The auth token is encrypted (SECRETS_KEY). */
+export const smsSettings = sqliteTable("sms_settings", {
+  tenantId: text("tenant_id").primaryKey(),
+  provider: text("provider").notNull().default("twilio"),
+  accountSid: text("account_sid").notNull(),
+  authTokenEnc: text("auth_token_enc").notNull(),
+  /** Sender: a Twilio number (+1…) or a Messaging Service SID (MG…). */
+  sender: text("sender").notNull(),
   updatedAt: text("updated_at").notNull().default(now),
 });
 
@@ -52,6 +65,8 @@ export const locations = sqliteTable(
     name: text("name").notNull(),
     type: text("type", { enum: ["store", "warehouse"] }).notNull().default("store"),
     address: text("address"),
+    /** Stripe Terminal location of this store (card payments at the register), on the business's account. */
+    stripeTerminalLocationId: text("stripe_terminal_location_id"),
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull().default(now),
@@ -374,8 +389,10 @@ export const salePayments = sqliteTable(
     method: text("method").notNull(),
     amountCents: integer("amount_cents").notNull(),
     reference: text("reference"),
+    /** Card charged with Stripe Terminal: one PaymentIntent pays one sale. */
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
   },
-  (t) => [index("sale_payments_sale_idx").on(t.saleId)],
+  (t) => [index("sale_payments_sale_idx").on(t.saleId), uniqueIndex("sale_payments_pi_uq").on(t.stripePaymentIntentId).where(sql`stripe_payment_intent_id IS NOT NULL`)],
 );
 
 export const saleReturns = sqliteTable(
@@ -926,6 +943,8 @@ export const promotions = sqliteTable(
     target: text("target", { enum: ["all", "category", "product"] }).notNull(),
     targetIds: text("target_ids", { mode: "json" }).$type<string[]>().notNull().default(sql`'[]'`),
     channel: text("channel", { enum: ["all", "pos", "online"] }).notNull().default("all"),
+    /** Only for identified customers at the register. */
+    membersOnly: integer("members_only", { mode: "boolean" }).notNull().default(false),
     /** Inclusive local dates (business time zone). null = no limit. */
     startsOn: text("starts_on"),
     endsOn: text("ends_on"),

@@ -99,6 +99,13 @@
       "when": 1794276665189,
       "tag": "0013_pos_customer_signup",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794365261255,
+      "tag": "0014_receipts_sms",
+      "breakpoints": true
     }
   ]
 }
